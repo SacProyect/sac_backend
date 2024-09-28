@@ -116,7 +116,6 @@ taxpayerRouter.post('/compromiso_pago',
 
 taxpayerRouter.post('/aviso',
     body("fecha").isDate(),
-    body("monto").isDecimal(),
     body("contribuyenteId").isNumeric(),
     async (req: Request, res: Response) => {
         try {

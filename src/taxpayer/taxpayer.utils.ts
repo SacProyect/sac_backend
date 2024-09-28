@@ -28,7 +28,7 @@ export type Event = {
 
 export type NewEvent = {
     fecha: Date
-    monto: Decimal
+    monto?: Decimal
     tipo: EventType
     contribuyenteId: number
 }
