@@ -1,4 +1,5 @@
 import { Decimal } from "@prisma/client/runtime/library"
+import { User } from "../users/user.utils"
 
 export type Taxpayer = {
     nroProvidencia: number
@@ -6,14 +7,30 @@ export type Taxpayer = {
     nombre: string
     rif: string
     tipoContrato: string
-    eventos: Event[]
+    eventos?: Event[]
+}
+
+export type NewTaxpayer = {
+    nroProvidencia: number
+    procedimiento: string
+    nombre: string
+    rif: string
+    tipoContrato: string
+    funcionarioId: string
 }
 
 export type Event = {
-    id: number
+    id: bigint;
     fecha: Date
     monto: Decimal
     tipo: EventType
+}
+
+export type NewEvent = {
+    fecha: Date
+    monto: Decimal
+    tipo: EventType
+    contribuyenteId: number
 }
 
 export const EventType: { [x: string]: 'MULTA' | 'AVISO' | 'COMPROMISO_PAGO' | 'PAGO' } = {
