@@ -5,7 +5,7 @@
   "main": "index.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "npx prisma migrate",
+    "build": "npx prisma generate && npx prisma migrate",
     "dev": "nodemon"
   },
   "author": "Juan Isturiz",
