@@ -31,7 +31,7 @@ export const generateAcessToken = (user: User) => {
         },
         TOKEN_SECRET,
         {
-            expiresIn: '3600s'
+            expiresIn: '10h'
         }
     )
 }
