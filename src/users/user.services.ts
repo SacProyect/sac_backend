@@ -11,11 +11,14 @@ import { generateAcessToken, NewUserInput, passwordHashing, User } from "./user.
  */
 export const logIn = async (cedula: number, password: string): Promise<{ user: User | Error, token: string }> => {
     try {
-        const user = await db.usuario.findFirstOrThrow({
+        const user = await db.usuario.findUniqueOrThrow({
             include: {
                 contribuyentes: true,
             },
-            where: { cedula: cedula }
+            where: {
+                cedula: cedula,
+                status: true
+            }
         });
 
         if (!user) {
@@ -54,3 +57,33 @@ export const signUp = async (input: NewUserInput): Promise<User | Error> => {
         throw error;
     }
 };
+/**
+ * Updates a usuario object.
+ * 
+ * @param usuarioId The ID of the usuario to update.
+ * @param data The updated data for the usuario.
+ * @returns The updated usuario object or an error if the operation fails.
+ */
+export const updateUsuario = async (usuarioId: string, data: Partial<NewUserInput>): Promise<User | Error> => {
+    try {
+        if (data.contrasena) {
+            data.contrasena = await passwordHashing(data.contrasena);
+        }
+
+        const updatedUsuario = await db.usuario.update({
+            where: {
+                id: usuarioId
+            },
+            data: {
+                ...data
+            }
+        });
+
+
+        return updatedUsuario;
+    } catch (error) {
+
+        throw error;
+    }
+}
+
