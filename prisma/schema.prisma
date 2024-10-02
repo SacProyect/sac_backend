@@ -3,9 +3,8 @@ generator client {
 }
 
 datasource db {
-    provider          = "mysql"
-    url               = env("DATABASE_URL")
-    shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+    provider = "mysql"
+    url      = env("DATABASE_URL")
 }
 
 model usuario {
@@ -15,6 +14,7 @@ model usuario {
     cedula         Int             @unique
     contrasena     String
     contribuyentes contribuyente[]
+    status         Boolean         @default(true)
 }
 
 model contribuyente {
@@ -25,6 +25,7 @@ model contribuyente {
     rif            String   @db.Char(11)
     tipoContrato   String   @db.Text
     eventos        evento[]
+    status         Boolean  @default(true)
 
     funcionario   usuario? @relation(fields: [funcionarioId], references: [id])
     funcionarioId String?
@@ -35,6 +36,7 @@ model evento {
     fecha           DateTime       @default(dbgenerated("CURRENT_TIMESTAMP()")) @db.Timestamp()
     monto           Decimal        @default(0) @db.Decimal(20, 2)
     tipo            TipoEvento
+    status          Boolean        @default(true)
     contribuyente   contribuyente? @relation(fields: [contribuyenteId], references: [id])
     contribuyenteId Int?
 }
