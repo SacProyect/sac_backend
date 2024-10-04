@@ -1,6 +1,6 @@
 import { Decimal } from "@prisma/client/runtime/library"
-import { User } from "../users/user.utils"
 import { db } from "../utils/db.server"
+import { TipoContrato, TipoProcedimiento } from "@prisma/client"
 
 export type Taxpayer = {
     nroProvidencia: number
@@ -13,10 +13,10 @@ export type Taxpayer = {
 
 export type NewTaxpayer = {
     nroProvidencia: number
-    procedimiento: string
+    procedimiento: TipoProcedimiento
     nombre: string
     rif: string
-    tipoContrato: string
+    tipoContrato: TipoContrato
     funcionarioId: string
 }
 
@@ -40,11 +40,10 @@ export type StatisticsResponse = {
     porcentaje: Decimal
 }
 
-export const EventType: { [x: string]: 'MULTA' | 'AVISO' | 'COMPROMISO_PAGO' | 'PAGO' } = {
+export const EventType: { [x: string]: 'MULTA' | 'AVISO' | 'COMPROMISO_PAGO' } = {
     MULTA: 'MULTA',
     AVISO: 'AVISO',
     COMPROMISO_PAGO: 'COMPROMISO_PAGO',
-    PAGO: 'PAGO',
 }
 export type EventType = typeof EventType[keyof typeof EventType]
 
