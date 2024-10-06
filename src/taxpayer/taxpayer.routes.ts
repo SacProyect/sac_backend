@@ -123,11 +123,12 @@ taxpayerRouter.post('/multa',
 taxpayerRouter.post('/pago',
     body("fecha").isISO8601().toDate(),
     body("monto").isDecimal(),
+    body("eventoId").isNumeric(),
     body("contribuyenteId").isNumeric(),
     async (req: Request, res: Response) => {
         try {
-            const input = { ...req.body, tipo: EventType.PAGO }
-            const pago = await TaxpayerServices.createEvent(input)
+            const input = { ...req.body }
+            const pago = await TaxpayerServices.createPayment(input)
             return res.status(200).json(pago)
         } catch (error: any) {
             return res.status(500).json(error.message)
@@ -235,21 +236,12 @@ taxpayerRouter.delete('/event/:id',
         }
     }
 );
-
-taxpayerRouter.get('/estadisticas/:userId/:taxpayerId?',
+taxpayerRouter.delete('/payment/:id',
     async (req: Request, res: Response) => {
         try {
-            const userId: string = req.params.userId
-
-            const taxpayerId = req.params.taxpayerId
-
-            const statistics = await TaxpayerServices.getFullStatistics(
-                userId,
-                taxpayerId ?
-                    parseInt(req.params.taxpayerId, 10) :
-                    undefined
-            )
-            return res.status(200).json(statistics)
+            const id: number = parseInt(req.params.id, 10);
+            const event = await TaxpayerServices.deletePayment(id)
+            return res.status(200).json(event)
         } catch (error: any) {
             return res.status(500).json(error.message)
         }
