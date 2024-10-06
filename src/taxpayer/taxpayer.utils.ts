@@ -25,13 +25,28 @@ export type Event = {
     fecha: Date
     monto: Decimal
     tipo: EventType
+    contribuyenteId: bigint
 }
 
 export type NewEvent = {
     fecha: Date
     monto?: Decimal
     tipo: EventType
-    contribuyenteId: number
+    contribuyenteId: bigint
+}
+
+export type Payment = {
+    id: bigint;
+    fecha: Date
+    monto: Decimal
+    evento: Event
+    contribuyenteId: bigint
+}
+export type NewPayment = {
+    fecha: Date
+    monto: Decimal
+    eventoId: number
+    contribuyenteId: bigint
 }
 
 export type StatisticsResponse = {
