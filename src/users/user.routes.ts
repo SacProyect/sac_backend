@@ -2,7 +2,7 @@ import express from "express";
 import type { Request, Response } from "express";
 import * as UserService from "./user.services"
 import { body, validationResult } from 'express-validator';
-import { authenticateToken, generateAcessToken } from "./user.utils";
+import { authenticateToken, generateAcessToken, User } from "./user.utils";
 
 export const userRouter = express.Router();
 
@@ -16,7 +16,7 @@ userRouter.post('/',
         }
         try {
             const { cedula, password } = req.body;
-            const user = await UserService.logIn(cedula, password);
+            const { user, token } = await UserService.logIn(cedula, password);
             return res.status(200).json(user)
         } catch (error: any) {
             return res.status(500).json(error.message)
