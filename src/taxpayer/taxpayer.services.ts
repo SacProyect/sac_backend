@@ -1,5 +1,5 @@
 import { db } from "../utils/db.server";
-import { Event, getStatistics, NewEvent, NewTaxpayer, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
+import { Event, getStatistics, NewEvent, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 
 
 /**
@@ -31,6 +31,26 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
             data: input
         })
         return event;
+    } catch (error) {
+        throw error;
+    }
+}
+
+/**
+ * Creates a new payment.
+ *
+ * @param {NewPayment} input - The input data for the new payment.
+ * @returns {Promise<Payment | Error>} A Promise resolving to the created payment or an error.
+ */
+export const createPayment = async (input: NewPayment): Promise<Payment | Error> => {
+    try {
+        const newPayment = await db.pago.create({
+            data: input,
+            include: {
+                evento: true
+            }
+        })
+        return newPayment
     } catch (error) {
         throw error;
     }
@@ -150,6 +170,31 @@ export const deleteEvent = async (eventId: number): Promise<Event | Error> => {
 }
 
 /**
+ * Deletes a payment by changing their status to false.
+ * 
+ * @param {number}eventId The ID of the payment to delete.
+ * @returns The updated payment object or an error if the operation fails.
+ */
+export const deletePayment = async (eventId: number): Promise<Payment | Error> => {
+    try {
+        const updatedEvent = await db.pago.update({
+            where: {
+                id: eventId
+            },
+            include: {
+                evento: true
+            },
+            data: {
+                status: false
+            }
+        });
+        return updatedEvent;
+    } catch (error) {
+        throw error;
+    }
+}
+
+/**
  * Updates a contribuyente object.
  * 
  * @param contribuyenteId The ID of the contribuyente to update.
@@ -195,16 +240,29 @@ export const updateEvent = async (eventoId: number, data: Partial<NewEvent>): Pr
     }
 }
 
-export const getFullStatistics = async (userId: string, taxpayerId?: number): Promise<{ ano?: StatisticsResponse[] | Error, mes: StatisticsResponse[] | Error, dia: StatisticsResponse[] | Error, general: StatisticsResponse[] | Error } | Error> => {
-    const getStats = async (period: string) => await getStatistics(userId, period, taxpayerId);
-    const periods = !taxpayerId ? ["year", "month", "day", ""] : ["month", "day", ""];
-    const promises = periods.map((period) => getStats(period));
+/**
+ * Updates a payment object.
+ * 
+ * @param eventoId The ID of the payment to update.
+ * @param data The updated data for the payment.
+ * @returns The updated payment object or an error if the operation fails.
+ */
+export const updatePayment = async (eventoId: number, data: Partial<NewPayment>): Promise<Payment | Error> => {
     try {
-        const results = await Promise.all(promises);
-        return !taxpayerId
-            ? { ano: results[0], mes: results[1], dia: results[2], general: results[3] }
-            : { mes: results[0], dia: results[1], general: results[2] };
+        const updatedEvent = await db.pago.update({
+            where: {
+                id: eventoId
+            },
+            include: {
+                evento: true
+            },
+            data: {
+                ...data
+            }
+        });
+        return updatedEvent;
     } catch (error) {
         throw error;
     }
-};
+}
+

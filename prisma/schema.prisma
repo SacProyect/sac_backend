@@ -1,5 +1,6 @@
 generator client {
-    provider = "prisma-client-js"
+    provider        = "prisma-client-js"
+    previewFeatures = ["fullTextIndex"]
 }
 
 datasource db {
@@ -19,32 +20,60 @@ model usuario {
 }
 
 model contribuyente {
-    id             Int      @id @default(autoincrement())
+    id             BigInt            @id @default(autoincrement()) @db.UnsignedBigInt
     nroProvidencia Int
-    procedimiento  String   @db.Text
+    procedimiento  TipoProcedimiento @default(NA)
     nombre         String
-    rif            String   @db.Char(11)
-    tipoContrato   String   @db.Text
+    rif            String            @db.Char(11)
+    tipoContrato   TipoContrato      @default(ORDINARIO)
     eventos        evento[]
-    status         Boolean  @default(true)
+    status         Boolean           @default(true)
 
     funcionario   usuario? @relation(fields: [funcionarioId], references: [id])
     funcionarioId String?
+    pago          pago[]
+
+    @@index([procedimiento])
+    @@index([tipoContrato])
+    @@fulltext([nombre])
 }
 
 model evento {
-    id              BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
-    fecha           DateTime       @default(dbgenerated("CURRENT_TIMESTAMP()")) @db.Timestamp()
-    monto           Decimal        @default(0) @db.Decimal(20, 2)
+    id              BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+    fecha           DateTime      @default(now()) @db.DateTime()
+    monto           Decimal       @default(0) @db.Decimal(20, 2)
     tipo            TipoEvento
-    status          Boolean        @default(true)
-    contribuyente   contribuyente? @relation(fields: [contribuyenteId], references: [id])
-    contribuyenteId Int?
+    status          Boolean       @default(true)
+    contribuyente   contribuyente @relation(fields: [contribuyenteId], references: [id])
+    contribuyenteId BigInt        @db.UnsignedBigInt
+    pago            pago?
+}
+
+model pago {
+    id              BigInt        @id @unique @default(autoincrement()) @db.UnsignedBigInt
+    monto           Decimal       @default(0) @db.Decimal(20, 2)
+    fecha           DateTime      @default(now()) @db.DateTime()
+    status          Boolean       @default(true)
+    contribuyente   contribuyente @relation(fields: [contribuyenteId], references: [id])
+    evento          evento        @relation(fields: [eventoId], references: [id])
+    eventoId        BigInt        @unique @db.UnsignedBigInt
+    contribuyenteId BigInt        @db.UnsignedBigInt
 }
 
 enum TipoEvento {
     MULTA
     AVISO
     COMPROMISO_PAGO
-    PAGO
+}
+
+enum TipoProcedimiento {
+    FP
+    AF
+    VDF
+    NA
+}
+
+enum TipoContrato {
+    ESPECIAL
+    ORDINARIO
 }
