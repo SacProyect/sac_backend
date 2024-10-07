@@ -4,6 +4,7 @@ import { TipoContrato, TipoProcedimiento } from "@prisma/client"
 
 export type Taxpayer = {
     nroProvidencia: number
+    id: bigint
     procedimiento: string
     nombre: string
     rif: string

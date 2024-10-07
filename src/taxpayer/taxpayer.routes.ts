@@ -131,12 +131,13 @@ taxpayerRouter.post('/pago',
             const pago = await TaxpayerServices.createPayment(input)
             return res.status(200).json(pago)
         } catch (error: any) {
+            console.error(error)
             return res.status(500).json(error.message)
         }
     }
 )
 taxpayerRouter.post('/compromiso_pago',
-    body("fecha").isISO8601().toDate(),
+    body("fecha").toDate(),
     body("monto").isDecimal(),
     body("contribuyenteId").isNumeric(),
     async (req: Request, res: Response) => {
@@ -145,6 +146,7 @@ taxpayerRouter.post('/compromiso_pago',
             const compromiso_pago = await TaxpayerServices.createEvent(input)
             return res.status(200).json(compromiso_pago)
         } catch (error: any) {
+            console.error(error)
             return res.status(500).json(error.message)
         }
     }
