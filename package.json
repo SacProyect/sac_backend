@@ -6,8 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "postinstall": "prisma generate",
-    "build": "prisma generate && prisma migrate",
-    "start": "tsx index.ts",
+    "build": "prisma generate && prisma migrate deploy && tsc",
+    "start": "node ./dist/index",
     "dev": "nodemon"
   },
   "author": "Juan Isturiz",
