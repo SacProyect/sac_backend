@@ -40,7 +40,7 @@ model contribuyente {
 
 model evento {
     id              BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
-    fecha           DateTime      @default(now()) @db.Date
+    fecha           DateTime      @default(now()) @db.DateTime()
     monto           Decimal       @default(0) @db.Decimal(20, 2)
     tipo            TipoEvento
     status          Boolean       @default(true)
@@ -51,8 +51,8 @@ model evento {
 
 model pago {
     id              BigInt        @id @unique @default(autoincrement()) @db.UnsignedBigInt
-    monto           Decimal
-    fecha           DateTime      @default(now()) @db.Date
+    monto           Decimal       @default(0) @db.Decimal(20, 2)
+    fecha           DateTime      @default(now()) @db.DateTime()
     status          Boolean       @default(true)
     contribuyente   contribuyente @relation(fields: [contribuyenteId], references: [id])
     evento          evento        @relation(fields: [eventoId], references: [id])
