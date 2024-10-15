@@ -87,3 +87,12 @@ export const updateUsuario = async (usuarioId: string, data: Partial<NewUserInpu
     }
 }
 
+export const getAllUsers = async (): Promise<User[] | Error> => {
+    try {
+        const users = await db.usuario.findMany();
+        return users
+    } catch (error) {
+        throw error;
+    }
+}
+

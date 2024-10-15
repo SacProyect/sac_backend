@@ -6,6 +6,17 @@ import { authenticateToken, generateAcessToken, User } from "./user.utils";
 
 export const userRouter = express.Router();
 
+
+userRouter.get('/all',
+    async (req: Request, res: Response) => {
+        try {
+            const users = await UserService.getAllUsers();
+            return res.status(200).json(users)
+        } catch (error: any) {
+            return res.status(500).json(error.message)
+        }
+    }
+)
 userRouter.post('/',
     body("cedula").isNumeric(),
     body("password").isString(),
