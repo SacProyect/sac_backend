@@ -3,11 +3,13 @@ import type { Request, Response } from "express";
 import * as TaxpayerServices from "./taxpayer.services"
 import { body, validationResult } from 'express-validator';
 import { EventType } from "./taxpayer.utils";
+import { authenticateToken } from "../users/user.utils";
 
 
 export const taxpayerRouter = express.Router();
 
 taxpayerRouter.get('/:id',
+    authenticateToken,
     async (req: Request, res: Response) => {
         try {
             const id: number = parseInt(req.params.id, 10);
@@ -20,6 +22,7 @@ taxpayerRouter.get('/:id',
 )
 
 taxpayerRouter.get('/all/:id',
+    authenticateToken,
     async (req: Request, res: Response) => {
         try {
             const id: string = req.params.id;
@@ -32,6 +35,7 @@ taxpayerRouter.get('/all/:id',
 );
 
 taxpayerRouter.post('/',
+    authenticateToken,
     body("nroProvidencia").isInt(),
     body("procedimiento").isString(),
     body("nombre").isString(),
@@ -45,15 +49,18 @@ taxpayerRouter.post('/',
         }
         try {
             const input = req.body
+            input.nroProvidencia = parseInt(input.nroProvidencia, 10)
             const newTaxpayer = await TaxpayerServices.createTaxpayer(input)
             return res.status(200).json(newTaxpayer)
         } catch (error: any) {
+            console.error(error)
             return res.status(500).json(error.message)
         }
     }
 );
 
 taxpayerRouter.put("/:id",
+    authenticateToken,
     body("nroProvidencia").isInt().optional({ values: 'falsy' }),
     body("procedimiento").isString().optional({ values: 'falsy' }),
     body("nombre").isString().optional({ values: 'falsy' }),
@@ -78,6 +85,7 @@ taxpayerRouter.put("/:id",
 )
 
 taxpayerRouter.delete('/:id',
+    authenticateToken,
     async (req: Request, res: Response) => {
         try {
             const id: number = parseInt(req.params.id, 10);
@@ -89,11 +97,25 @@ taxpayerRouter.delete('/:id',
     }
 )
 
-taxpayerRouter.get('/event/:id',
+taxpayerRouter.get('/event/:id/:type?',
+    authenticateToken,
     async (req: Request, res: Response) => {
         try {
             const id: number = parseInt(req.params.id, 10);
-            const events = await TaxpayerServices.getEventsbyTaxpayer(id)
+            const type: string = req.params.type
+            const events = await TaxpayerServices.getEventsbyTaxpayer(id, type)
+            return res.status(200).json(events)
+        } catch (error: any) {
+            return res.status(500).json(error.message)
+        }
+    }
+)
+
+taxpayerRouter.get('/event/all',
+    authenticateToken,
+    async (req: Request, res: Response) => {
+        try {
+            const events = await TaxpayerServices.getEventsbyTaxpayer()
             return res.status(200).json(events)
         } catch (error: any) {
             return res.status(500).json(error.message)
@@ -102,6 +124,7 @@ taxpayerRouter.get('/event/:id',
 )
 
 taxpayerRouter.post('/multa',
+    authenticateToken,
     body("fecha").isISO8601().toDate(),
     body("monto").isDecimal(),
     body("contribuyenteId").isNumeric(),
@@ -121,6 +144,7 @@ taxpayerRouter.post('/multa',
 )
 
 taxpayerRouter.post('/pago',
+    authenticateToken,
     body("fecha").isISO8601().toDate(),
     body("monto").isDecimal(),
     body("eventoId").isNumeric(),
@@ -137,6 +161,7 @@ taxpayerRouter.post('/pago',
     }
 )
 taxpayerRouter.post('/compromiso_pago',
+    authenticateToken,
     body("fecha").toDate(),
     body("monto").isDecimal(),
     body("contribuyenteId").isNumeric(),
@@ -153,6 +178,7 @@ taxpayerRouter.post('/compromiso_pago',
 )
 
 taxpayerRouter.post('/aviso',
+    authenticateToken,
     body("fecha").isISO8601().toDate(),
     body("contribuyenteId").isNumeric(),
     async (req: Request, res: Response) => {
@@ -166,6 +192,7 @@ taxpayerRouter.post('/aviso',
     }
 )
 taxpayerRouter.put('/multa/:eventId',
+    authenticateToken,
     body("fecha").isISO8601().toDate().optional({ checkFalsy: true }),
     body("monto").isDecimal().optional({ checkFalsy: true }),
     async (req: Request, res: Response) => {
@@ -185,6 +212,7 @@ taxpayerRouter.put('/multa/:eventId',
 );
 
 taxpayerRouter.put('/pago/:eventId',
+    authenticateToken,
     body("fecha").isISO8601().toDate().optional({ checkFalsy: true }),
     body("monto").isDecimal().optional({ checkFalsy: true }),
     async (req: Request, res: Response) => {
@@ -200,6 +228,7 @@ taxpayerRouter.put('/pago/:eventId',
 );
 
 taxpayerRouter.put('/compromiso_pago/:eventId',
+    authenticateToken,
     body("fecha").isISO8601().toDate().optional({ checkFalsy: true }),
     body("monto").isDecimal().optional({ checkFalsy: true }),
     async (req: Request, res: Response) => {
@@ -215,6 +244,7 @@ taxpayerRouter.put('/compromiso_pago/:eventId',
 );
 
 taxpayerRouter.put('/aviso/:eventId',
+    authenticateToken,
     body("fecha").isISO8601().toDate().optional({ checkFalsy: true }),
     async (req: Request, res: Response) => {
         try {
@@ -228,6 +258,7 @@ taxpayerRouter.put('/aviso/:eventId',
     }
 );
 taxpayerRouter.delete('/event/:id',
+    authenticateToken,
     async (req: Request, res: Response) => {
         try {
             const id: number = parseInt(req.params.id, 10);
@@ -239,6 +270,7 @@ taxpayerRouter.delete('/event/:id',
     }
 );
 taxpayerRouter.delete('/payment/:id',
+    authenticateToken,
     async (req: Request, res: Response) => {
         try {
             const id: number = parseInt(req.params.id, 10);

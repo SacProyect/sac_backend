@@ -1,12 +1,16 @@
 import { TipoEvento } from "@prisma/client"
 import { db } from "../utils/db.server"
 import { avgValue, getComplianceRate, getLatestEvents, getPunctuallityAnalysis, getTaxpayerComplianceRate, sumTransactions } from "./report.utils"
-import { Payment } from "../taxpayer/taxpayer.utils"
+import { Event, Payment } from "../taxpayer/taxpayer.utils"
 
-export const getFineHistory = async (taxpayerid?: number) => {
+export const getFineHistory = async (taxpayerId?: number) => {
     try {
-        const where = {
+        const where: any = {
             tipo: TipoEvento.MULTA
+        }
+
+        if (taxpayerId) {
+            where.contribuyenteId = taxpayerId;
         }
         const fines = await db.evento.findMany({
             where
@@ -22,22 +26,31 @@ export const getFineHistory = async (taxpayerid?: number) => {
     }
 }
 
-export const getPaymentHistory = async (taxpayerid?: number) => {
+export const getPaymentHistory = async (taxpayerId?: number) => {
     try {
+
+        const fineWhere: any = {
+            tipo: TipoEvento.MULTA
+        }
+        const paymentWhere: any = {
+            evento: {
+                tipo: TipoEvento.MULTA
+            }
+        }
+
+        if (taxpayerId) {
+            fineWhere.contribuyenteId = taxpayerId;
+            paymentWhere.contribuyenteId = taxpayerId;
+        }
+
         const payments = await db.pago.findMany({
             include: {
                 evento: true,
             },
-            where: {
-                evento: {
-                    tipo: TipoEvento.MULTA
-                }
-            }
+            where: paymentWhere
         })
         const fines = await db.evento.findMany({
-            where: {
-                tipo: TipoEvento.MULTA
-            }
+            where: fineWhere
         })
 
         const totalAmaount = sumTransactions(payments)
@@ -109,5 +122,54 @@ export const getKPI = async () => {
         }
     } catch (error) {
         throw error
+    }
+}
+export const getPendingPayments = async (taxpayerId?: number): Promise<Event[]> => {
+    try {
+        const where: any = {
+            pago: {
+                is: null,
+            },
+            contribuyente: {
+                status: true
+            },
+            NOT: {
+                tipo: TipoEvento.AVISO
+            }
+        }
+        if (taxpayerId) {
+            where.contribuyenteId = taxpayerId
+        }
+        const pendingPayments = await db.evento.findMany({
+            where,
+            select: {
+                id: true,
+                fecha: true,
+                monto: true,
+                tipo: true,
+                contribuyenteId: true,
+                contribuyente: {
+                    select: {
+                        nombre: true,
+                        rif: true,
+                    }
+                }
+
+            }
+        })
+        const mappedResponse: Event[] = pendingPayments.map((event: any) => {
+            return {
+                id: event.id,
+                fecha: event.fecha,
+                tipo: event.tipo ? event.tipo : "PAGO",
+                monto: event.monto,
+                contribuyenteId: event.contribuyenteId,
+                contribuyente: `${event.contribuyente.nombre} RIF: ${event.contribuyente.rif}`
+            }
+        })
+        console.log(mappedResponse)
+        return mappedResponse
+    } catch (error) {
+        throw error;
     }
 }
