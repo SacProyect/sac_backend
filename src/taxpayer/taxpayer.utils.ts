@@ -25,8 +25,9 @@ export type Event = {
     id: bigint;
     fecha: Date
     monto: Decimal
-    tipo: EventType
+    tipo: string
     contribuyenteId: bigint
+    constribuyente?: string
 }
 
 export type NewEvent = {
@@ -42,6 +43,7 @@ export type Payment = {
     monto: Decimal
     evento: Event
     contribuyenteId: bigint
+    constribuyente?: string
 }
 export type NewPayment = {
     fecha: Date
@@ -51,7 +53,7 @@ export type NewPayment = {
 }
 
 export type StatisticsResponse = {
-    tipo: EventType,
+    tipo: string,
     total: number,
     porcentaje: Decimal
 }

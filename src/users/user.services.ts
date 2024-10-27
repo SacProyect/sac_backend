@@ -27,6 +27,10 @@ export const logIn = async (cedula: number, password: string): Promise<{ user: U
         if (compareSync(password, user.contrasena)) {
             const token = generateAcessToken(user);
             user.contrasena = "";
+            if (user.tipo == "ADMIN") {
+                user.contribuyentes = await db.contribuyente.findMany({ where: { status: true } })
+            }
+
             return { user, token };
         } else {
             throw new Error('Contraseña erronea');

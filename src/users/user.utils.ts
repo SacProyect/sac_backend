@@ -1,4 +1,4 @@
-import { JwtPayload, Secret, sign, verify } from "jsonwebtoken"
+import { JwtPayload, sign, verify } from "jsonwebtoken"
 import { NextFunction, Request, Response } from "express"
 import { hash } from "bcrypt";
 import { Taxpayer } from "../taxpayer/taxpayer.utils";
@@ -19,7 +19,7 @@ export type NewUserInput = {
     contrasena: string
 }
 
-interface AuthRequest extends Request {
+export interface AuthRequest extends Request {
     token: string | JwtPayload;
 }
 
@@ -27,12 +27,9 @@ export const generateAcessToken = (user: User) => {
     return sign(
         {
             tipo: user.tipo,
-            user: user
+            user: user.id,
         },
         TOKEN_SECRET,
-        {
-            expiresIn: '10h'
-        }
     )
 }
 
@@ -47,6 +44,7 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
         (req as AuthRequest).token = decoded;
         next()
     } catch (error) {
+        console.log(error)
         res.status(401).json('Error while authenticating')
     }
 }

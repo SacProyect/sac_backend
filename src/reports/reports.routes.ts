@@ -1,11 +1,12 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import * as ReportService from './reports.services'
-import { body, validationResult } from "express-validator";
+import { authenticateToken } from "../users/user.utils";
 
 export const reportRouter = Router();
 
 reportRouter.get('/kpi',
+    authenticateToken,
     async (req: Request, res: Response) => {
         try {
             const KPI = await ReportService.getKPI()
@@ -17,6 +18,7 @@ reportRouter.get('/kpi',
 )
 
 reportRouter.get('/multa/:id?',
+    authenticateToken,
     async (req: Request, res: Response) => {
         try {
             let id: number | undefined = undefined;
@@ -32,6 +34,7 @@ reportRouter.get('/multa/:id?',
 )
 
 reportRouter.get('/pagos/:id?',
+    authenticateToken,
     async (req: Request, res: Response) => {
         try {
             let id: number | undefined = undefined;
@@ -40,6 +43,18 @@ reportRouter.get('/pagos/:id?',
             }
             const paymentHistory = await ReportService.getPaymentHistory(id)
             res.status(200).json(paymentHistory)
+        } catch (error: any) {
+            return res.status(500).json(error.message)
+        }
+    }
+)
+reportRouter.get('/pending/:id?',
+    //authenticateToken,
+    async (req: Request, res: Response) => {
+        try {
+            const id: number = parseInt(req.params.id, 10);
+            const events = await ReportService.getPendingPayments(id)
+            return res.status(200).json(events)
         } catch (error: any) {
             return res.status(500).json(error.message)
         }
