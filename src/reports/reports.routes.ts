@@ -33,7 +33,7 @@ reportRouter.get('/multa/:id?',
     }
 )
 
-reportRouter.get('/pagos/:id?',
+reportRouter.get('/payments/:id?',
     authenticateToken,
     async (req: Request, res: Response) => {
         try {

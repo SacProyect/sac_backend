@@ -7,16 +7,20 @@ const TOKEN_SECRET = process.env.TOKEN_SECRET as string
 
 export type User = {
     id: string;
-    cedula: number;
-    nombre: string;
-    tipo: string;
-    contribuyente?: Taxpayer[]
+    personId: number;
+    name: string;
+    role: string;
+    taxpayer?: Taxpayer[]
 };
+
+
+
 export type NewUserInput = {
-    cedula: number;
-    nombre: string;
-    tipo: string;
-    contrasena: string
+    id: string,
+    personId: number;
+    name: string;
+    role: string;
+    password: string
 }
 
 export interface AuthRequest extends Request {
@@ -26,7 +30,7 @@ export interface AuthRequest extends Request {
 export const generateAcessToken = (user: User) => {
     return sign(
         {
-            tipo: user.tipo,
+            type: user.role,
             user: user.id,
         },
         TOKEN_SECRET,

@@ -5,14 +5,14 @@ import { Event, Payment, Taxpayer } from "../taxpayer/taxpayer.utils";
 export const sumTransactions = (transactionArray: Event[] | Payment[]): Decimal => {
     let total: Decimal = new Decimal(0)
     transactionArray.forEach(transaction => {
-        total = total.add(transaction.monto)
+        total = total.add(transaction.amount)
     })
     return total
 }
 
 export const avgValue = (transactionArray: Event[] | Payment[]): Decimal => {
     let total = new Decimal(0)
-    transactionArray.forEach(transaction => { total.plus(transaction.monto) })
+    transactionArray.forEach(transaction => { total.plus(transaction.amount) })
     return total
         .div(transactionArray.length)
         .mul(100)
@@ -25,7 +25,7 @@ export const getLatestEvents = (transactions: Payment[]): Payment[] => {
     return orderedTransactions
 }
 export const orderTransactions = (transactionArray: Payment[]): Payment[] => {
-    return transactionArray.sort((a, b) => a.fecha.getTime() - b.fecha.getTime())
+    return transactionArray.sort((a, b) => a.date.getTime() - b.date.getTime())
 }
 
 export const getComplianceRate = (fines: Event[], payments: Payment[]): Decimal => {
@@ -42,7 +42,7 @@ export const getTaxpayerComplianceRate = (taxpayers: Taxpayer[], payments: Payme
 
 
     events.forEach((event) => {
-        const taxpayerId = event.contribuyenteId;
+        const taxpayerId = event.taxpayerId;
         if (taxpayerEvents.has(taxpayerId)) {
             taxpayerEvents.set(taxpayerId, taxpayerEvents.get(taxpayerId) + 1);
         } else {
@@ -51,7 +51,7 @@ export const getTaxpayerComplianceRate = (taxpayers: Taxpayer[], payments: Payme
     });
 
     payments.forEach((payment) => {
-        const taxpayerId = payment.contribuyenteId;
+        const taxpayerId = payment.taxpayerId;
         if (taxpayerPayments.has(taxpayerId)) {
             taxpayerPayments.set(taxpayerId, taxpayerPayments.get(taxpayerId) + 1);
         } else {
@@ -75,7 +75,7 @@ export const getTaxpayerComplianceRate = (taxpayers: Taxpayer[], payments: Payme
 export const getPunctuallityAnalysis = (payments: Payment[]): Decimal => {
     const delay = payments.map(
         (payment => {
-            const timeDiff = payment.fecha.getTime() - payment.evento.fecha.getTime();
+            const timeDiff = payment.date.getTime() - payment.event.date.getTime();
             return timeDiff > 15 * 86400000 ? new Decimal(timeDiff).div(86400000).minus(15) : new Decimal(0);
         })
     )

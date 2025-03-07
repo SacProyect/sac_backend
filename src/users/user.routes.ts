@@ -19,7 +19,7 @@ userRouter.get('/all',
     }
 )
 userRouter.post('/',
-    body("cedula").isNumeric(),
+    body("personId").isNumeric(),
     body("password").isString(),
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
@@ -27,8 +27,8 @@ userRouter.post('/',
             return res.status(400).json({ errors: errors.array() });
         }
         try {
-            const { cedula, password } = req.body;
-            const data = await UserService.logIn(cedula, password);
+            const { personId, password } = req.body;
+            const data = await UserService.logIn(personId, password);
 
             return res.status(200).json(data)
         } catch (error: any) {
@@ -39,10 +39,10 @@ userRouter.post('/',
 );
 
 userRouter.post('/sign-up',
-    body("cedula").isNumeric(),
-    body("contrasena").isString(),
-    body("nombre").isString(),
-    body("tipo").isString(),
+    body("personId").isNumeric(),
+    body("password").isString(),
+    body("name").isString(),
+    body("type").isString(),
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {

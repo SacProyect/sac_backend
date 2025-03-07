@@ -10,7 +10,7 @@ import { Event, getStatistics, NewEvent, NewPayment, NewTaxpayer, Payment, Stati
  */
 export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Error> => {
     try {
-        const taxpayer = await db.contribuyente.create({
+        const taxpayer = await db.taxpayer.create({
             data: input
         })
         return taxpayer;
@@ -27,7 +27,7 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
  */
 export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
     try {
-        const event = await db.evento.create({
+        const event = await db.event.create({
             data: input
         })
         return event;
@@ -44,10 +44,10 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
  */
 export const createPayment = async (input: NewPayment): Promise<Payment | Error> => {
     try {
-        const newPayment = await db.pago.create({
+        const newPayment = await db.payment.create({
             data: input,
             include: {
-                evento: true
+                event: true
             }
         })
         return newPayment
@@ -59,10 +59,10 @@ export const createPayment = async (input: NewPayment): Promise<Payment | Error>
 /**
  * Gets all events for a given taxpayer.
  *
- * @param {number} taxpayerId - The ID of the taxpayer.
+ * @param {string} taxpayerId - The ID of the taxpayer.
  * @returns {Promise<Event[] | Error>} A Promise resolving to an array of events or an error.
  */
-export const getEventsbyTaxpayer = async (taxpayerId?: number, type?: string): Promise<Event[] | Error> => {
+export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): Promise<Event[] | Error> => {
     try {
 
         let events: any;
@@ -71,39 +71,39 @@ export const getEventsbyTaxpayer = async (taxpayerId?: number, type?: string): P
             status: true
         }
         if (taxpayerId) {
-            where.contribuyenteId = taxpayerId;
+            where.taxpayerId = taxpayerId;
         }
-        if (type && type !== "PAGO") {
-            where.tipo = type
-            events = await db.evento.findMany({
+        if (type && type !== "payment") {
+            where.type = type
+            events = await db.event.findMany({
                 where,
                 select: {
                     id: true,
-                    fecha: true,
-                    monto: true,
-                    tipo: true,
-                    contribuyenteId: true,
-                    contribuyente: {
+                    date: true,
+                    amount: true,
+                    type: true,
+                    taxpayerId: true,
+                    taxpayer: {
                         select: {
-                            nombre: true,
+                            name: true,
                             rif: true,
                         }
                     }
 
                 }
             })
-        } else if (type === "PAGO") {
-            events = await db.pago.findMany({
+        } else if (type === "payment") {
+            events = await db.payment.findMany({
                 where,
                 select: {
                     id: true,
-                    fecha: true,
-                    monto: true,
-                    evento: true,
-                    contribuyenteId: true,
-                    contribuyente: {
+                    date: true,
+                    amount: true,
+                    event: true,
+                    taxpayerId: true,
+                    taxpayer: {
                         select: {
-                            nombre: true,
+                            name: true,
                             rif: true,
                         }
                     }
@@ -111,17 +111,17 @@ export const getEventsbyTaxpayer = async (taxpayerId?: number, type?: string): P
                 }
             })
         } else {
-            events = await db.evento.findMany({
+            events = await db.event.findMany({
                 where,
                 select: {
                     id: true,
-                    fecha: true,
-                    monto: true,
-                    tipo: true,
-                    contribuyenteId: true,
-                    contribuyente: {
+                    date: true,
+                    amount: true,
+                    type: true,
+                    taxpayerId: true,
+                    taxpayer: {
                         select: {
-                            nombre: true,
+                            name: true,
                             rif: true,
                         }
                     }
@@ -129,17 +129,17 @@ export const getEventsbyTaxpayer = async (taxpayerId?: number, type?: string): P
                 }
             })
 
-            const payments = await db.pago.findMany({
+            const payments = await db.payment.findMany({
                 where,
                 select: {
                     id: true,
-                    fecha: true,
-                    monto: true,
-                    evento: true,
-                    contribuyenteId: true,
-                    contribuyente: {
+                    date: true,
+                    amount: true,
+                    event: true,
+                    taxpayerId: true,
+                    taxpayer: {
                         select: {
-                            nombre: true,
+                            name: true,
                             rif: true,
                         }
                     }
@@ -153,11 +153,11 @@ export const getEventsbyTaxpayer = async (taxpayerId?: number, type?: string): P
         const mappedResponse: Event[] = events.map((event: any) => {
             return {
                 id: event.id,
-                fecha: event.fecha,
-                tipo: event.tipo ? event.tipo : "PAGO",
-                monto: event.monto,
-                contribuyenteId: event.contribuyenteId,
-                contribuyente: `${event.contribuyente.nombre} RIF: ${event.contribuyente.rif}`
+                date: event.date,
+                type: event.type ? event.type : "payment",
+                amount: event.amount,
+                taxpayerId: event.taxpayerId,
+                taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`
             }
         })
         return mappedResponse
@@ -172,9 +172,9 @@ export const getEventsbyTaxpayer = async (taxpayerId?: number, type?: string): P
  * @param {number} taxpayerId - The ID of the taxpayer.
  * @returns {Promise<Taxpayer | Error>} A Promise resolving to the taxpayer or an error.
  */
-export const getTaxpayerById = async (taxpayerId: number): Promise<Taxpayer | Error> => {
+export const getTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Error> => {
     try {
-        const taxpayer = await db.contribuyente.findUniqueOrThrow({
+        const taxpayer = await db.taxpayer.findUniqueOrThrow({
             where: {
                 id: taxpayerId,
                 status: true
@@ -194,9 +194,9 @@ export const getTaxpayerById = async (taxpayerId: number): Promise<Taxpayer | Er
  */
 export const getTaxpayersByUser = async (userId: string): Promise<Taxpayer[] | Error> => {
     try {
-        const taxpayers = await db.contribuyente.findMany({
+        const taxpayers = await db.taxpayer.findMany({
             where: {
-                funcionarioId: userId,
+                officerId: userId,
                 status: true
             }
         })
@@ -212,9 +212,9 @@ export const getTaxpayersByUser = async (userId: string): Promise<Taxpayer[] | E
  * @param {number}taxpayerId The ID of the taxpayer to delete.
  * @returns The updated taxpayer object or an error if the operation fails.
  */
-export const deleteTaxpayerById = async (taxpayerId: number): Promise<Taxpayer | Error> => {
+export const deleteTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Error> => {
     try {
-        const updatedTaxpayer = await db.contribuyente.update({
+        const updatedTaxpayer = await db.taxpayer.update({
             where: {
                 id: taxpayerId
             },
@@ -222,18 +222,18 @@ export const deleteTaxpayerById = async (taxpayerId: number): Promise<Taxpayer |
                 status: false
             }
         });
-        await db.evento.updateMany({
+        await db.event.updateMany({
             where: {
-                contribuyenteId: taxpayerId,
+                taxpayerId: taxpayerId,
                 status: true
             },
             data: {
                 status: false
             }
         });
-        await db.pago.updateMany({
+        await db.payment.updateMany({
             where: {
-                contribuyenteId: taxpayerId,
+                taxpayerId: taxpayerId,
                 status: true
             },
             data: {
@@ -249,12 +249,12 @@ export const deleteTaxpayerById = async (taxpayerId: number): Promise<Taxpayer |
 /**
  * Deletes a taxpayer by changing their status to false.
  * 
- * @param {number}eventId The ID of the taxpayer to delete.
+ * @param {string} eventId The ID of the taxpayer to delete.
  * @returns The updated taxpayer object or an error if the operation fails.
  */
-export const deleteEvent = async (eventId: number): Promise<Event | Error> => {
+export const deleteEvent = async (eventId: string): Promise<Event | Error> => {
     try {
-        const updatedEvent = await db.evento.update({
+        const updatedEvent = await db.event.update({
             where: {
                 id: eventId
             },
@@ -271,17 +271,17 @@ export const deleteEvent = async (eventId: number): Promise<Event | Error> => {
 /**
  * Deletes a payment by changing their status to false.
  * 
- * @param {number}eventId The ID of the payment to delete.
+ * @param {string}eventId The ID of the payment to delete.
  * @returns The updated payment object or an error if the operation fails.
  */
-export const deletePayment = async (eventId: number): Promise<Payment | Error> => {
+export const deletePayment = async (eventId: string): Promise<Payment | Error> => {
     try {
-        const updatedEvent = await db.pago.update({
+        const updatedEvent = await db.payment.update({
             where: {
                 id: eventId
             },
             include: {
-                evento: true
+                event: true
             },
             data: {
                 status: false
@@ -294,17 +294,17 @@ export const deletePayment = async (eventId: number): Promise<Payment | Error> =
 }
 
 /**
- * Updates a contribuyente object.
+ * Updates a taxpayer object.
  * 
- * @param contribuyenteId The ID of the contribuyente to update.
- * @param data The updated data for the contribuyente.
- * @returns The updated contribuyente object or an error if the operation fails.
+ * @param taxpayerId The ID of the taxpayer to update.
+ * @param data The updated data for the taxpayer.
+ * @returns The updated taxpayer object or an error if the operation fails.
  */
-export const updateTaxpayer = async (contribuyenteId: number, data: Partial<NewTaxpayer>): Promise<Taxpayer | Error> => {
+export const updateTaxpayer = async (taxpayerId: string, data: Partial<NewTaxpayer>): Promise<Taxpayer | Error> => {
     try {
-        const updatedTaxpayer = await db.contribuyente.update({
+        const updatedTaxpayer = await db.taxpayer.update({
             where: {
-                id: contribuyenteId
+                id: taxpayerId
             },
             data: {
                 ...data
@@ -317,17 +317,17 @@ export const updateTaxpayer = async (contribuyenteId: number, data: Partial<NewT
 }
 
 /**
- * Updates an evento object.
+ * Updates an event object.
  * 
- * @param eventoId The ID of the evento to update.
- * @param data The updated data for the evento.
- * @returns The updated evento object or an error if the operation fails.
+ * @param eventId The ID of the event to update.
+ * @param data The updated data for the event.
+ * @returns The updated event object or an error if the operation fails.
  */
-export const updateEvent = async (eventoId: number, data: Partial<NewEvent>): Promise<Event | Error> => {
+export const updateEvent = async (eventId: string, data: Partial<NewEvent>): Promise<Event | Error> => {
     try {
-        const updatedEvent = await db.evento.update({
+        const updatedEvent = await db.event.update({
             where: {
-                id: eventoId
+                id: eventId
             },
             data: {
                 ...data
@@ -342,18 +342,18 @@ export const updateEvent = async (eventoId: number, data: Partial<NewEvent>): Pr
 /**
  * Updates a payment object.
  * 
- * @param eventoId The ID of the payment to update.
+ * @param eventId The ID of the payment to update.
  * @param data The updated data for the payment.
  * @returns The updated payment object or an error if the operation fails.
  */
-export const updatePayment = async (eventoId: number, data: Partial<NewPayment>): Promise<Payment | Error> => {
+export const updatePayment = async (eventId: string, data: Partial<NewPayment>): Promise<Payment | Error> => {
     try {
-        const updatedEvent = await db.pago.update({
+        const updatedEvent = await db.payment.update({
             where: {
-                id: eventoId
+                id: eventId
             },
             include: {
-                evento: true
+                event: true
             },
             data: {
                 ...data
@@ -365,26 +365,26 @@ export const updatePayment = async (eventoId: number, data: Partial<NewPayment>)
     }
 }
 
-export const getPendingPayments = async (taxpayerId?: number): Promise<Event[]> => {
+export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> => {
     try {
         const where: any = {
-            pago: {
+            payment: {
                 is: null,
             }
         }
         if (taxpayerId) {
-            where.contribuyenteId = taxpayerId
+            where.taxpayerId = taxpayerId
         }
-        const pendingPayments = await db.evento.findMany({
+        const pendingPayments = await db.event.findMany({
             select: {
                 id: true,
-                fecha: true,
-                monto: true,
-                tipo: true,
-                contribuyenteId: true,
-                contribuyente: {
+                date: true,
+                amount: true,
+                type: true,
+                taxpayerId: true,
+                taxpayer: {
                     select: {
-                        nombre: true,
+                        name: true,
                         rif: true,
                     }
                 }
@@ -395,11 +395,11 @@ export const getPendingPayments = async (taxpayerId?: number): Promise<Event[]> 
         const mappedResponse: Event[] = pendingPayments.map((event: any) => {
             return {
                 id: event.id,
-                fecha: event.fecha,
-                tipo: event.tipo ? event.tipo : "PAGO",
-                monto: event.monto,
-                contribuyenteId: event.contribuyenteId,
-                contribuyente: `${event.contribuyente.nombre} RIF: ${event.contribuyente.rif}`
+                date: event.date,
+                type: event.type ? event.type : "payment",
+                amount: event.amount,
+                taxpayerId: event.taxpayerId,
+                taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`
             }
         })
         return mappedResponse

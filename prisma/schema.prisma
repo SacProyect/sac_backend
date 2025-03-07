@@ -1,6 +1,5 @@
 generator client {
-    provider        = "prisma-client-js"
-    previewFeatures = ["fullTextIndex"]
+    provider = "prisma-client-js"
 }
 
 datasource db {
@@ -9,71 +8,74 @@ datasource db {
     shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
-model usuario {
-    id             String          @id @default(uuid())
-    nombre         String
-    tipo           String
-    cedula         Int             @unique
-    contrasena     String
-    contribuyentes contribuyente[]
-    status         Boolean         @default(true)
+model user {
+    id       String     @id @default(uuid()) // Use String for UUIDs
+    name     String
+    role     String
+    personId Int     @unique(map: "usuario_cedula_key")
+    password String
+    status   Boolean    @default(true)
+    taxpayer taxpayer[]
+}
+model event {
+    id         String     @id @default(uuid()) // Use String for UUIDs
+    date       DateTime   @default(now()) @db.DateTime(0)
+    amount     Decimal    @default(0.00) @db.Decimal(20, 2)
+    type       event_type
+    status     Boolean    @default(true)
+    taxpayerId String // Changed to String for UUID
+    taxpayer   taxpayer   @relation(fields: [taxpayerId], references: [id], map: "evento_contribuyenteId_fkey")
+    payment    payment?
+
+    @@index([taxpayerId], map: "evento_contribuyenteId_fkey")
 }
 
-model contribuyente {
-    id             BigInt            @id @default(autoincrement()) @db.UnsignedBigInt
-    nroProvidencia Int
-    procedimiento  TipoProcedimiento @default(NA)
-    nombre         String
-    rif            String            @db.Char(11)
-    tipoContrato   TipoContrato      @default(ORDINARIO)
-    eventos        evento[]
-    status         Boolean           @default(true)
+model payment {
+    id         String   @id @default(uuid()) // Use String for UUIDs
+    amount     Decimal  @default(0.00) @db.Decimal(20, 2)
+    date       DateTime @default(now()) @db.DateTime(0)
+    status     Boolean  @default(true)
+    eventId    String   @unique // Changed to String for UUID
+    taxpayerId String // Changed to String for UUID
+    taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], map: "pago_contribuyenteId_fkey")
+    event      event    @relation(fields: [eventId], references: [id], map: "pago_eventoId_fkey")
 
-    funcionario   usuario? @relation(fields: [funcionarioId], references: [id])
-    funcionarioId String?
-    pago          pago[]
-
-    @@index([procedimiento])
-    @@index([tipoContrato])
-    @@fulltext([nombre])
+    @@index([taxpayerId], map: "pago_contribuyenteId_fkey")
 }
 
-model evento {
-    id              BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
-    fecha           DateTime      @default(dbgenerated("NOW()")) @db.DateTime()
-    monto           Decimal       @default(0) @db.Decimal(20, 2)
-    tipo            TipoEvento
-    status          Boolean       @default(true)
-    contribuyente   contribuyente @relation(fields: [contribuyenteId], references: [id])
-    contribuyenteId BigInt        @db.UnsignedBigInt
-    pago            pago?
+model taxpayer {
+    id            String                 @id @default(uuid()) // Use String for UUIDs
+    providenceNum Int
+    process       taxpayer_process       @default(NA)
+    name          String
+    rif           String                 @db.Char(11)
+    contract_type taxpayer_contract_type @default(ORDINARY)
+    status        Boolean                @default(true)
+    officerId     String?
+    event         event[]
+    payment       payment[]
+    user          user?                  @relation(fields: [officerId], references: [id], map: "contribuyente_funcionarioId_fkey")
+
+    @@index([officerId], map: "contribuyente_funcionarioId_fkey")
+    @@index([process], map: "contribuyente_procedimiento_idx")
+    @@index([contract_type], map: "contribuyente_tipoContrato_idx")
 }
 
-model pago {
-    id              BigInt        @id @unique @default(autoincrement()) @db.UnsignedBigInt
-    monto           Decimal       @default(0) @db.Decimal(20, 2)
-    fecha           DateTime      @default(dbgenerated("NOW()")) @db.DateTime()
-    status          Boolean       @default(true)
-    contribuyente   contribuyente @relation(fields: [contribuyenteId], references: [id])
-    evento          evento        @relation(fields: [eventoId], references: [id])
-    eventoId        BigInt        @unique @db.UnsignedBigInt
-    contribuyenteId BigInt        @db.UnsignedBigInt
-}
 
-enum TipoEvento {
-    MULTA
-    AVISO
-    COMPROMISO_PAGO
-}
-
-enum TipoProcedimiento {
+enum taxpayer_process {
     FP
     AF
     VDF
     NA
 }
 
-enum TipoContrato {
-    ESPECIAL
-    ORDINARIO
+enum event_type {
+    FINE
+    WARNING
+    PAYMENT_COMPROMISE
+}
+
+enum taxpayer_contract_type {
+    SPECIAL
+    ORDINARY
 }

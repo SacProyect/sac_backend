@@ -5,30 +5,30 @@ import { generateAcessToken, NewUserInput, passwordHashing, User } from "./user.
 /**
  * Logs in a user.
  *
- * @param {number} cedula - The user's email address.
+ * @param {number} personId - The user's email address.
  * @param {string} password - The user's password.
  * @returns {Promise<{ user: User | Error, token: string }>} A Promise resolving to an object containing the user or an error, and a token.
  */
-export const logIn = async (cedula: number, password: string): Promise<{ user: User | Error, token: string }> => {
+export const logIn = async (personId: number, password: string): Promise<{ user: User | Error, token: string }> => {
     try {
-        const user = await db.usuario.findUniqueOrThrow({
+        const user = await db.user.findUniqueOrThrow({
             include: {
-                contribuyentes: true,
+                taxpayer: true,
             },
             where: {
-                cedula: cedula,
+                personId: personId,
                 status: true
             }
         });
-
+// 
         if (!user) {
             throw new Error('Usuario no encontrado');
         }
-        if (compareSync(password, user.contrasena)) {
+        if (compareSync(password, user.password)) {
             const token = generateAcessToken(user);
-            user.contrasena = "";
-            if (user.tipo == "ADMIN") {
-                user.contribuyentes = await db.contribuyente.findMany({ where: { status: true } })
+            user.password = "";
+            if (user.role == "ADMIN") {
+                user.taxpayer = await db.taxpayer.findMany({ where: { status: true } })
             }
 
             return { user, token };
@@ -48,11 +48,11 @@ export const logIn = async (cedula: number, password: string): Promise<{ user: U
  */
 export const signUp = async (input: NewUserInput): Promise<User | Error> => {
     try {
-        if (input.contrasena.length < 8) throw new Error('Contraseña debe ser mínimo de 8 caracteres')
+        if (input.password.length < 8) throw new Error('Contraseña debe ser mínimo de 8 caracteres')
 
-        input.contrasena = await passwordHashing(input.contrasena);
+        input.password = await passwordHashing(input.password);
 
-        const newUser = await db.usuario.create({
+        const newUser = await db.user.create({
             data: input
         });
 
@@ -62,21 +62,21 @@ export const signUp = async (input: NewUserInput): Promise<User | Error> => {
     }
 };
 /**
- * Updates a usuario object.
+ * Updates a user object.
  * 
- * @param usuarioId The ID of the usuario to update.
- * @param data The updated data for the usuario.
- * @returns The updated usuario object or an error if the operation fails.
+ * @param userId The ID of the user to update.
+ * @param data The updated data for the user.
+ * @returns The updated user object or an error if the operation fails.
  */
-export const updateUsuario = async (usuarioId: string, data: Partial<NewUserInput>): Promise<User | Error> => {
+export const updateuser = async (userId: string, data: Partial<NewUserInput>): Promise<User | Error> => {
     try {
-        if (data.contrasena) {
-            data.contrasena = await passwordHashing(data.contrasena);
+        if (data.password) {
+            data.password = await passwordHashing(data.password);
         }
 
-        const updatedUsuario = await db.usuario.update({
+        const updateduser = await db.user.update({
             where: {
-                id: usuarioId
+                id: userId
             },
             data: {
                 ...data
@@ -84,7 +84,7 @@ export const updateUsuario = async (usuarioId: string, data: Partial<NewUserInpu
         });
 
 
-        return updatedUsuario;
+        return updateduser;
     } catch (error) {
 
         throw error;
@@ -93,7 +93,7 @@ export const updateUsuario = async (usuarioId: string, data: Partial<NewUserInpu
 
 export const getAllUsers = async (): Promise<User[] | Error> => {
     try {
-        const users = await db.usuario.findMany();
+        const users = await db.user.findMany();
         return users
     } catch (error) {
         throw error;
