@@ -1,4 +1,4 @@
-import { TipoEvento } from "@prisma/client"
+import { event_type } from "@prisma/client"
 import { db } from "../utils/db.server"
 import { avgValue, getComplianceRate, getLatestEvents, getPunctuallityAnalysis, getTaxpayerComplianceRate, sumTransactions } from "./report.utils"
 import { Event, Payment } from "../taxpayer/taxpayer.utils"
@@ -6,20 +6,20 @@ import { Event, Payment } from "../taxpayer/taxpayer.utils"
 export const getFineHistory = async (taxpayerId?: number) => {
     try {
         const where: any = {
-            tipo: TipoEvento.MULTA
+            type: event_type.FINE
         }
 
         if (taxpayerId) {
-            where.contribuyenteId = taxpayerId;
+            where.taxpayerId = taxpayerId;
         }
-        const fines = await db.evento.findMany({
+        const fines = await db.event.findMany({
             where
         })
         const totalAmount = sumTransactions(fines)
         return {
-            multas: fines,
-            numeroMultas: fines.length,
-            montoTotal: totalAmount
+            FINEs: fines,
+            numeroFINEs: fines.length,
+            amountTotal: totalAmount
         }
     } catch (error) {
         throw error
@@ -30,40 +30,40 @@ export const getPaymentHistory = async (taxpayerId?: number) => {
     try {
 
         const fineWhere: any = {
-            tipo: TipoEvento.MULTA
+            type: event_type.FINE
         }
         const paymentWhere: any = {
-            evento: {
-                tipo: TipoEvento.MULTA
+            event: {
+                type: event_type.FINE
             }
         }
 
         if (taxpayerId) {
-            fineWhere.contribuyenteId = taxpayerId;
-            paymentWhere.contribuyenteId = taxpayerId;
+            fineWhere.taxpayerId = taxpayerId;
+            paymentWhere.taxpayerId = taxpayerId;
         }
 
-        const payments = await db.pago.findMany({
+        const payments = await db.payment.findMany({
             include: {
-                evento: true,
+                event: true,
             },
             where: paymentWhere
         })
-        const fines = await db.evento.findMany({
+        const fines = await db.event.findMany({
             where: fineWhere
         })
 
         const totalAmaount = sumTransactions(payments)
         const lastPayments = getLatestEvents(payments)
-        const punctullityAnalysis = getPunctuallityAnalysis(payments)
+        const punctuallityAnalysis = getPunctuallityAnalysis(payments)
         const compliance = getComplianceRate(fines, payments)
         return {
-            pagos: payments,
-            numeroPagos: payments.length,
-            montoTotal: totalAmaount,
-            ultimosPagos: lastPayments,
+            payments: payments,
+            numeropayments: payments.length,
+            amountTotal: totalAmaount,
+            ultimospayments: lastPayments,
             tasaCumplimiento: compliance,
-            demoraPromedio: punctullityAnalysis
+            demoraPromedio: punctuallityAnalysis
 
         }
     } catch (error) {
@@ -73,34 +73,39 @@ export const getPaymentHistory = async (taxpayerId?: number) => {
 
 export const getKPI = async () => {
     try {
-        const taxpayers = await db.contribuyente.findMany({})
-        const events = await db.evento.findMany({
+        const taxpayers = await db.taxpayer.findMany({})
+        const events = await db.event.findMany({
             where: {
                 NOT: {
-                    tipo: TipoEvento.AVISO
+                    type: event_type.WARNING
                 }
             }
         })
-        const payments = await db.pago.findMany({
+        const payments = await db.payment.findMany({
             include: {
-                evento: true
+                event: true
             }
         })
-        const fines = events.filter(event => event.tipo == TipoEvento.MULTA)
-        const commitment = events.filter(event => event.tipo == TipoEvento.COMPROMISO_PAGO)
+        const fines = events.filter(event => event.type == event_type.FINE)
+        const commitment = events.filter(event => event.type == event_type.PAYMENT_COMPROMISE)
         const finePayments: Payment[] = [];
         const commitmentPayments: Payment[] = [];
 
         payments.forEach(
             payment =>
-                payment.evento.tipo === TipoEvento.MULTA ?
+                payment.event.type === event_type.FINE ?
                     finePayments.push(payment) :
                     commitmentPayments.push(payment)
         );
 
         const commitmentCompliance = getComplianceRate(commitment, commitmentPayments)
         const finesCompliance = getComplianceRate(fines, finePayments)
-        const gralCompliance = getTaxpayerComplianceRate(taxpayers, payments, events)
+        
+        const mappedTaxpayers = taxpayers.map(taxpayer => ({
+            ...taxpayer,
+            providenceNum: taxpayer.providenceNum
+        }));
+        const gralCompliance = getTaxpayerComplianceRate(mappedTaxpayers, payments, events)
 
         const avgDelay = getPunctuallityAnalysis(payments)
         const avgCommitment = avgValue(commitment)
@@ -113,9 +118,9 @@ export const getKPI = async () => {
             cumplimientoCompromisos: commitmentCompliance,
             promedioCompromisos: avgCommitment,
             puntualidadCompromisos: commitmentPunctuallity,
-            cumplimientoMultas: finesCompliance,
-            promedioMultas: avgFine,
-            puntualidadMultas: finePuntctuallity,
+            cumplimientoFINEs: finesCompliance,
+            promedioFINEs: avgFine,
+            puntualidadFINEs: finePuntctuallity,
             cumplimientoGeneral: gralCompliance,
             promedioDemora: avgDelay
 
@@ -127,30 +132,30 @@ export const getKPI = async () => {
 export const getPendingPayments = async (taxpayerId?: number): Promise<Event[]> => {
     try {
         const where: any = {
-            pago: {
+            payment: {
                 is: null,
             },
-            contribuyente: {
+            taxpayer: {
                 status: true
             },
             NOT: {
-                tipo: TipoEvento.AVISO
+                type: event_type.WARNING
             }
         }
         if (taxpayerId) {
-            where.contribuyenteId = taxpayerId
+            where.taxpayerId = taxpayerId
         }
-        const pendingPayments = await db.evento.findMany({
+        const pendingPayments = await db.event.findMany({
             where,
             select: {
                 id: true,
-                fecha: true,
-                monto: true,
-                tipo: true,
-                contribuyenteId: true,
-                contribuyente: {
+                date: true,
+                amount: true,
+                type: true,
+                taxpayerId: true,
+                taxpayer: {
                     select: {
-                        nombre: true,
+                        name: true,
                         rif: true,
                     }
                 }
@@ -160,11 +165,11 @@ export const getPendingPayments = async (taxpayerId?: number): Promise<Event[]> 
         const mappedResponse: Event[] = pendingPayments.map((event: any) => {
             return {
                 id: event.id,
-                fecha: event.fecha,
-                tipo: event.tipo ? event.tipo : "PAGO",
-                monto: event.monto,
-                contribuyenteId: event.contribuyenteId,
-                contribuyente: `${event.contribuyente.nombre} RIF: ${event.contribuyente.rif}`
+                date: event.date,
+                type: event.type ? event.type : "payment",
+                amount: event.amount,
+                taxpayerId: event.taxpayerId,
+                taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`
             }
         })
         console.log(mappedResponse)

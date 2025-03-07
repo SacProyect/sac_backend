@@ -1,67 +1,67 @@
 import { Decimal } from "@prisma/client/runtime/library"
 import { db } from "../utils/db.server"
-import { TipoContrato, TipoProcedimiento } from "@prisma/client"
+import { taxpayer_contract_type, taxpayer_process } from "@prisma/client"
 
 export type Taxpayer = {
-    nroProvidencia: number
-    id: bigint
-    procedimiento: string
-    nombre: string
+    providenceNum: number
+    id: string;
+    process: string
+    name: string
     rif: string
-    tipoContrato: string
-    eventos?: Event[]
+    contract_type: string
+    events?: Event[]
 }
 
 export type NewTaxpayer = {
-    nroProvidencia: number
-    procedimiento: TipoProcedimiento
-    nombre: string
+    providenceNum: number
+    process: taxpayer_process
+    name: string
     rif: string
-    tipoContrato: TipoContrato
-    funcionarioId: string
+    typeContrato: taxpayer_contract_type
+    officerId: string;
 }
 
 export type Event = {
-    id: bigint;
-    fecha: Date
-    monto: Decimal
-    tipo: string
-    contribuyenteId: bigint
+    id: string;
+    date: Date
+    amount: Decimal
+    type: string
+    taxpayerId: string;
     constribuyente?: string
 }
 
 export type NewEvent = {
     fecha: Date
-    monto?: Decimal
-    tipo: EventType
-    contribuyenteId: bigint
+    amount?: Decimal
+    type: EventType
+    taxpayerId: string;
 }
 
 export type Payment = {
-    id: bigint;
-    fecha: Date
-    monto: Decimal
-    evento: Event
-    contribuyenteId: bigint
-    constribuyente?: string
+    id: string;
+    date: Date
+    amount: Decimal
+    event: Event
+    taxpayerId: string;
+    taxpayer?: string
 }
 export type NewPayment = {
-    fecha: Date
-    monto: Decimal
-    eventoId: number
-    contribuyenteId: bigint
+    date: Date
+    amount: Decimal
+    eventId: string;
+    taxpayerId: string;
 }
 
 export type StatisticsResponse = {
-    tipo: string,
+    type: string,
     total: number,
-    porcentaje: Decimal
+    percentage: Decimal
 }
 
-export const EventType: { [x: string]: 'MULTA' | 'AVISO' | 'COMPROMISO_PAGO' } = {
-    MULTA: 'MULTA',
-    AVISO: 'AVISO',
-    COMPROMISO_PAGO: 'COMPROMISO_PAGO',
+export const EventType: { [x: string]: 'FINE' | 'WARNING' | 'PAYMENT_COMPROMISE' } = {
+    MULTA: 'FINE',
+    AVISO: 'WARNING',
+    COMPROMISO_PAGO: 'PAYMENT_COMPROMISE',
 }
 export type EventType = typeof EventType[keyof typeof EventType]
 
@@ -70,26 +70,26 @@ export const getStatistics = async (userId: string, timeframe?: string, taxpayer
         const where: any = {
             status: true,
             NOT: {
-                tipo: EventType.AVISO
+                type: EventType.AVISO
             },
-            contribuyente: {
-                funcionarioId: userId
+            taxpayer: {
+                officerId: userId
             }
         }
         if (taxpayerId) {
-            where.contribuyenteId = taxpayerId
+            where.taxpayerId = taxpayerId
         } else {
-            const role = await db.usuario.findUniqueOrThrow({
+            const role = await db.user.findUniqueOrThrow({
                 select: {
-                    tipo: true
+                    role: true
                 },
                 where: {
                     id: userId
                 }
             })
-            if (role.tipo !== "admin") {
-                where.contribuyente = {
-                    funcionarioId: userId
+            if (role.role !== "admin") {
+                where.taxpayer = {
+                    officerId: userId
                 }
             }
         }
@@ -122,20 +122,20 @@ export const getStatistics = async (userId: string, timeframe?: string, taxpayer
                 }
             }
         }
-        const events = await db.evento.groupBy({
-            by: ["tipo"],
+        const events = await db.event.groupBy({
+            by: ["type"],
             where,
             _count: {
-                tipo: true
+                type: true
             }
         })
 
-        const totalCount = await db.evento.count({ where });
+        const totalCount = await db.event.count({ where });
 
         return events.map(event => ({
-            tipo: event.tipo,
-            total: event._count.tipo,
-            porcentaje: new Decimal((event._count.tipo / totalCount) * 10000).round().div(100)
+            type: event.type,
+            total: event._count.type,
+            percentage: new Decimal((event._count.type / totalCount) * 10000).round().div(100)
         }))
 
     } catch (error) {
