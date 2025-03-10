@@ -18,8 +18,8 @@ export const getFineHistory = async (taxpayerId?: number) => {
         const totalAmount = sumTransactions(fines)
         return {
             FINEs: fines,
-            numeroFINEs: fines.length,
-            amountTotal: totalAmount
+            fines_quantity: fines.length,
+            total_amount: totalAmount
         }
     } catch (error) {
         throw error
@@ -53,17 +53,18 @@ export const getPaymentHistory = async (taxpayerId?: number) => {
             where: fineWhere
         })
 
-        const totalAmaount = sumTransactions(payments)
+        const totalAmount = sumTransactions(payments)
         const lastPayments = getLatestEvents(payments)
         const punctuallityAnalysis = getPunctuallityAnalysis(payments)
         const compliance = getComplianceRate(fines, payments)
+
         return {
             payments: payments,
-            numeropayments: payments.length,
-            amountTotal: totalAmaount,
-            ultimospayments: lastPayments,
-            tasaCumplimiento: compliance,
-            demoraPromedio: punctuallityAnalysis
+            payments_number: payments.length,
+            total_amount: totalAmount,
+            last_payments: lastPayments,
+            compliance_rate: compliance,
+            average_delay: punctuallityAnalysis
 
         }
     } catch (error) {
@@ -129,6 +130,7 @@ export const getKPI = async () => {
         throw error
     }
 }
+
 export const getPendingPayments = async (taxpayerId?: number): Promise<Event[]> => {
     try {
         const where: any = {

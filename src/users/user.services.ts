@@ -20,7 +20,7 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
                 status: true
             }
         });
-// 
+        
         if (!user) {
             throw new Error('Usuario no encontrado');
         }

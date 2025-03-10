@@ -17,7 +17,7 @@ reportRouter.get('/kpi',
     }
 )
 
-reportRouter.get('/multa/:id?',
+reportRouter.get('/fine/:id?',
     authenticateToken,
     async (req: Request, res: Response) => {
         try {

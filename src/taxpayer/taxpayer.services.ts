@@ -27,10 +27,13 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
  */
 export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
     try {
+        
         const event = await db.event.create({
             data: input
         })
+
         return event;
+        
     } catch (error) {
         throw error;
     }
@@ -173,6 +176,8 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
  * @returns {Promise<Taxpayer | Error>} A Promise resolving to the taxpayer or an error.
  */
 export const getTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Error> => {
+
+
     try {
         const taxpayer = await db.taxpayer.findUniqueOrThrow({
             where: {
@@ -180,6 +185,11 @@ export const getTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Er
                 status: true
             }
         });
+
+        if (!taxpayer) {
+            throw new Error(`No active taxpayer found with ID ${taxpayerId}`);
+        }
+        
         return taxpayer
     } catch (error) {
         throw error;

@@ -16,11 +16,11 @@ export type User = {
 
 
 export type NewUserInput = {
-    id: string,
+    id: string;
     personId: number;
     name: string;
     role: string;
-    password: string
+    password: string;
 }
 
 export interface AuthRequest extends Request {

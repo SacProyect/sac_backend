@@ -42,7 +42,7 @@ userRouter.post('/sign-up',
     body("personId").isNumeric(),
     body("password").isString(),
     body("name").isString(),
-    body("type").isString(),
+    body("role").isString(),
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {

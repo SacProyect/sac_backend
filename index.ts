@@ -16,9 +16,9 @@ const app = express()
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cors())
-app.use("/usuario", userRouter)
-app.use("/contribuyente", taxpayerRouter)
-app.use("/reportes", reportRouter)
+app.use("/user", userRouter)
+app.use("/taxpayer", taxpayerRouter)
+app.use("/reports", reportRouter)
 
 app.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`)
