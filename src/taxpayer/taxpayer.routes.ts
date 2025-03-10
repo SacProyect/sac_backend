@@ -14,6 +14,10 @@ taxpayerRouter.get('/:id',
         try {
             const id: string = (req.params.id);
             const taxpayer = await TaxpayerServices.getTaxpayerById(id);
+
+
+            console.log('ID:', id);
+
             return res.status(200).json(taxpayer)
         } catch (error: any) {
             return res.status(500).json(error.message);
@@ -40,7 +44,7 @@ taxpayerRouter.post('/',
     body("process").isString(),
     body("name").isString(),
     body("rif").isString(),
-    body("contractType").isString(),
+    body("contract_type").isString(),
     body("officerId").isString(),
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
@@ -103,6 +107,9 @@ taxpayerRouter.get('/event/:id/:type?',
         try {
             const id: string = (req.params.id);
             const type: string = req.params.type
+
+
+
             const events = await TaxpayerServices.getEventsbyTaxpayer(id, type)
             return res.status(200).json(events)
         } catch (error: any) {
@@ -177,13 +184,13 @@ taxpayerRouter.post('/payment_compromise',
     }
 )
 
-taxpayerRouter.post('/aviso',
+taxpayerRouter.post('/warning',
     authenticateToken,
     body("date").isISO8601().toDate(),
     body("taxpayerId").isNumeric(),
     async (req: Request, res: Response) => {
         try {
-            const input = { ...req.body, tipo: EventType.AVISO }
+            const input = { ...req.body, tipo: EventType.WARNING}
             const aviso = await TaxpayerServices.createEvent(input)
             return res.status(200).json(aviso)
         } catch (error: any) {

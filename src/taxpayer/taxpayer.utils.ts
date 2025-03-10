@@ -17,7 +17,7 @@ export type NewTaxpayer = {
     process: taxpayer_process
     name: string
     rif: string
-    typeContrato: taxpayer_contract_type
+    contract_type: taxpayer_contract_type
     officerId: string;
 }
 
@@ -31,7 +31,7 @@ export type Event = {
 }
 
 export type NewEvent = {
-    fecha: Date
+    date: Date
     amount?: Decimal
     type: EventType
     taxpayerId: string;
@@ -59,10 +59,11 @@ export type StatisticsResponse = {
 }
 
 export const EventType: { [x: string]: 'FINE' | 'WARNING' | 'PAYMENT_COMPROMISE' } = {
-    MULTA: 'FINE',
-    AVISO: 'WARNING',
-    COMPROMISO_PAGO: 'PAYMENT_COMPROMISE',
+    FINE: 'FINE',
+    WARNING: 'WARNING',
+    PAYMENT_COMPROMISE: 'PAYMENT_COMPROMISE',
 }
+
 export type EventType = typeof EventType[keyof typeof EventType]
 
 export const getStatistics = async (userId: string, timeframe?: string, taxpayerId?: number): Promise<StatisticsResponse[] | Error> => {
@@ -70,7 +71,7 @@ export const getStatistics = async (userId: string, timeframe?: string, taxpayer
         const where: any = {
             status: true,
             NOT: {
-                type: EventType.AVISO
+                type: EventType.WARNING
             },
             taxpayer: {
                 officerId: userId
