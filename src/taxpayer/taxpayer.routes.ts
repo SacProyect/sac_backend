@@ -43,7 +43,8 @@ taxpayerRouter.post('/',
     body("providenceNum").isInt(),
     body("process").isString(),
     body("name").isString(),
-    body("rif").isString(),
+    body("rif").matches(/^[JVEPG]-\d{9}$/)
+    .withMessage("RIF must start with J-, V-, E-, P- or G- followed by 9 digits").isString(),
     body("contract_type").isString(),
     body("officerId").isString(),
     async (req: Request, res: Response) => {
@@ -134,14 +135,14 @@ taxpayerRouter.post('/fine',
     authenticateToken,
     body("date").isISO8601().toDate(),
     body("amount").isDecimal(),
-    body("taxpayerId").isNumeric(),
+    body("taxpayerId").isString(),
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.array() });
         }
         try {
-            const input = { ...req.body, tipo: EventType.fine }
+            const input = { ...req.body, type: EventType.FINE }
             const fine = await TaxpayerServices.createEvent(input)
             return res.status(200).json(fine)
         } catch (error: any) {
@@ -155,18 +156,21 @@ taxpayerRouter.post('/payment',
     body("date").isISO8601().toDate(),
     body("amount").isDecimal(),
     body("eventId").isNumeric(),
-    body("taxpayerId").isNumeric(),
+    body("taxpayerId").isString(),
+    body("debt").isNumeric(),
     async (req: Request, res: Response) => {
         try {
             const input = { ...req.body }
-            const pago = await TaxpayerServices.createPayment(input)
-            return res.status(200).json(pago)
+            const payment = await TaxpayerServices.createPayment(input)
+            return res.status(200).json(payment)
         } catch (error: any) {
             console.error(error)
             return res.status(500).json(error.message)
         }
     }
 )
+
+
 taxpayerRouter.post('/payment_compromise',
     authenticateToken,
     body("date").toDate(),
@@ -174,7 +178,7 @@ taxpayerRouter.post('/payment_compromise',
     body("taxpayerId").isNumeric(),
     async (req: Request, res: Response) => {
         try {
-            const input = { ...req.body, tipo: EventType.payment_compromise }
+            const input = { ...req.body, type: EventType.PAYMENT_COMPROMISE }
             const payment_compromise = await TaxpayerServices.createEvent(input)
             return res.status(200).json(payment_compromise)
         } catch (error: any) {
@@ -187,17 +191,19 @@ taxpayerRouter.post('/payment_compromise',
 taxpayerRouter.post('/warning',
     authenticateToken,
     body("date").isISO8601().toDate(),
+    body("amount").isNumeric(),
     body("taxpayerId").isNumeric(),
     async (req: Request, res: Response) => {
         try {
-            const input = { ...req.body, tipo: EventType.WARNING}
-            const aviso = await TaxpayerServices.createEvent(input)
-            return res.status(200).json(aviso)
+            const input = { ...req.body, type: EventType.WARNING}
+            const warning = await TaxpayerServices.createEvent(input)
+            return res.status(200).json(warning)
         } catch (error: any) {
             return res.status(500).json(error.message)
         }
     }
 )
+
 taxpayerRouter.put('/fine/:eventId',
     authenticateToken,
     body("date").isISO8601().toDate().optional({ checkFalsy: true }),
@@ -218,7 +224,7 @@ taxpayerRouter.put('/fine/:eventId',
     }
 );
 
-taxpayerRouter.put('/pago/:eventId',
+taxpayerRouter.put('/payment/:eventId',
     authenticateToken,
     body("date").isISO8601().toDate().optional({ checkFalsy: true }),
     body("amount").isDecimal().optional({ checkFalsy: true }),
@@ -226,8 +232,8 @@ taxpayerRouter.put('/pago/:eventId',
         try {
             const eventId = (req.params.eventId);
             const input = { ...req.body };
-            const pago = await TaxpayerServices.updateEvent(eventId, input);
-            return res.status(200).json(pago);
+            const payment = await TaxpayerServices.updateEvent(eventId, input);
+            return res.status(200).json(payment);
         } catch (error: any) {
             return res.status(500).json(error.message);
         }
@@ -250,20 +256,21 @@ taxpayerRouter.put('/payment_compromise/:eventId',
     }
 );
 
-taxpayerRouter.put('/aviso/:eventId',
+taxpayerRouter.put('/warning/:eventId',
     authenticateToken,
     body("date").isISO8601().toDate().optional({ checkFalsy: true }),
     async (req: Request, res: Response) => {
         try {
             const eventId = (req.params.eventId);
             const input = { ...req.body };
-            const aviso = await TaxpayerServices.updateEvent(eventId, input);
-            return res.status(200).json(aviso);
+            const warning = await TaxpayerServices.updateEvent(eventId, input);
+            return res.status(200).json(warning);
         } catch (error: any) {
             return res.status(500).json(error.message);
         }
     }
 );
+
 taxpayerRouter.delete('/event/:id',
     authenticateToken,
     async (req: Request, res: Response) => {
@@ -276,6 +283,7 @@ taxpayerRouter.delete('/event/:id',
         }
     }
 );
+
 taxpayerRouter.delete('/payment/:id',
     authenticateToken,
     async (req: Request, res: Response) => {
@@ -288,3 +296,4 @@ taxpayerRouter.delete('/payment/:id',
         }
     }
 );
+

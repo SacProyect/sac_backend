@@ -27,14 +27,18 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
  */
 export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
     try {
+
+        console.log("INPUT: " + input)
         
         const event = await db.event.create({
             data: input
         })
 
+
         return event;
         
     } catch (error) {
+        console.error("Error creating event: " + error)
         throw error;
     }
 }
@@ -53,6 +57,14 @@ export const createPayment = async (input: NewPayment): Promise<Payment | Error>
                 event: true
             }
         })
+
+        await db.event.update({
+            where: {id: input.eventId},
+            data: {debt: {decrement: input.amount }}
+        })
+
+
+
         return newPayment
     } catch (error) {
         throw error;

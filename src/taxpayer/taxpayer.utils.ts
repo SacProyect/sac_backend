@@ -50,6 +50,7 @@ export type NewPayment = {
     amount: Decimal
     eventId: string;
     taxpayerId: string;
+    debt: Decimal;
 }
 
 export type StatisticsResponse = {

@@ -48,11 +48,13 @@ reportRouter.get('/payments/:id?',
         }
     }
 )
+
+
 reportRouter.get('/pending/:id?',
     //authenticateToken,
     async (req: Request, res: Response) => {
         try {
-            const id: number = parseInt(req.params.id, 10);
+            const id: string = req.params.id;
             const events = await ReportService.getPendingPayments(id)
             return res.status(200).json(events)
         } catch (error: any) {

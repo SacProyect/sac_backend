@@ -9,34 +9,36 @@ datasource db {
 }
 
 model user {
-    id       String     @id @default(uuid()) // Use String for UUIDs
+    id       String     @id @default(uuid())
     name     String
     role     String
-    personId Int     @unique(map: "usuario_cedula_key")
+    personId Int        @unique(map: "usuario_cedula_key")
     password String
     status   Boolean    @default(true)
     taxpayer taxpayer[]
 }
+
 model event {
-    id         String     @id @default(uuid()) // Use String for UUIDs
+    id         String     @id @default(uuid())
     date       DateTime   @default(now()) @db.DateTime(0)
     amount     Decimal    @default(0.00) @db.Decimal(20, 2)
     type       event_type
     status     Boolean    @default(true)
-    taxpayerId String // Changed to String for UUID
+    debt       Decimal        @default(0)
+    taxpayerId String
     taxpayer   taxpayer   @relation(fields: [taxpayerId], references: [id], map: "evento_contribuyenteId_fkey")
-    payment    payment?
+    payment    payment[]
 
     @@index([taxpayerId], map: "evento_contribuyenteId_fkey")
 }
 
 model payment {
-    id         String   @id @default(uuid()) // Use String for UUIDs
+    id         String   @id @default(uuid())
     amount     Decimal  @default(0.00) @db.Decimal(20, 2)
     date       DateTime @default(now()) @db.DateTime(0)
     status     Boolean  @default(true)
-    eventId    String   @unique // Changed to String for UUID
-    taxpayerId String // Changed to String for UUID
+    eventId    String
+    taxpayerId String
     taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], map: "pago_contribuyenteId_fkey")
     event      event    @relation(fields: [eventId], references: [id], map: "pago_eventoId_fkey")
 
@@ -44,7 +46,7 @@ model payment {
 }
 
 model taxpayer {
-    id            String                 @id @default(uuid()) // Use String for UUIDs
+    id            String                 @id @default(uuid())
     providenceNum Int
     process       taxpayer_process       @default(NA)
     name          String
@@ -60,7 +62,6 @@ model taxpayer {
     @@index([process], map: "contribuyente_procedimiento_idx")
     @@index([contract_type], map: "contribuyente_tipoContrato_idx")
 }
-
 
 enum taxpayer_process {
     FP
