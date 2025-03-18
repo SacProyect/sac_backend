@@ -32,6 +32,7 @@ export const getPaymentHistory = async (taxpayerId?: number) => {
         const fineWhere: any = {
             type: event_type.FINE
         }
+
         const paymentWhere: any = {
             event: {
                 type: event_type.FINE
@@ -131,22 +132,28 @@ export const getKPI = async () => {
     }
 }
 
-export const getPendingPayments = async (taxpayerId?: number): Promise<Event[]> => {
+export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> => {
     try {
         const where: any = {
-            payment: {
-                is: null,
+            debt: {
+                gt: 0,
             },
             taxpayer: {
                 status: true
             },
             NOT: {
-                type: event_type.WARNING
+                type: event_type.WARNING 
             }
         }
+
+        // Ensure taxpayerId filtering works properly
         if (taxpayerId) {
-            where.taxpayerId = taxpayerId
+            where.taxpayer = {
+                ...where.taxpayer, // Preserve existing conditions
+                id: taxpayerId, // Ensure only events for this taxpayer are retrieved
+            };
         }
+
         const pendingPayments = await db.event.findMany({
             where,
             select: {
@@ -154,6 +161,7 @@ export const getPendingPayments = async (taxpayerId?: number): Promise<Event[]> 
                 date: true,
                 amount: true,
                 type: true,
+                debt: true,
                 taxpayerId: true,
                 taxpayer: {
                     select: {
@@ -164,6 +172,7 @@ export const getPendingPayments = async (taxpayerId?: number): Promise<Event[]> 
 
             }
         })
+
         const mappedResponse: Event[] = pendingPayments.map((event: any) => {
             return {
                 id: event.id,
@@ -171,7 +180,8 @@ export const getPendingPayments = async (taxpayerId?: number): Promise<Event[]> 
                 type: event.type ? event.type : "payment",
                 amount: event.amount,
                 taxpayerId: event.taxpayerId,
-                taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`
+                taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`,
+                debt: event.debt,
             }
         })
         console.log(mappedResponse)
