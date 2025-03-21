@@ -3,7 +3,7 @@ import { db } from "../utils/db.server"
 import { avgValue, getComplianceRate, getLatestEvents, getPunctuallityAnalysis, getTaxpayerComplianceRate, sumTransactions } from "./report.utils"
 import { Event, Payment } from "../taxpayer/taxpayer.utils"
 
-export const getFineHistory = async (taxpayerId?: number) => {
+export const getFineHistory = async (taxpayerId?: string) => {
     try {
         const where: any = {
             type: event_type.FINE

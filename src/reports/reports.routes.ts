@@ -21,9 +21,9 @@ reportRouter.get('/fine/:id?',
     authenticateToken,
     async (req: Request, res: Response) => {
         try {
-            let id: number | undefined = undefined;
+            let id: string | undefined = undefined;
             if (req.params.id) {
-                id = parseInt(req.params.id, 10)
+                id = (req.params.id)
             }
             const fineHistory = await ReportService.getFineHistory(id)
             res.status(200).json(fineHistory)
