@@ -24,12 +24,19 @@ model event {
     amount     Decimal    @default(0.00) @db.Decimal(20, 2)
     type       event_type
     status     Boolean    @default(true)
-    debt       Decimal        @default(0)
+    debt       Decimal    @default(0)
     taxpayerId String
-    taxpayer   taxpayer   @relation(fields: [taxpayerId], references: [id], map: "evento_contribuyenteId_fkey")
+    taxpayer   taxpayer   @relation(fields: [taxpayerId], references: [id], map: "evento_contribuyenteId_fkey", onDelete: Cascade)
     payment    payment[]
-
+    expires_at DateTime   @default(now())
+    
+    // Self-referential relation for linking to a fine event
+    fineEventId   String?      // Link to the parent fine event
+    fineEvent     event?       @relation("EventToFine", fields: [fineEventId], references: [id])
+    fineEvents    event[]      @relation("EventToFine")
+    
     @@index([taxpayerId], map: "evento_contribuyenteId_fkey")
+    @@index([fineEventId], map: "evento_fineEventId_fkey") // Index to speed up queries based on fineEventId
 }
 
 model payment {
@@ -40,7 +47,7 @@ model payment {
     eventId    String
     taxpayerId String
     taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], map: "pago_contribuyenteId_fkey")
-    event      event    @relation(fields: [eventId], references: [id], map: "pago_eventoId_fkey")
+    event      event    @relation(fields: [eventId], references: [id], map: "pago_eventoId_fkey", onDelete: Cascade)
 
     @@index([taxpayerId], map: "pago_contribuyenteId_fkey")
 }
@@ -50,11 +57,11 @@ model taxpayer {
     providenceNum Int
     process       taxpayer_process       @default(NA)
     name          String
-    rif           String                 @db.Char(11)
+    rif           String                 @db.Char(10) @unique
     contract_type taxpayer_contract_type @default(ORDINARY)
     status        Boolean                @default(true)
     officerId     String?
-    event         event[]
+    event         event[]               
     payment       payment[]
     user          user?                  @relation(fields: [officerId], references: [id], map: "contribuyente_funcionarioId_fkey")
 
