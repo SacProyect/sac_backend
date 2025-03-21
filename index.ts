@@ -21,7 +21,7 @@ app.use("/taxpayer", taxpayerRouter)
 app.use("/reports", reportRouter)
 
 app.listen(PORT, () => {
-    console.log(`Server is listening on port ${PORT}`)
+    console.log(`Server is listening on port: ${PORT}`)
 })
 
 export default app

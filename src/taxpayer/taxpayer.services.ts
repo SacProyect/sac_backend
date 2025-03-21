@@ -1,3 +1,4 @@
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { db } from "../utils/db.server";
 import { Event, getStatistics, NewEvent, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 
@@ -14,7 +15,17 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
             data: input
         })
         return taxpayer;
-    } catch (error) {
+    } catch (error: any) {
+        if (error instanceof PrismaClientKnownRequestError) {
+            // Check for the unique constraint violation error (P2002)
+            if (error.code === 'P2002' && error.meta?.target === 'taxpayer_rif_key') {
+                // Custom error message for duplicate RIF
+                console.error('Duplicate RIF error:', error.message);
+                throw new Error('El rif ya fue registrado, por favor, revise los datos.');
+            }
+        } 
+
+        console.error(error)
         throw error;
     }
 }
@@ -28,15 +39,15 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
 export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
     try {
 
-        console.log("INPUT: " + input)
-        
+        console.log("INPUT: " + JSON.stringify(input))
+
         const event = await db.event.create({
             data: input
         })
 
 
         return event;
-        
+
     } catch (error) {
         console.error("Error creating event: " + error)
         throw error;
@@ -59,8 +70,8 @@ export const createPayment = async (input: NewPayment): Promise<Payment | Error>
         })
 
         await db.event.update({
-            where: {id: input.eventId},
-            data: {debt: {decrement: input.amount }}
+            where: { id: input.eventId },
+            data: { debt: { decrement: input.amount } }
         })
 
 
@@ -201,7 +212,7 @@ export const getTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Er
         if (!taxpayer) {
             throw new Error(`No active taxpayer found with ID ${taxpayerId}`);
         }
-        
+
         return taxpayer
     } catch (error) {
         throw error;

@@ -43,7 +43,7 @@ taxpayerRouter.post('/',
     body("providenceNum").isInt(),
     body("process").isString(),
     body("name").isString(),
-    body("rif").matches(/^[JVEPG]-\d{9}$/)
+    body("rif").matches(/^[JVEPG]\d{9}$/)
     .withMessage("RIF must start with J-, V-, E-, P- or G- followed by 9 digits").isString(),
     body("contract_type").isString(),
     body("officerId").isString(),
@@ -58,6 +58,7 @@ taxpayerRouter.post('/',
             const newTaxpayer = await TaxpayerServices.createTaxpayer(input)
             return res.status(200).json(newTaxpayer)
         } catch (error: any) {
+
             console.error(error)
             return res.status(500).json(error.message)
         }
@@ -136,13 +137,15 @@ taxpayerRouter.post('/fine',
     body("date").isISO8601().toDate(),
     body("amount").isDecimal(),
     body("taxpayerId").isString(),
+    body("expires_at").isISO8601().toDate(),
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.array() });
         }
         try {
-            const input = { ...req.body, type: EventType.FINE }
+            
+            const input = { ...req.body, debt: req.body.amount, type: EventType.FINE }
             const fine = await TaxpayerServices.createEvent(input)
             return res.status(200).json(fine)
         } catch (error: any) {
@@ -192,7 +195,8 @@ taxpayerRouter.post('/warning',
     authenticateToken,
     body("date").isISO8601().toDate(),
     body("amount").isNumeric(),
-    body("taxpayerId").isNumeric(),
+    body("taxpayerId").isString(),
+    body("fineEventId").isString(),
     async (req: Request, res: Response) => {
         try {
             const input = { ...req.body, type: EventType.WARNING}

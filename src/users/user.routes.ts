@@ -18,16 +18,21 @@ userRouter.get('/all',
         }
     }
 )
+
 userRouter.post('/',
     body("personId").isNumeric(),
     body("password").isString(),
     async (req: Request, res: Response) => {
+
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.array() });
         }
+
         try {
+
             const { personId, password } = req.body;
+
             const data = await UserService.logIn(personId, password);
 
             return res.status(200).json(data)
