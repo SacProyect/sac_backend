@@ -15,14 +15,26 @@ const app = express()
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
-// CORS configuration allowing only the frontend (localhost:5173)
-app.use(
-    cors({
-        origin: 'http://localhost:5173', // Replace with your frontend URL
-        methods: 'GET, POST, PUT, DELETE', // Add the HTTP methods you need
-        allowedHeaders: 'Content-Type, Authorization', // Allow headers you need
-    })
-);
+
+const allowedOrigins = [
+    "http://localhost:5173",
+    "http://172.16.0.145:5173",
+];
+
+const corsOptions = {
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error("Not allowed by CORS"));
+        }
+    },
+    methods: "GET, POST, PUT, DELETE",
+    allowedHeaders: "Content-Type, Authorization"
+};
+
+
+app.use(cors(corsOptions));
 app.use("/user", userRouter)
 app.use("/taxpayer", taxpayerRouter)
 app.use("/reports", reportRouter)
