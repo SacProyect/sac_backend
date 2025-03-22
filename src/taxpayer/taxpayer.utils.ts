@@ -27,6 +27,7 @@ export type Event = {
     amount: Decimal
     type: string
     taxpayerId: string;
+    expires_at?: Date;
     taxpayer?: string;
     debt?: Decimal;
     payment?: Payment[]
