@@ -29,10 +29,26 @@ export const orderTransactions = (transactionArray: Payment[]): Payment[] => {
 }
 
 export const getComplianceRate = (fines: Event[], payments: Payment[]): Decimal => {
+    // console.log("FINES FROM GETCOMPLIANCERATE: " + JSON.stringify(fines))
+
+
     const totalFines = fines.length;
-    const totalPayments = payments.length;
-    const complianceRate = new Decimal((totalPayments / totalFines) * 10000).round().div(100)
-    return complianceRate
+    const finesPaid: Event[] = []
+
+    fines.forEach((fine) => {
+        if (fine.debt && fine.debt.equals(0)) {
+            finesPaid.push(fine)
+        }
+    })
+
+    // console.log("PAID FINES: "  + JSON.stringify(finesPaid))
+
+    console.log("TOTALFINES/FINESPAID: " + totalFines  +    "/"  + finesPaid.length)
+
+
+    // const totalPayments = payments.length;
+    const complianceRate = new Decimal((finesPaid.length / totalFines) * 100)
+    return complianceRate.round()
 }
 
 export const getTaxpayerComplianceRate = (taxpayers: Taxpayer[], payments: Payment[], events: Event[]) => {
@@ -72,12 +88,45 @@ export const getTaxpayerComplianceRate = (taxpayers: Taxpayer[], payments: Payme
 
 
 
-export const getPunctuallityAnalysis = (payments: Payment[]): Decimal => {
-    const delay = payments.map(
-        (payment => {
-            const timeDiff = payment.date.getTime() - payment.event.date.getTime();
-            return timeDiff > 15 * 86400000 ? new Decimal(timeDiff).div(86400000).minus(15) : new Decimal(0);
-        })
-    )
-    return delay.reduce((acc, diff) => (acc.add(diff)).div(payments.length), new Decimal(0)).round();
+export const getPunctuallityAnalysis = (fines: Event[]): number => {
+    
+    // console.log("FINES FROM REPORT UTILS: " + JSON.stringify(fines));
+
+    let totalDays = 0;
+    let count = 0;
+
+    if (fines == null) {
+        return 0;
+    }
+    
+    fines.forEach((fine, index) => {
+        // console.log(`\nProcessing fine #${index + 1}:`, fine);
+
+        if (fine.debt?.equals(0)) {
+            const paymentSorted = fine.payment?.sort((a, b) => b.date.getTime() - a.date.getTime());
+            const lastPaymentDate = paymentSorted?.[0]?.date;
+            const fineDate = fine.date;
+
+            if (lastPaymentDate && fineDate) {
+                const delayDays = Math.floor((lastPaymentDate.getTime() - fineDate.getTime()) / (1000 * 60 * 60 * 24));
+                // console.log(`Fine paid. Delay days (payment to fine): ${delayDays} days`);
+                totalDays += delayDays;
+                count++;
+            }
+        } else if (fine.debt?.gt(0)) {
+            const fineTime = fine.date.getTime();
+            const timeNow = Date.now();
+            const delayDays = Math.floor((timeNow - fineTime) / (1000 * 60 * 60 * 24));
+            // console.log(`Fine not paid. Delay days (fine to now): ${delayDays} days`);
+            totalDays += delayDays;
+            count++;
+        }
+    });
+
+    // console.log("\n--- Final Summary ---");
+    // console.log("TOTAL FINES: " + fines.length);
+    // console.log("TOTAL DAYS: " + totalDays);
+    // console.log("TOTAL COUNT: " + count);
+
+    return count > 0 ? Math.round(totalDays / count) : 0;  // Using Math.floor() to round down the final result
 }

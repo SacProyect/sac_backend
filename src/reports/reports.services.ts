@@ -26,7 +26,7 @@ export const getFineHistory = async (taxpayerId?: string) => {
     }
 }
 
-export const getPaymentHistory = async (taxpayerId?: number) => {
+export const getPaymentHistory = async (taxpayerId?: string) => {
     try {
 
         const fineWhere: any = {
@@ -50,18 +50,36 @@ export const getPaymentHistory = async (taxpayerId?: number) => {
             },
             where: paymentWhere
         })
+
+        // Finding all the fines related to the taxpayer.
         const fines = await db.event.findMany({
-            where: fineWhere
+            where: fineWhere,
+            include: {
+                payment: {
+                    include: {event: true}
+                },
+            }
         })
 
         const totalAmount = sumTransactions(payments)
         const lastPayments = getLatestEvents(payments)
-        const punctuallityAnalysis = getPunctuallityAnalysis(payments)
+        const punctuallityAnalysis = getPunctuallityAnalysis(fines)
         const compliance = getComplianceRate(fines, payments)
+
+        const totalPayments: Payment[] = []
+        console.log("PAYMENTS REPORT SERVICES: " + JSON.stringify(payments[0]))
+
+        payments.forEach((payment)=> {
+            if (payment.event.amount.equals(payment.amount)) {
+                totalPayments.push(payment)
+            }
+        })
+
 
         return {
             payments: payments,
             payments_number: payments.length,
+            total_payments: totalPayments.length,
             total_amount: totalAmount,
             last_payments: lastPayments,
             compliance_rate: compliance,
@@ -109,12 +127,12 @@ export const getKPI = async () => {
         }));
         const gralCompliance = getTaxpayerComplianceRate(mappedTaxpayers, payments, events)
 
-        const avgDelay = getPunctuallityAnalysis(payments)
+        const avgDelay = getPunctuallityAnalysis(fines)
         const avgCommitment = avgValue(commitment)
         const avgFine = avgValue(fines)
 
-        const finePuntctuallity = getPunctuallityAnalysis(finePayments)
-        const commitmentPunctuallity = getPunctuallityAnalysis(commitmentPayments)
+        const finePuntctuallity = getPunctuallityAnalysis(fines)
+        const commitmentPunctuallity = getPunctuallityAnalysis(fines)
 
         return {
             cumplimientoCompromisos: commitmentCompliance,
