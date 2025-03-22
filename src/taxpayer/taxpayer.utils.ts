@@ -38,6 +38,8 @@ export type NewEvent = {
     amount?: Decimal
     type: EventType
     taxpayerId: string;
+    fineEventId? : string;
+    expires_at? : Date;
 }
 
 export type Payment = {

@@ -1,6 +1,7 @@
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { db } from "../utils/db.server";
 import { Event, getStatistics, NewEvent, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
+import { BadRequestError } from "../utils/errors/BadRequestError"; 
 
 
 /**
@@ -41,6 +42,16 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
 
         console.log("INPUT: " + JSON.stringify(input))
 
+        const verifyEvent = await db.event.findUnique({
+            where: {id : input.fineEventId}
+        })
+
+        if (verifyEvent) {
+            if (input.amount?.gt(verifyEvent.debt)) {
+                throw BadRequestError("AmountError", "Amount can't be greater than the debt of the fine")
+            }
+        }
+
         const event = await db.event.create({
             data: input
         })
@@ -62,6 +73,17 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
  */
 export const createPayment = async (input: NewPayment): Promise<Payment | Error> => {
     try {
+
+        const verifyPayment = await db.event.findFirst({
+            where: {id: input.eventId}
+        })
+
+        if (verifyPayment) {
+            if (verifyPayment.debt < input.amount) {
+                throw BadRequestError("AmountError" , "Payment can't be greater than debt")
+            }
+        }
+
         const newPayment = await db.payment.create({
             data: input,
             include: {
@@ -73,7 +95,6 @@ export const createPayment = async (input: NewPayment): Promise<Payment | Error>
             where: { id: input.eventId },
             data: { debt: { decrement: input.amount } }
         })
-
 
 
         return newPayment

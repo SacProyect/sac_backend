@@ -167,6 +167,11 @@ taxpayerRouter.post('/payment',
             const payment = await TaxpayerServices.createPayment(input)
             return res.status(200).json(payment)
         } catch (error: any) {
+
+            if (error.name === "AmountError") {
+                return res.status(400).json({error: error.message})
+            }
+
             console.error(error)
             return res.status(500).json(error.message)
         }
@@ -185,6 +190,11 @@ taxpayerRouter.post('/payment_compromise',
             const payment_compromise = await TaxpayerServices.createEvent(input)
             return res.status(200).json(payment_compromise)
         } catch (error: any) {
+
+            if (error.name === "AmountError") {
+                return res.status(400).json({error: error.message})
+            }
+
             console.error(error)
             return res.status(500).json(error.message)
         }
