@@ -47,7 +47,7 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
         })
 
         if (verifyEvent) {
-            if (input.amount?.gt(verifyEvent.debt)) {
+            if (input.amount !== undefined && input.amount > verifyEvent.debt) {
                 throw BadRequestError("AmountError", "Amount can't be greater than the debt of the fine")
             }
         }
