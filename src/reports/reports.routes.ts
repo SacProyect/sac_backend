@@ -42,6 +42,9 @@ reportRouter.get('/payments/:id?',
                 id = (req.params.id)
             }
             const paymentHistory = await ReportService.getPaymentHistory(id)
+
+
+
             res.status(200).json(paymentHistory)
         } catch (error: any) {
             return res.status(500).json(error.message)

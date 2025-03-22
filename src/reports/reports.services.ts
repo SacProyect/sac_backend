@@ -67,7 +67,7 @@ export const getPaymentHistory = async (taxpayerId?: string) => {
         const compliance = getComplianceRate(fines, payments)
 
         const totalPayments: Payment[] = []
-        console.log("PAYMENTS REPORT SERVICES: " + JSON.stringify(payments[0]))
+        // console.log("PAYMENTS REPORT SERVICES: " + JSON.stringify(payments[0]))
 
         payments.forEach((payment)=> {
             if (payment.event.amount.equals(payment.amount)) {
@@ -180,6 +180,7 @@ export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> 
                 amount: true,
                 type: true,
                 debt: true,
+                expires_at: true,
                 taxpayerId: true,
                 taxpayer: {
                     select: {
@@ -200,6 +201,7 @@ export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> 
                 taxpayerId: event.taxpayerId,
                 taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`,
                 debt: event.debt,
+                expires_at: event.expires_at,
             }
         })
         console.log(mappedResponse)
