@@ -27,7 +27,9 @@ export type Event = {
     amount: Decimal
     type: string
     taxpayerId: string;
-    constribuyente?: string
+    taxpayer?: string;
+    debt?: Decimal;
+    payment?: Payment[]
 }
 
 export type NewEvent = {

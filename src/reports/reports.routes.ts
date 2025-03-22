@@ -37,9 +37,9 @@ reportRouter.get('/payments/:id?',
     authenticateToken,
     async (req: Request, res: Response) => {
         try {
-            let id: number | undefined = undefined;
+            let id: string | undefined = undefined;
             if (req.params.id) {
-                id = parseInt(req.params.id, 10)
+                id = (req.params.id)
             }
             const paymentHistory = await ReportService.getPaymentHistory(id)
             res.status(200).json(paymentHistory)
