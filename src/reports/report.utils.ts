@@ -1,5 +1,30 @@
 import { Decimal } from "@prisma/client/runtime/library";
 import { Event, Payment, Taxpayer } from "../taxpayer/taxpayer.utils";
+import { User } from "../users/user.utils";
+import { app_error } from "@prisma/client";
+
+
+export interface InputError {
+    title?: string,
+    type: app_error,
+    description: string,
+    status: boolean,
+    created_at: Date,
+    closed_at?: Date | null,
+    userId: string,
+    images?: {
+        img_src: string;
+        img_alt: string;
+    }[]
+}
+
+// export interface ErrorImage {
+//     id: string;
+//     img_src: string;
+//     img_alt: string;
+//     errorId: string;
+// }
+
 
 
 export const sumTransactions = (transactionArray: Event[] | Payment[]): Decimal => {
@@ -43,7 +68,7 @@ export const getComplianceRate = (fines: Event[], payments: Payment[]): Decimal 
 
     // console.log("PAID FINES: "  + JSON.stringify(finesPaid))
 
-    console.log("TOTALFINES/FINESPAID: " + totalFines  +    "/"  + finesPaid.length)
+    console.log("TOTALFINES/FINESPAID: " + totalFines + "/" + finesPaid.length)
 
 
     // const totalPayments = payments.length;
@@ -89,7 +114,7 @@ export const getTaxpayerComplianceRate = (taxpayers: Taxpayer[], payments: Payme
 
 
 export const getPunctuallityAnalysis = (fines: Event[]): number => {
-    
+
     // console.log("FINES FROM REPORT UTILS: " + JSON.stringify(fines));
 
     let totalDays = 0;
@@ -98,7 +123,7 @@ export const getPunctuallityAnalysis = (fines: Event[]): number => {
     if (fines == null) {
         return 0;
     }
-    
+
     fines.forEach((fine, index) => {
         // console.log(`\nProcessing fine #${index + 1}:`, fine);
 

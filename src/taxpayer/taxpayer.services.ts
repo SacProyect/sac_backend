@@ -1,7 +1,7 @@
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { db } from "../utils/db.server";
 import { Event, getStatistics, NewEvent, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
-import { BadRequestError } from "../utils/errors/BadRequestError"; 
+import { BadRequestError } from "../utils/errors/BadRequestError";
 
 
 /**
@@ -24,7 +24,7 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                 console.error('Duplicate RIF error:', error.message);
                 throw new Error('El rif ya fue registrado, por favor, revise los datos.');
             }
-        } 
+        }
 
         console.error(error)
         throw error;
@@ -42,13 +42,15 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
 
         console.log("INPUT: " + JSON.stringify(input))
 
-        const verifyEvent = await db.event.findUnique({
-            where: {id : input.fineEventId}
-        })
+        if (input.type == "PAYMENT_COMPROMISE") {
+            const verifyEvent = await db.event.findUnique({
+                where: { id: input.fineEventId }
+            })
 
-        if (verifyEvent) {
-            if (input.amount !== undefined && input.amount > verifyEvent.debt) {
-                throw BadRequestError("AmountError", "Amount can't be greater than the debt of the fine")
+            if (verifyEvent) {
+                if (input.amount !== undefined && input.amount > verifyEvent.debt) {
+                    throw BadRequestError("AmountError", "Amount can't be greater than the debt of the fine")
+                }
             }
         }
 
@@ -75,12 +77,12 @@ export const createPayment = async (input: NewPayment): Promise<Payment | Error>
     try {
 
         const verifyPayment = await db.event.findFirst({
-            where: {id: input.eventId}
+            where: { id: input.eventId }
         })
 
         if (verifyPayment) {
             if (verifyPayment.debt < input.amount) {
-                throw BadRequestError("AmountError" , "Payment can't be greater than debt")
+                throw BadRequestError("AmountError", "Payment can't be greater than debt")
             }
         }
 
@@ -117,9 +119,11 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
         const where: any = {
             status: true
         }
+
         if (taxpayerId) {
             where.taxpayerId = taxpayerId;
         }
+
         if (type && type !== "payment") {
             where.type = type
             events = await db.event.findMany({
@@ -207,8 +211,10 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
                 taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`
             }
         })
+
         return mappedResponse
     } catch (error) {
+        console.error(error)
         throw error;
     }
 }

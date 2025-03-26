@@ -9,13 +9,15 @@ datasource db {
 }
 
 model user {
-    id       String     @id @default(uuid())
-    name     String
-    role     String
-    personId Int        @unique(map: "usuario_cedula_key")
-    password String
-    status   Boolean    @default(true)
-    taxpayer taxpayer[]
+    id         String     @id @default(uuid())
+    name       String
+    role       String
+    personId   Int        @unique(map: "usuario_cedula_key")
+    password   String
+    status     Boolean    @default(true)
+    taxpayer   taxpayer[]
+    errors     errors[]   @relation("UserErrors")
+    updated_at  DateTime   @updatedAt @default(now())
 }
 
 model event {
@@ -29,12 +31,13 @@ model event {
     taxpayer   taxpayer   @relation(fields: [taxpayerId], references: [id], map: "evento_contribuyenteId_fkey", onDelete: Cascade)
     payment    payment[]
     expires_at DateTime   @default(now())
-    
+    updated_at DateTime   @default(now()) @updatedAt
+
     // Self-referential relation for linking to a fine event
-    fineEventId   String?      // Link to the parent fine event
-    fineEvent     event?       @relation("EventToFine", fields: [fineEventId], references: [id])
-    fineEvents    event[]      @relation("EventToFine")
-    
+    fineEventId String? // Link to the parent fine event
+    fineEvent   event?  @relation("EventToFine", fields: [fineEventId], references: [id])
+    fineEvents  event[] @relation("EventToFine")
+
     @@index([taxpayerId], map: "evento_contribuyenteId_fkey")
     @@index([fineEventId], map: "evento_fineEventId_fkey") // Index to speed up queries based on fineEventId
 }
@@ -48,6 +51,7 @@ model payment {
     taxpayerId String
     taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], map: "pago_contribuyenteId_fkey")
     event      event    @relation(fields: [eventId], references: [id], map: "pago_eventoId_fkey", onDelete: Cascade)
+    updated_at DateTime @default(now()) @updatedAt
 
     @@index([taxpayerId], map: "pago_contribuyenteId_fkey")
 }
@@ -57,17 +61,42 @@ model taxpayer {
     providenceNum Int
     process       taxpayer_process       @default(NA)
     name          String
-    rif           String                 @db.Char(10) @unique
+    rif           String                 @unique @db.Char(10)
     contract_type taxpayer_contract_type @default(ORDINARY)
     status        Boolean                @default(true)
     officerId     String?
-    event         event[]               
+    event         event[]
     payment       payment[]
     user          user?                  @relation(fields: [officerId], references: [id], map: "contribuyente_funcionarioId_fkey")
+    updated_at    DateTime               @default(now()) @updatedAt
 
     @@index([officerId], map: "contribuyente_funcionarioId_fkey")
     @@index([process], map: "contribuyente_procedimiento_idx")
     @@index([contract_type], map: "contribuyente_tipoContrato_idx")
+}
+
+model errors {
+    id          String    @id @default(uuid())
+    type        app_error
+    title       String    @default("error")
+    description String
+    status      Boolean   @default(true)
+    user        user      @relation("UserErrors", fields: [userId], references: [id])
+    userId      String
+    created_at  DateTime  @default(now()) @db.DateTime(0)
+    closed_at   DateTime? @db.DateTime(0)
+    updated_at  DateTime  @default(now()) @updatedAt
+    errorImages ErrorImage[] // One-to-many relationship with ErrorImage
+
+    @@index([userId])
+}
+
+model ErrorImage {
+    id        String  @id @default(uuid())
+    img_src   String
+    img_alt   String
+    errorId   String
+    error     errors  @relation(fields: [errorId], references: [id])
 }
 
 enum taxpayer_process {
@@ -86,4 +115,16 @@ enum event_type {
 enum taxpayer_contract_type {
     SPECIAL
     ORDINARY
+}
+
+enum app_error {
+    HOME
+    TAXPAYER_DETAILS
+    TAXPAYERS
+    WARNING
+    FINES
+    PAYMENT
+    PAYMENT_COMPROMISE
+    STATS
+    OTHER
 }
