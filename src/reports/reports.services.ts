@@ -1,7 +1,12 @@
 import { event_type } from "@prisma/client"
 import { db } from "../utils/db.server"
-import { avgValue, getComplianceRate, getLatestEvents, getPunctuallityAnalysis, getTaxpayerComplianceRate, sumTransactions } from "./report.utils"
+import { avgValue, getComplianceRate, getLatestEvents, getPunctuallityAnalysis, getTaxpayerComplianceRate, InputError, sumTransactions } from "./report.utils"
 import { Event, Payment } from "../taxpayer/taxpayer.utils"
+
+
+
+
+
 
 export const getFineHistory = async (taxpayerId?: string) => {
     try {
@@ -56,7 +61,7 @@ export const getPaymentHistory = async (taxpayerId?: string) => {
             where: fineWhere,
             include: {
                 payment: {
-                    include: {event: true}
+                    include: { event: true }
                 },
             }
         })
@@ -69,7 +74,7 @@ export const getPaymentHistory = async (taxpayerId?: string) => {
         const totalPayments: Payment[] = []
         // console.log("PAYMENTS REPORT SERVICES: " + JSON.stringify(payments[0]))
 
-        payments.forEach((payment)=> {
+        payments.forEach((payment) => {
             if (payment.event.amount.equals(payment.amount)) {
                 totalPayments.push(payment)
             }
@@ -120,7 +125,7 @@ export const getKPI = async () => {
 
         const commitmentCompliance = getComplianceRate(commitment, commitmentPayments)
         const finesCompliance = getComplianceRate(fines, finePayments)
-        
+
         const mappedTaxpayers = taxpayers.map(taxpayer => ({
             ...taxpayer,
             providenceNum: taxpayer.providenceNum
@@ -160,7 +165,7 @@ export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> 
                 status: true
             },
             NOT: {
-                type: event_type.WARNING 
+                type: event_type.WARNING
             }
         }
 
@@ -209,4 +214,37 @@ export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> 
     } catch (error) {
         throw error;
     }
+}
+
+
+/**
+ * Creates a new error.
+ *
+ * @param {InputError} input - The input data for the new error.
+ * @returns {Promise<InputError | Error>} A Promise resolving to the created error or an exception.
+ */
+export const createError = async (input: InputError): Promise<InputError | Error> => {
+
+    try {
+        const createdError = db.errors.create({
+            data: {
+                title: input.title ?? undefined,
+                description: input.description,
+                type: input.type,
+                userId: input.userId,
+                errorImages: {
+                    create: input.images?.map((img) => ({
+                        img_src: img.img_src,
+                        img_alt: img.img_alt
+                    })) || []
+                }
+            }
+        })
+        
+        return createdError;
+    } catch (e) {
+        console.error(e)
+        throw e
+    }
+
 }

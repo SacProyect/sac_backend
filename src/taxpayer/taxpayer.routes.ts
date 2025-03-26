@@ -111,8 +111,8 @@ taxpayerRouter.get('/event/:id/:type?',
             const type: string = req.params.type
 
 
-
             const events = await TaxpayerServices.getEventsbyTaxpayer(id, type)
+            console.log("EVENTS: " + events)
             return res.status(200).json(events)
         } catch (error: any) {
             return res.status(500).json(error.message)
