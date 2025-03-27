@@ -8,8 +8,8 @@ export interface InputError {
     title?: string,
     type: app_error,
     description: string,
-    status: boolean,
-    created_at: Date,
+    status?: boolean,
+    created_at?: Date,
     closed_at?: Date | null,
     userId: string,
     images?: {

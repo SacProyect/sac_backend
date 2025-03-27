@@ -4,6 +4,7 @@ import cors from "cors"
 import { userRouter } from "./src/users/user.routes"
 import { taxpayerRouter } from "./src/taxpayer/taxpayer.routes"
 import { reportRouter } from "./src/reports/reports.routes"
+import path from "path"
 dotenv.config()
 
 if (!process.env.PORT) {
@@ -39,6 +40,10 @@ app.use(cors(corsOptions));
 app.use("/user", userRouter)
 app.use("/taxpayer", taxpayerRouter)
 app.use("/reports", reportRouter)
+app.use('/uploads', express.static(path.join(__dirname, './uploads')));
+
+
+
 
 app.listen(PORT, () => {
     console.log(`Server is listening on port: ${PORT}`)

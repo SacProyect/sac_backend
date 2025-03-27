@@ -4,9 +4,25 @@ import * as ReportService from './reports.services'
 import { authenticateToken } from "../users/user.utils";
 import { body, validationResult } from 'express-validator';
 import { createError } from "./reports.services";
+import multer, { StorageEngine } from "multer";
+import path from "path";
 
 
 export const reportRouter = Router();
+
+
+// Configure Multer storage (saving images to 'uploads/' directory)
+const storage: StorageEngine = multer.diskStorage({
+    destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
+        cb(null, path.resolve(__dirname, "../../uploads"));  // Define where the files should be stored
+    },
+    filename: (req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
+        cb(null, `${Date.now()}-${file.originalname}`); // Unique filename
+    }
+});
+
+const upload = multer({ storage });
+
 
 reportRouter.get('/kpi',
     authenticateToken,
@@ -71,6 +87,7 @@ reportRouter.get('/pending/:id?',
 
 reportRouter.post('/errors',
     authenticateToken,
+    upload.array("images", 10), // max of 10 images
     body("title").isString().optional(),
     body("description").isString().notEmpty(),
     body("type").isString(),
@@ -88,9 +105,27 @@ reportRouter.post('/errors',
             return res.status(400).json({ errors: errors.array() });
         }
 
+         // Log the received data for debugging purposes
+         console.log("Received request body:", req.body); // Logs the form data (title, description, type, etc.)
+         console.log("Received files:", req.files); // Logs the uploaded images (file objects)
+
         try {
-            const input = req.body
-            const err = await ReportService.createError(input)
+            const { title, description, type, userId } = req.body
+
+            // Extract uploaded images
+            const images = (req.files as Express.Multer.File[])?.map((file) => ({
+                img_src: `/uploads/${file.filename}`, // Store path relative to server
+                img_alt: file.originalname
+            })) || [];
+
+            // Call createError function with the extracted data
+            const err = await ReportService.createError({
+                title,
+                description,
+                type,
+                userId,
+                images
+            });
 
             return res.status(200).json(err);
 
@@ -100,3 +135,4 @@ reportRouter.post('/errors',
         }
     }
 )
+

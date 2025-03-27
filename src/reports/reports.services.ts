@@ -240,11 +240,14 @@ export const createError = async (input: InputError): Promise<InputError | Error
                 }
             }
         })
-        
+
         return createdError;
     } catch (e) {
-        console.error(e)
+        console.error("Error during creation: " + e)
         throw e
     }
 
 }
+
+
+
