@@ -19,6 +19,13 @@ export type NewTaxpayer = {
     rif: string
     contract_type: taxpayer_contract_type
     officerId: string;
+    pdfs? : InvestigationPdf[]
+}
+
+export type InvestigationPdf = {
+    id?: string,
+    pdf_url: string,
+    taxpayerId?: string,
 }
 
 export type Event = {

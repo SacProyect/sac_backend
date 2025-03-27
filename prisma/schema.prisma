@@ -17,7 +17,7 @@ model user {
     status     Boolean    @default(true)
     taxpayer   taxpayer[]
     errors     errors[]   @relation("UserErrors")
-    updated_at  DateTime   @updatedAt @default(now())
+    updated_at DateTime   @default(now()) @updatedAt
 }
 
 model event {
@@ -69,35 +69,45 @@ model taxpayer {
     payment       payment[]
     user          user?                  @relation(fields: [officerId], references: [id], map: "contribuyente_funcionarioId_fkey")
     updated_at    DateTime               @default(now()) @updatedAt
+    investigation_pdfs InvestigationPdf[]
 
     @@index([officerId], map: "contribuyente_funcionarioId_fkey")
     @@index([process], map: "contribuyente_procedimiento_idx")
     @@index([contract_type], map: "contribuyente_tipoContrato_idx")
 }
 
+model InvestigationPdf {
+    id String @id @default(uuid())
+    pdf_url String 
+    taxpayerId String 
+    taxpayer taxpayer @relation(fields: [taxpayerId], references: [id])
+}
+
 model errors {
-    id          String    @id @default(uuid())
+    id          String       @id @default(uuid())
     type        app_error
-    title       String    @default("error")
+    title       String       @default("error")
     description String
-    status      Boolean   @default(true)
-    user        user      @relation("UserErrors", fields: [userId], references: [id])
+    status      Boolean      @default(true)
+    user        user         @relation("UserErrors", fields: [userId], references: [id])
     userId      String
-    created_at  DateTime  @default(now()) @db.DateTime(0)
-    closed_at   DateTime? @db.DateTime(0)
-    updated_at  DateTime  @default(now()) @updatedAt
+    created_at  DateTime     @default(now()) @db.DateTime(0)
+    closed_at   DateTime?    @db.DateTime(0)
+    updated_at  DateTime     @default(now()) @updatedAt
     errorImages ErrorImage[] // One-to-many relationship with ErrorImage
 
     @@index([userId])
 }
 
 model ErrorImage {
-    id        String  @id @default(uuid())
-    img_src   String
-    img_alt   String
-    errorId   String
-    error     errors  @relation(fields: [errorId], references: [id])
+    id      String @id @default(uuid())
+    img_src String
+    img_alt String
+    errorId String
+    error   errors @relation(fields: [errorId], references: [id])
 }
+
+
 
 enum taxpayer_process {
     FP
