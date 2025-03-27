@@ -4,6 +4,22 @@ import * as TaxpayerServices from "./taxpayer.services"
 import { body, validationResult } from 'express-validator';
 import { EventType } from "./taxpayer.utils";
 import { authenticateToken } from "../users/user.utils";
+import multer, { StorageEngine } from "multer";
+import path from "path";
+import fs from 'fs'
+
+// Configure Multer storage (saving files to 'uploads/' directory)
+const storage: StorageEngine = multer.diskStorage({
+    destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
+        cb(null, path.resolve(__dirname, "../../uploads"));  // Define where the files should be stored
+    },
+    filename: (req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
+        cb(null, `${Date.now()}-${file.originalname}`); // Unique filename
+    }
+});
+
+const upload = multer({ storage });
+
 
 
 export const taxpayerRouter = express.Router();
@@ -44,23 +60,51 @@ taxpayerRouter.post('/',
     body("process").isString(),
     body("name").isString(),
     body("rif").matches(/^[JVEPG]\d{9}$/)
-    .withMessage("RIF must start with J-, V-, E-, P- or G- followed by 9 digits").isString(),
+        .withMessage("RIF must start with J-, V-, E-, P- or G- followed by 9 digits").isString(),
     body("contract_type").isString(),
     body("officerId").isString(),
-    async (req: Request, res: Response) => {
+    async (req: Request, res: Response, next) => {
+        // Validate input first
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.array() });
         }
+        next(); // Proceed to multer if validation passes
+    },
+    upload.array("pdfs", 20), // Apply multer only if validation is successful
+    async (req: Request, res: Response) => {
         try {
-            const input = req.body
-            input.providenceNum = parseInt(input.providenceNum, 10)
-            const newTaxpayer = await TaxpayerServices.createTaxpayer(input)
-            return res.status(200).json(newTaxpayer)
-        } catch (error: any) {
+            const { providenceNum, process, name, rif, contract_type, officerId } = req.body;
+            const pdfs = (req.files as Express.Multer.File[])?.map((file) => ({
+                pdf_url: `/uploads/${file.filename}`,
+            })) || [];
 
-            console.error(error)
-            return res.status(500).json(error.message)
+            const intProvidenceNum = parseInt(providenceNum);
+
+            const newTaxpayer = await TaxpayerServices.createTaxpayer({
+                providenceNum: intProvidenceNum,
+                process,
+                name,
+                rif,
+                contract_type,
+                officerId,
+                pdfs
+            });
+
+            return res.status(200).json(newTaxpayer);
+        } catch (error: any) {
+            console.error(error);
+
+            // **Delete uploaded files in case of an error**
+            if (req.files) {
+                (req.files as Express.Multer.File[]).forEach((file) => {
+                    fs.unlink(file.path, (err) => {
+                        if (err) console.error("Failed to delete file:", file.path, err);
+                    });
+                });
+            }
+
+            return res.status(500).json({ success: false, message: error.message });
         }
     }
 );
@@ -144,7 +188,7 @@ taxpayerRouter.post('/fine',
             return res.status(400).json({ errors: errors.array() });
         }
         try {
-            
+
             const input = { ...req.body, debt: req.body.amount, type: EventType.FINE }
             const fine = await TaxpayerServices.createEvent(input)
             return res.status(200).json(fine)
@@ -169,7 +213,7 @@ taxpayerRouter.post('/payment',
         } catch (error: any) {
 
             if (error.name === "AmountError") {
-                return res.status(400).json({error: error.message})
+                return res.status(400).json({ error: error.message })
             }
 
             console.error(error)
@@ -192,7 +236,7 @@ taxpayerRouter.post('/payment_compromise',
         } catch (error: any) {
 
             if (error.name === "AmountError") {
-                return res.status(400).json({error: error.message})
+                return res.status(400).json({ error: error.message })
             }
 
             console.error(error)
@@ -209,7 +253,7 @@ taxpayerRouter.post('/warning',
     body("fineEventId").isString(),
     async (req: Request, res: Response) => {
         try {
-            const input = { ...req.body, type: EventType.WARNING}
+            const input = { ...req.body, type: EventType.WARNING }
             const warning = await TaxpayerServices.createEvent(input)
             return res.status(200).json(warning)
         } catch (error: any) {

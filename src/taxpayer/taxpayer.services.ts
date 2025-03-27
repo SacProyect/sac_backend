@@ -12,10 +12,36 @@ import { BadRequestError } from "../utils/errors/BadRequestError";
  */
 export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Error> => {
     try {
+
+        console.log("Received input:", JSON.stringify(input, null, 2));
+
+        // Ensure at least one PDF is provided
+        if (!input.pdfs || input.pdfs.length === 0) {
+            throw new Error("At least one PDF must be uploaded.");
+        }
+
+
         const taxpayer = await db.taxpayer.create({
-            data: input
+            data: {
+                providenceNum: input.providenceNum,
+                process: input.process,
+                name: input.name,
+                contract_type: input.contract_type,
+                officerId: input.officerId,
+                rif: input.rif
+            }
         })
+
+        // Insert PDFs linked to this taxpayer
+        await db.investigationPdf.createMany({
+            data: input.pdfs.map((pdf) => ({
+                pdf_url: pdf.pdf_url,
+                taxpayerId: taxpayer.id,
+            })),
+        });
+
         return taxpayer;
+
     } catch (error: any) {
         if (error instanceof PrismaClientKnownRequestError) {
             // Check for the unique constraint violation error (P2002)

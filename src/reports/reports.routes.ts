@@ -87,7 +87,6 @@ reportRouter.get('/pending/:id?',
 
 reportRouter.post('/errors',
     authenticateToken,
-    upload.array("images", 10), // max of 10 images
     body("title").isString().optional(),
     body("description").isString().notEmpty(),
     body("type").isString(),
@@ -105,9 +104,6 @@ reportRouter.post('/errors',
             return res.status(400).json({ errors: errors.array() });
         }
 
-         // Log the received data for debugging purposes
-         console.log("Received request body:", req.body); // Logs the form data (title, description, type, etc.)
-         console.log("Received files:", req.files); // Logs the uploaded images (file objects)
 
         try {
             const { title, description, type, userId } = req.body
@@ -127,11 +123,14 @@ reportRouter.post('/errors',
                 images
             });
 
+
+            upload.array("images", 10) // max of 10 images
+
             return res.status(200).json(err);
 
         } catch (e) {
             console.error(e)
-            throw e
+            return res.status(500).json(e)
         }
     }
 )
