@@ -15,6 +15,15 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
 
         console.log("Received input:", JSON.stringify(input, null, 2));
 
+
+        const existingTaxpayer = await db.taxpayer.findUnique({
+            where: {
+                rif: input.rif,
+            }
+        })
+
+        if (existingTaxpayer) throw new Error("El rif ya fue registrado, por favor, corrija el número de rif.")
+
         // Ensure at least one PDF is provided
         if (!input.pdfs || input.pdfs.length === 0) {
             throw new Error("At least one PDF must be uploaded.");
@@ -43,15 +52,6 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
         return taxpayer;
 
     } catch (error: any) {
-        if (error instanceof PrismaClientKnownRequestError) {
-            // Check for the unique constraint violation error (P2002)
-            if (error.code === 'P2002' && error.meta?.target === 'taxpayer_rif_key') {
-                // Custom error message for duplicate RIF
-                console.error('Duplicate RIF error:', error.message);
-                throw new Error('El rif ya fue registrado, por favor, revise los datos.');
-            }
-        }
-
         console.error(error)
         throw error;
     }
@@ -79,6 +79,7 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
                 }
             }
         }
+
 
         const event = await db.event.create({
             data: input

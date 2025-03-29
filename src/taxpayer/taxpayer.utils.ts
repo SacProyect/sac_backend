@@ -3,7 +3,7 @@ import { db } from "../utils/db.server"
 import { taxpayer_contract_type, taxpayer_process } from "@prisma/client"
 
 export type Taxpayer = {
-    providenceNum: number
+    providenceNum: bigint
     id: string;
     process: string
     name: string
@@ -13,7 +13,7 @@ export type Taxpayer = {
 }
 
 export type NewTaxpayer = {
-    providenceNum: number
+    providenceNum: bigint
     process: taxpayer_process
     name: string
     rif: string
@@ -101,7 +101,7 @@ export const getStatistics = async (userId: string, timeframe?: string, taxpayer
                     id: userId
                 }
             })
-            if (role.role !== "admin") {
+            if (role.role !== "ADMIN") {
                 where.taxpayer = {
                     officerId: userId
                 }

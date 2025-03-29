@@ -56,22 +56,28 @@ taxpayerRouter.get('/all/:id',
 
 taxpayerRouter.post('/',
     authenticateToken,
-    body("providenceNum").isInt(),
+    body("providenceNum").isNumeric(),
     body("process").isString(),
     body("name").isString(),
     body("rif").matches(/^[JVEPG]\d{9}$/)
         .withMessage("RIF must start with J-, V-, E-, P- or G- followed by 9 digits").isString(),
     body("contract_type").isString(),
     body("officerId").isString(),
+
     async (req: Request, res: Response, next) => {
+
+        console.log("REQUEST BODY: ", JSON.stringify(req.body, null, 2)); // The `null, 2` is for pretty-printing the JSON
+
         // Validate input first
-        const errors = validationResult(req);
+        const errors = validationResult(req.body);
         if (!errors.isEmpty()) {
+            console.log(errors.array())
             return res.status(400).json({ errors: errors.array() });
         }
         next(); // Proceed to multer if validation passes
     },
     upload.array("pdfs", 20), // Apply multer only if validation is successful
+
     async (req: Request, res: Response) => {
         try {
             const { providenceNum, process, name, rif, contract_type, officerId } = req.body;
@@ -79,7 +85,7 @@ taxpayerRouter.post('/',
                 pdf_url: `/uploads/${file.filename}`,
             })) || [];
 
-            const intProvidenceNum = parseInt(providenceNum);
+            const intProvidenceNum = BigInt(providenceNum);
 
             const newTaxpayer = await TaxpayerServices.createTaxpayer({
                 providenceNum: intProvidenceNum,
@@ -181,13 +187,14 @@ taxpayerRouter.post('/fine',
     body("date").isISO8601().toDate(),
     body("amount").isDecimal(),
     body("taxpayerId").isString(),
-    body("expires_at").isISO8601().toDate(),
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
+            console.log(errors.array())
             return res.status(400).json({ errors: errors.array() });
         }
         try {
+
 
             const input = { ...req.body, debt: req.body.amount, type: EventType.FINE }
             const fine = await TaxpayerServices.createEvent(input)
