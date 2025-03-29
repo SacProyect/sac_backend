@@ -2,6 +2,7 @@ import { JwtPayload, sign, verify } from "jsonwebtoken"
 import { NextFunction, Request, Response } from "express"
 import { hash } from "bcrypt";
 import { Taxpayer } from "../taxpayer/taxpayer.utils";
+import { user_roles } from "@prisma/client";
 
 const TOKEN_SECRET = process.env.TOKEN_SECRET as string
 
@@ -19,7 +20,7 @@ export type NewUserInput = {
     id: string;
     personId: number;
     name: string;
-    role: string;
+    role: user_roles;
     password: string;
 }
 
