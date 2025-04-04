@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import * as ReportService from './reports.services'
-import { authenticateToken } from "../users/user.utils";
+import { authenticateToken, AuthRequest } from "../users/user.utils";
 import { body, validationResult } from 'express-validator';
 import { createError } from "./reports.services";
 import multer, { StorageEngine } from "multer";
@@ -72,18 +72,7 @@ reportRouter.get('/payments/:id?',
 )
 
 
-reportRouter.get('/pending/:id?',
-    authenticateToken,
-    async (req: Request, res: Response) => {
-        try {
-            const id: string = req.params.id;
-            const events = await ReportService.getPendingPayments(id)
-            return res.status(200).json(events)
-        } catch (error: any) {
-            return res.status(500).json(error.message)
-        }
-    }
-)
+
 
 reportRouter.post('/errors',
     authenticateToken,
@@ -135,3 +124,47 @@ reportRouter.post('/errors',
     }
 )
 
+reportRouter.get('/pending/:id?',
+    authenticateToken,
+    async (req: Request, res: Response) => {
+        try {
+            const id: string = req.params.id;
+            const events = await ReportService.getPendingPayments(id)
+            return res.status(200).json(events)
+        } catch (error: any) {
+            return res.status(500).json(error.message)
+        }
+    }
+)
+
+reportRouter.get('/fiscal-groups',
+    authenticateToken,
+    async (req: Request, res: Response) => {
+
+        const {user} = req as AuthRequest
+
+        if (!user) return res.status(403).json("Unauthorized access")
+
+        const role = user.role 
+
+        // Object for filtering based on the params
+        const {id, startDate, endDate} = req.query
+
+        const filterParams: {id?: string; startDate?: string; endDate?: string;} = {}
+
+        if (id) filterParams.id = id as string;
+        if (startDate) filterParams.startDate = startDate as string;
+        if (endDate) filterParams.endDate = endDate as string;
+
+        try {
+
+            const getGroups = await ReportService.getFiscalGroups({role, ...filterParams})
+            
+            return res.status(200).json(getGroups);
+        } catch (e) {
+            console.log(e)
+            return res.status(500).json("Error returning groups")
+        }
+
+    }
+)

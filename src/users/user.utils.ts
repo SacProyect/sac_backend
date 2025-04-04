@@ -6,6 +6,11 @@ import { user_roles } from "@prisma/client";
 
 const TOKEN_SECRET = process.env.TOKEN_SECRET as string
 
+
+export interface AuthRequest extends Request {
+    user?: { id: string; role: string }; // Store user ID and role
+}
+
 export type User = {
     id: string;
     personId: number;
@@ -40,19 +45,29 @@ export const generateAcessToken = (user: User) => {
 
 export const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
     try {
-        const authHeader = req.headers['authorization']
-        const token = authHeader && authHeader.split(' ')[1]
+        const authHeader = req.headers["authorization"];
+        const token = authHeader && authHeader.split(" ")[1];
+
         if (!token) {
-            throw new Error();
+            return res.status(401).json({ message: "Access denied. No token provided." });
         }
-        const decoded = verify(token, TOKEN_SECRET);
-        (req as AuthRequest).token = decoded;
-        next()
+
+        const decoded = verify(token, TOKEN_SECRET) as { type: string; user: string };
+
+        if (!decoded || !decoded.user || !decoded.type) {
+            return res.status(401).json({ message: "Invalid token." });
+        }
+
+        // ✅ Correctly attach user data by explicitly casting `req`
+        (req as AuthRequest).user = { id: decoded.user, role: decoded.type };
+
+        next();
     } catch (error) {
-        console.log(error)
-        res.status(401).json('Error while authenticating')
+        console.error("Authentication error:", error);
+        return res.status(401).json({ message: "Error while authenticating." });
     }
-}
+};
+
 
 export const passwordHashing = async (password: string) => {
     const hashedPassword = await hash(password, 10)
