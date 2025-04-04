@@ -18,12 +18,9 @@ export interface InputError {
     }[]
 }
 
-// export interface ErrorImage {
-//     id: string;
-//     img_src: string;
-//     img_alt: string;
-//     errorId: string;
-// }
+interface InputPayment {
+    amount: BigInt,
+}
 
 
 
@@ -154,4 +151,8 @@ export const getPunctuallityAnalysis = (fines: Event[]): number => {
     // console.log("TOTAL COUNT: " + count);
 
     return count > 0 ? Math.round(totalDays / count) : 0;  // Using Math.floor() to round down the final result
+}
+
+export const getCollected = (payments: InputPayment) => {
+
 }

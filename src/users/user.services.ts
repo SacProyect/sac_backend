@@ -14,6 +14,7 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
         const user = await db.user.findUniqueOrThrow({
             include: {
                 taxpayer: true,
+                coordinatedGroup: true,
             },
             where: {
                 personId: personId,
@@ -33,7 +34,7 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
 
             return { user, token };
         } else {
-            throw new Error('Contraseña erronea');
+            throw new Error('Las credenciales no son correctas.');
         }
     } catch (error) {
         throw error;

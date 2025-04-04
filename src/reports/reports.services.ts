@@ -2,8 +2,16 @@ import { event_type } from "@prisma/client"
 import { db } from "../utils/db.server"
 import { avgValue, getComplianceRate, getLatestEvents, getPunctuallityAnalysis, getTaxpayerComplianceRate, InputError, sumTransactions } from "./report.utils"
 import { Event, Payment } from "../taxpayer/taxpayer.utils"
+import { group } from "console"
+import { taxpayerRouter } from "../taxpayer/taxpayer.routes"
+import { Decimal } from "@prisma/client/runtime/library"
 
-
+interface InputFiscalGroups {
+    role: string,
+    id?: string,
+    startDate?: string,
+    endDate?: string,
+}
 
 
 
@@ -155,6 +163,41 @@ export const getKPI = async () => {
     }
 }
 
+
+
+
+/**
+ * Creates a new error.
+ *
+ * @param {InputError} input - The input data for the new error.
+ * @returns {Promise<InputError | Error>} A Promise resolving to the created error or an exception.
+ */
+export const createError = async (input: InputError): Promise<InputError | Error> => {
+
+    try {
+        const createdError = db.errors.create({
+            data: {
+                title: input.title ?? undefined,
+                description: input.description,
+                type: input.type,
+                userId: input.userId,
+                errorImages: {
+                    create: input.images?.map((img) => ({
+                        img_src: img.img_src,
+                        img_alt: img.img_alt
+                    })) || []
+                }
+            }
+        })
+
+        return createdError;
+    } catch (e) {
+        console.error("Error during creation: " + e)
+        throw e
+    }
+
+}
+
 export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> => {
     try {
         const where: any = {
@@ -216,38 +259,97 @@ export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> 
     }
 }
 
+export const getFiscalGroups = async (data: InputFiscalGroups) => {
 
-/**
- * Creates a new error.
- *
- * @param {InputError} input - The input data for the new error.
- * @returns {Promise<InputError | Error>} A Promise resolving to the created error or an exception.
- */
-export const createError = async (input: InputError): Promise<InputError | Error> => {
+    if (data.role == "ADMIN" || data.role == "COORDINATOR") {
 
-    try {
-        const createdError = db.errors.create({
-            data: {
-                title: input.title ?? undefined,
-                description: input.description,
-                type: input.type,
-                userId: input.userId,
-                errorImages: {
-                    create: input.images?.map((img) => ({
-                        img_src: img.img_src,
-                        img_alt: img.img_alt
-                    })) || []
+        const { id, startDate, endDate } = data;
+
+
+        const filters: any = {}
+
+
+        if (data.id) {
+            filters.id = id
+        }
+
+
+        try {
+            const groups = await db.fiscalGroup.findMany({
+                where: filters,
+                include: {
+                    members: {
+                        include: {
+                            taxpayer: {
+                                include: {
+                                    event: {
+                                        where: {
+                                            date: {
+                                                gte: startDate ? new Date(startDate) : undefined,
+                                                lt: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : undefined,
+                                            }
+                                        }
+                                    },
+                                    payment: {
+                                        where: {
+                                            date: {
+                                                gte: startDate ? new Date(startDate) : undefined,
+                                                lt: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : undefined,
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                        }
+                    }
                 }
-            }
-        })
+            });
 
-        return createdError;
-    } catch (e) {
-        console.error("Error during creation: " + e)
-        throw e
+            // Iterate over each group and calculate the `collected` for each group
+            const updatedGroups = groups.map((group) => {
+                // Calculate the total collected for this group
+                let groupCollected: Decimal = new Decimal(0);
+                let fines: Decimal = new Decimal(0);
+
+                // Flatten the data structure and accumulate payments for this group
+                group.members.forEach((member) => {
+
+                    member.taxpayer.forEach((contributor) => {
+
+                        contributor.event.forEach((e) => {
+                            if (e.type == "FINE") {
+                                fines = fines.plus(1)
+                            }
+                        })
+                        
+                        contributor.payment.forEach((pay) => {
+                            groupCollected = groupCollected.plus(pay.amount);
+                        });
+
+                    });
+
+                });
+
+                // Return the group with its added `collected` amount
+                return {
+                    ...group,
+                    collected: groupCollected,
+                    totalFines: fines,
+                };
+            });
+
+            return updatedGroups
+
+        } catch (e) {
+            console.error(e)
+            throw e
+        }
     }
 
+    
+
+    // If the role is not "ADMIN" or "COORDINATOR", throw an error 
+    throw Error("Unauthorized")
+    
 }
-
-
 
