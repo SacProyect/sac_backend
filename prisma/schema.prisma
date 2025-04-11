@@ -29,6 +29,7 @@ model user {
 
 model FiscalGroup {
     id            String   @id @default(uuid())
+    name          String   @default("")
     coordinatorId String   @unique
     coordinator   user     @relation("GroupCoordinator", fields: [coordinatorId], references: [id])
     members       user[]   @relation("GroupMembers")
@@ -74,6 +75,7 @@ model payment {
 model taxpayer {
     id                 String                 @id @default(uuid())
     providenceNum      BigInt
+    address            String                 @default("Caracas")
     process            taxpayer_process       @default(NA)
     name               String
     rif                String                 @unique 

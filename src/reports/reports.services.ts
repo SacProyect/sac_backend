@@ -274,6 +274,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
         }
 
 
+
         try {
             const groups = await db.fiscalGroup.findMany({
                 where: filters,
