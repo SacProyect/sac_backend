@@ -2,7 +2,7 @@ import express from "express";
 import type { Request, Response } from "express";
 import * as UserService from "./user.services"
 import { body, validationResult } from 'express-validator';
-import { authenticateToken } from "./user.utils";
+import { authenticateToken, AuthRequest } from "./user.utils";
 
 export const userRouter = express.Router();
 
@@ -62,3 +62,27 @@ userRouter.post('/sign-up',
         }
     }
 );
+
+userRouter.get("/me",
+    authenticateToken,
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+
+        try {
+
+            const id = user.id;
+
+            const response = await UserService.getUser(id);
+
+            return res.status(200).json(response);
+
+        } catch (err) {
+            console.error("Error in /users/me:", err);
+            res.status(500).json({ message: "Server error" });
+        }
+    }
+)
