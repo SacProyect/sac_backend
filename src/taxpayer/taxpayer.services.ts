@@ -80,9 +80,15 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
             }
         }
 
+         // Set expires_at to 25 days from now if it's not provided
+         const expiresAt = input.expires_at ?? new Date(Date.now() + 25 * 24 * 60 * 60 * 1000);
+
 
         const event = await db.event.create({
-            data: input
+            data: {
+                ...input,
+                expires_at: expiresAt,
+            }
         })
 
 
