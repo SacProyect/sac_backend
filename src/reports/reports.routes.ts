@@ -24,17 +24,17 @@ const storage: StorageEngine = multer.diskStorage({
 const upload = multer({ storage });
 
 
-reportRouter.get('/kpi',
-    authenticateToken,
-    async (req: Request, res: Response) => {
-        try {
-            const KPI = await ReportService.getKPI()
-            return res.status(200).json(KPI)
-        } catch (error: any) {
-            return res.status(500).json(error.message)
-        }
-    }
-)
+// reportRouter.get('/kpi',
+//     authenticateToken,
+//     async (req: Request, res: Response) => {
+//         try {
+//             const KPI = await ReportService.getKPI()
+//             return res.status(200).json(KPI)
+//         } catch (error: any) {
+//             return res.status(500).json(error.message)
+//         }
+//     }
+// )
 
 reportRouter.get('/fine/:id?',
     authenticateToken,
@@ -141,16 +141,16 @@ reportRouter.get('/fiscal-groups',
     authenticateToken,
     async (req: Request, res: Response) => {
 
-        const {user} = req as AuthRequest
+        const { user } = req as AuthRequest
 
-        if (!user) return res.status(403).json("Unauthorized access")
+        if (!user) return res.status(401).json("Unauthorized access")
 
-        const role = user.role 
+        const role = user.role
 
         // Object for filtering based on the params
-        const {id, startDate, endDate} = req.query
+        const { id, startDate, endDate } = req.query
 
-        const filterParams: {id?: string; startDate?: string; endDate?: string;} = {}
+        const filterParams: { id?: string; startDate?: string; endDate?: string; } = {}
 
         if (id) filterParams.id = id as string;
         if (startDate) filterParams.startDate = startDate as string;
@@ -158,12 +158,98 @@ reportRouter.get('/fiscal-groups',
 
         try {
 
-            const getGroups = await ReportService.getFiscalGroups({role, ...filterParams})
-            
+            const getGroups = await ReportService.getFiscalGroups({ role, ...filterParams })
+
             return res.status(200).json(getGroups);
         } catch (e) {
             console.log(e)
             return res.status(500).json("Error returning groups")
+        }
+
+    }
+)
+
+reportRouter.get('/global-performance',
+    authenticateToken,
+    async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+
+        try {
+            const globalPerformance = await ReportService.getGlobalPerformance();
+
+            return res.json(globalPerformance)
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json("Unexpected error")
+        }
+
+    }
+)
+
+reportRouter.get("/global-taxpayer-performance",
+    authenticateToken,
+    async (req: Request, res: Response) => {
+
+        try {
+            const response = await ReportService.getGlobalTaxpayersPerformance()
+
+            return res.status(200).json(response)
+
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json({ message: "Internal server error" });
+        }
+
+    }
+)
+
+reportRouter.get("/group-perfomance",
+    authenticateToken,
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+
+
+        try {
+
+            const response = await ReportService.getGroupPerformance();
+
+            return res.status(200).json(response);
+
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json("Ha ocurrido un error al realizar la petición.")
+        }
+
+    }
+)
+
+reportRouter.get("/global-kpi",
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+
+
+        try { 
+            
+            const response = await ReportService.getGlobalKPI();
+
+            return res.status(200).json(response);
+
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json("Ha ocurrido un error.")
         }
 
     }

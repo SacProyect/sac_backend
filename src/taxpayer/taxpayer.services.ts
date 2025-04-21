@@ -161,6 +161,7 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
                     amount: true,
                     type: true,
                     taxpayerId: true,
+                    debt: true,
                     taxpayer: {
                         select: {
                             name: true,
@@ -197,6 +198,7 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
                     amount: true,
                     type: true,
                     taxpayerId: true,
+                    debt: true,
                     taxpayer: {
                         select: {
                             name: true,
@@ -234,6 +236,7 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
                 date: event.date,
                 type: event.type ? event.type : "payment",
                 amount: event.amount,
+                debt: event.debt,
                 taxpayerId: event.taxpayerId,
                 taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`
             }
@@ -492,5 +495,23 @@ export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> 
         return mappedResponse
     } catch (error) {
         throw error;
+    }
+}
+
+export async function getTaxpayerData(id: string) {
+
+    try {
+
+        const taxpayerData = await db.taxpayer.findUnique({
+            where: {
+                id: id
+            }
+        });
+
+        return taxpayerData
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("Error obteniendo la respuesta");
     }
 }

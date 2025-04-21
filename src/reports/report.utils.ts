@@ -156,3 +156,6 @@ export const getPunctuallityAnalysis = (fines: Event[]): number => {
 export const getCollected = (payments: InputPayment) => {
 
 }
+
+
+

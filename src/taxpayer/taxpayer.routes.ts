@@ -162,10 +162,30 @@ taxpayerRouter.get('/event/:id/:type?',
 
 
             const events = await TaxpayerServices.getEventsbyTaxpayer(id, type)
-            console.log("EVENTS: " + events)
+            console.log("EVENTS: " + JSON.stringify(events))
             return res.status(200).json(events)
         } catch (error: any) {
             return res.status(500).json(error.message)
+        }
+    }
+)
+
+taxpayerRouter.get('/data/:id',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        try {
+
+            const id: string = (req.params.id);
+
+            const data = await TaxpayerServices.getTaxpayerData(id)
+
+            return res.status(200).json(data);
+
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json("Ha ocurrido un error.")
         }
     }
 )
@@ -361,4 +381,6 @@ taxpayerRouter.delete('/payment/:id',
         }
     }
 );
+
+
 

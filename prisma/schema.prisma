@@ -9,22 +9,20 @@ datasource db {
 }
 
 model user {
-    id         String       @id @default(uuid())
+    id         String     @id @default(uuid())
     name       String
     role       user_roles
-    personId   Int          @unique(map: "usuario_cedula_key")
+    personId   Int        @unique(map: "usuario_cedula_key")
     password   String
-    status     Boolean      @default(true)
+    status     Boolean    @default(true)
     taxpayer   taxpayer[]
-    errors     errors[]     @relation("UserErrors")
-    updated_at DateTime     @default(now()) @updatedAt
+    errors     errors[]   @relation("UserErrors")
+    updated_at DateTime   @default(now()) @updatedAt
 
+    groupId String?
+    group   FiscalGroup? @relation("GroupMembers", fields: [groupId], references: [id])
 
-
-    groupId   String? 
-    group     FiscalGroup? @relation("GroupMembers", fields: [groupId], references: [id])
-
-    coordinatedGroup   FiscalGroup? @relation("GroupCoordinator")
+    coordinatedGroup FiscalGroup? @relation("GroupCoordinator")
 }
 
 model FiscalGroup {
@@ -56,6 +54,9 @@ model event {
 
     @@index([taxpayerId], map: "evento_contribuyenteId_fkey")
     @@index([fineEventId], map: "evento_fineEventId_fkey") // Index to speed up queries based on fineEventId
+    @@index([type], map: "evento_type_idx") // Index for filtering by type (e.g., "FINE")
+    @@index([debt], map: "evento_debt_idx") // Index for filtering by debt (e.g., `debt == 0`)
+    @@index([date, type], map: "evento_date_type_idx") // Composite index for filtering by both `date` and `type`
 }
 
 model payment {
@@ -70,6 +71,7 @@ model payment {
     updated_at DateTime @default(now()) @updatedAt
 
     @@index([taxpayerId], map: "pago_contribuyenteId_fkey")
+    @@index([date], map: "pago_date_idx") // Index for filtering by `date` ranges
 }
 
 model taxpayer {
@@ -78,7 +80,7 @@ model taxpayer {
     address            String                 @default("Caracas")
     process            taxpayer_process       @default(NA)
     name               String
-    rif                String                 @unique 
+    rif                String                 @unique
     contract_type      taxpayer_contract_type @default(ORDINARY)
     status             Boolean                @default(true)
     officerId          String?
@@ -124,6 +126,15 @@ model ErrorImage {
     error   errors @relation(fields: [errorId], references: [id])
 }
 
+model GlobalStatistics {
+    id        String @id @default(uuid())
+    month     String
+    year      Int
+    collected BigInt
+
+    @@unique([month, year], name: "month_year")
+}
+
 enum taxpayer_process {
     FP
     AF
@@ -155,7 +166,7 @@ enum app_error {
 }
 
 enum user_roles {
-    FISCAL 
-    ADMIN 
+    FISCAL
+    ADMIN
     COORDINATOR
 }
