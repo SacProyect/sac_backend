@@ -21,7 +21,7 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
                 status: true
             }
         });
-        
+
         if (!user) {
             throw new Error('Usuario no encontrado');
         }
@@ -98,6 +98,41 @@ export const getAllUsers = async (): Promise<User[] | Error> => {
         return users
     } catch (error) {
         throw error;
+    }
+}
+
+export const getUser = async (id: string) => {
+
+    try {
+        const user = await db.user.findUnique({
+            where: { id: id },
+            include: {
+                coordinatedGroup: true,
+                // only include taxpayer for ADMIN:
+                taxpayer: true,
+            },
+        });
+
+        if (!user) {
+            return null;
+        }
+
+        if (user.role == "ADMIN") {
+            user.taxpayer = await db.taxpayer.findMany({ where: { status: true } })
+        }
+
+        // 3) remove password before sending back
+        (user as any).password = "";
+
+        // 4) issue a fresh token (you can tweak expiry here)
+        const token = generateAcessToken(user);
+
+        // 5) respond just like your login endpoint
+        return { user, token };
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("Error getting the updated user with the new token.")
     }
 }
 
