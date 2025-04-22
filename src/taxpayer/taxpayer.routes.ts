@@ -76,14 +76,14 @@ taxpayerRouter.post('/',
         }
         next(); // Proceed to multer if validation passes
     },
-    upload.array("pdfs", 20), // Apply multer only if validation is successful
+    // upload.array("pdfs", 20), // Apply multer only if validation is successful
 
     async (req: Request, res: Response) => {
         try {
             const { providenceNum, process, name, rif, contract_type, officerId } = req.body;
-            const pdfs = (req.files as Express.Multer.File[])?.map((file) => ({
-                pdf_url: `/uploads/${file.filename}`,
-            })) || [];
+            // const pdfs = (req.files as Express.Multer.File[])?.map((file) => ({
+            //     pdf_url: `/uploads/${file.filename}`,
+            // })) || [];
 
             const intProvidenceNum = BigInt(providenceNum);
 
@@ -94,7 +94,7 @@ taxpayerRouter.post('/',
                 rif,
                 contract_type,
                 officerId,
-                pdfs
+                // pdfs
             });
 
             return res.status(200).json(newTaxpayer);
@@ -102,13 +102,13 @@ taxpayerRouter.post('/',
             console.error(error);
 
             // **Delete uploaded files in case of an error**
-            if (req.files) {
-                (req.files as Express.Multer.File[]).forEach((file) => {
-                    fs.unlink(file.path, (err) => {
-                        if (err) console.error("Failed to delete file:", file.path, err);
-                    });
-                });
-            }
+            // if (req.files) {
+            //     (req.files as Express.Multer.File[]).forEach((file) => {
+            //         fs.unlink(file.path, (err) => {
+            //             if (err) console.error("Failed to delete file:", file.path, err);
+            //         });
+            //     });
+            // }
 
             return res.status(500).json({ success: false, message: error.message });
         }

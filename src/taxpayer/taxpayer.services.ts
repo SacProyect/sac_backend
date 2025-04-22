@@ -42,12 +42,12 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
         })
 
         // Insert PDFs linked to this taxpayer
-        await db.investigationPdf.createMany({
-            data: input.pdfs.map((pdf) => ({
-                pdf_url: pdf.pdf_url,
-                taxpayerId: taxpayer.id,
-            })),
-        });
+        // await db.investigationPdf.createMany({
+        //     data: input.pdfs.map((pdf) => ({
+        //         pdf_url: pdf.pdf_url,
+        //         taxpayerId: taxpayer.id,
+        //     })),
+        // });
 
         return taxpayer;
 
