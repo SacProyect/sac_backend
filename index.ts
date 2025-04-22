@@ -36,7 +36,19 @@ const corsOptions = {
 };
 
 
-app.use(cors(corsOptions));
+app.use(cors({
+    origin: (origin, cb) => {
+        if (
+            !origin ||                          
+            allowedOrigins.includes(origin) ||   
+            /\.ngrok-free\.app$/.test(origin)    
+        ) {
+            cb(null, true);
+        } else {
+            cb(new Error("Not allowed by CORS"));
+        }
+    }
+}));
 app.use("/user", userRouter)
 app.use("/taxpayer", taxpayerRouter)
 app.use("/reports", reportRouter)
