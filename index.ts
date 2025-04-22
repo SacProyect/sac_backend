@@ -20,7 +20,8 @@ app.use(express.urlencoded({ extended: true }))
 const allowedOrigins = [
     "http://localhost:5173",
     "http://172.16.0.145:5173",
-    "https://sac-mu.vercel.app"
+    "https://sac-mu.vercel.app",
+    "https://sacfrontend-esfdn6llv-sacs-projects-6fc34506.vercel.app"
 ];
 
 const corsOptions = {
