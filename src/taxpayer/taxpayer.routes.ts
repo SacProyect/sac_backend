@@ -76,7 +76,7 @@ taxpayerRouter.post('/',
         }
         next(); // Proceed to multer if validation passes
     },
-    // upload.array("pdfs", 20), // Apply multer only if validation is successful
+    upload.array("pdfs", 20), // Apply multer only if validation is successful
 
     async (req: Request, res: Response) => {
         try {
@@ -85,8 +85,8 @@ taxpayerRouter.post('/',
             //     pdf_url: `/uploads/${file.filename}`,
             // })) || [];
 
-            // const intProvidenceNum = BigInt(providenceNum);
-            const intProvidenceNum = BigInt(789854587489);
+            const intProvidenceNum = BigInt(providenceNum);
+            // const intProvidenceNum = BigInt(789854587489);
 
             const newTaxpayer = await TaxpayerServices.createTaxpayer({
                 providenceNum: intProvidenceNum,
