@@ -4,21 +4,28 @@ import * as TaxpayerServices from "./taxpayer.services"
 import { body, validationResult } from 'express-validator';
 import { EventType } from "./taxpayer.utils";
 import { authenticateToken } from "../users/user.utils";
-import multer, { StorageEngine } from "multer";
-import path from "path";
-import fs from 'fs'
+// import multer, { StorageEngine } from "multer";
+// import path from "path";
+// import fs from 'fs'
+import multer from "multer";
 
-// Configure Multer storage (saving files to 'uploads/' directory)
-const storage: StorageEngine = multer.diskStorage({
-    destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
-        cb(null, path.resolve(__dirname, "../../uploads"));  // Define where the files should be stored
-    },
-    filename: (req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
-        cb(null, `${Date.now()}-${file.originalname}`); // Unique filename
-    }
-});
+// Multer memory storage — solo para acceder a req.body, sin guardar archivos
+const storage = multer.memoryStorage();
 
 const upload = multer({ storage });
+
+
+// Configure Multer storage (saving files to 'uploads/' directory)
+// const storage: StorageEngine = multer.diskStorage({
+//     destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
+//         cb(null, path.resolve(__dirname, "../../uploads"));  // Define where the files should be stored
+//     },
+//     filename: (req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
+//         cb(null, `${Date.now()}-${file.originalname}`); // Unique filename
+//     }
+// });
+
+// const upload = multer({ storage });
 
 
 
