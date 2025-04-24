@@ -70,10 +70,11 @@ taxpayerRouter.post('/',
         .withMessage("RIF must start with J-, V-, E-, P- or G- followed by 9 digits").isString(),
     body("contract_type").isString(),
     body("officerId").isString(),
+    body("address").isString().notEmpty(),
 
     async (req: Request, res: Response, next) => {
 
-        // console.log("REQUEST BODY: ", JSON.stringify(req.body, null, 2)); // The `null, 2` is for pretty-printing the JSON
+        console.log("REQUEST BODY: ", JSON.stringify(req.body, null, 2)); // The `null, 2` is for pretty-printing the JSON
 
         // Validate input first
         const errors = validationResult(req.body);
@@ -87,7 +88,7 @@ taxpayerRouter.post('/',
 
     async (req: Request, res: Response) => {
         try {
-            const { providenceNum, process, name, rif, contract_type, officerId } = req.body;
+            const { providenceNum, process, name, rif, contract_type, officerId, address } = req.body;
             // const pdfs = (req.files as Express.Multer.File[])?.map((file) => ({
             //     pdf_url: `/uploads/${file.filename}`,
             // })) || [];
@@ -102,6 +103,7 @@ taxpayerRouter.post('/',
                 rif,
                 contract_type,
                 officerId,
+                address,
                 // pdfs
             });
 

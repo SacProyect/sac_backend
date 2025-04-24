@@ -19,6 +19,7 @@ export type NewTaxpayer = {
     rif: string
     contract_type: taxpayer_contract_type
     officerId: string;
+    address: string;
     pdfs? : InvestigationPdf[]
 }
 
