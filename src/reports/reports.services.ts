@@ -6,6 +6,7 @@ import { group } from "console"
 import { taxpayerRouter } from "../taxpayer/taxpayer.routes"
 import { Decimal } from "@prisma/client/runtime/library"
 import { format } from "date-fns";
+import { AuthRequest, AuthUser, User } from "../users/user.utils"
 
 interface InputFiscalGroups {
     role: string,
@@ -199,30 +200,57 @@ export const createError = async (input: InputError): Promise<InputError | Error
 
 }
 
-export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> => {
+export const getPendingPayments = async (
+    user: { id: string; role: string },
+    taxpayerId?: string
+): Promise<Event[]> => {
+    const userId = user.id;
+    const userRole = user.role;
+
     try {
-        const where: any = {
+        // Base filter: only events with debt > 0 and taxpayer active, and not a WARNING
+        const baseWhere: any = {
             debt: {
                 gt: 0,
             },
             taxpayer: {
-                status: true
+                status: true,
             },
             NOT: {
-                type: event_type.WARNING
-            }
-        }
+                type: event_type.WARNING,
+            },
+        };
 
-        // Ensure taxpayerId filtering works properly
+        // If a specific taxpayerId is provided, override taxpayer filtering
         if (taxpayerId) {
-            where.taxpayer = {
-                ...where.taxpayer, // Preserve existing conditions
-                id: taxpayerId, // Ensure only events for this taxpayer are retrieved
-            };
+            baseWhere.taxpayer.id = taxpayerId;
+        } else {
+            // Role-specific filtering
+            if (userRole === "FISCAL") {
+                // Only events from taxpayers assigned to this fiscal officer
+                baseWhere.taxpayer.officerId = userId;
+            }
+
+            if (userRole === "COORDINATOR") {
+                // Get IDs of users inside the coordinated group
+                const group = await db.fiscalGroup.findUnique({
+                    where: { coordinatorId: userId },
+                    include: {
+                        members: true,
+                    },
+                });
+
+                const memberIds = group?.members.map((m) => m.id) || [];
+
+                // Only events where taxpayer.officerId is in list of group members
+                baseWhere.taxpayer.officerId = { in: memberIds };
+            }
+
+            // ADMIN does not need extra filtering — they see all events with debt > 0
         }
 
         const pendingPayments = await db.event.findMany({
-            where,
+            where: baseWhere,
             select: {
                 id: true,
                 date: true,
@@ -235,30 +263,28 @@ export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> 
                     select: {
                         name: true,
                         rif: true,
-                    }
-                }
+                    },
+                },
+            },
+        });
 
-            }
-        })
+        const mappedResponse: Event[] = pendingPayments.map((event) => ({
+            id: event.id,
+            date: event.date,
+            type: event.type ?? "payment",
+            amount: event.amount,
+            taxpayerId: event.taxpayerId,
+            taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`,
+            debt: event.debt,
+            expires_at: event.expires_at,
+        }));
 
-        const mappedResponse: Event[] = pendingPayments.map((event: any) => {
-            return {
-                id: event.id,
-                date: event.date,
-                type: event.type ? event.type : "payment",
-                amount: event.amount,
-                taxpayerId: event.taxpayerId,
-                taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`,
-                debt: event.debt,
-                expires_at: event.expires_at,
-            }
-        })
-        console.log(mappedResponse)
-        return mappedResponse
+        return mappedResponse;
     } catch (error) {
         throw error;
     }
-}
+};
+
 
 export const getFiscalGroups = async (data: InputFiscalGroups) => {
 

@@ -11,6 +11,11 @@ export interface AuthRequest extends Request {
     user?: { id: string; role: string }; // Store user ID and role
 }
 
+export type AuthUser = {
+    id: string;
+    role: string;
+};
+
 export type User = {
     id: string;
     personId: number;
