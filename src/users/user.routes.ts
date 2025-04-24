@@ -10,8 +10,14 @@ export const userRouter = express.Router();
 userRouter.get('/all',
     authenticateToken,
     async (req: Request, res: Response) => {
+
+        const {user} = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+
+
         try {
-            const users = await UserService.getAllUsers();
+            const users = await UserService.getAllUsers(user);
             return res.status(200).json(users)
         } catch (error: any) {
             return res.status(500).json(error.message)

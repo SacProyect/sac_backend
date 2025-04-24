@@ -14,7 +14,15 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
         const user = await db.user.findUniqueOrThrow({
             include: {
                 taxpayer: true,
-                coordinatedGroup: true,
+                coordinatedGroup: {
+                    include: {
+                        members: {
+                            include: {
+                                taxpayer: true,
+                            }
+                        },
+                    }
+                },
             },
             where: {
                 personId: personId,
@@ -92,9 +100,31 @@ export const updateuser = async (userId: string, data: Partial<NewUserInput>): P
     }
 }
 
-export const getAllUsers = async (): Promise<User[] | Error> => {
+export const getAllUsers = async (user: { id: string, role: string }): Promise<User[] | Error> => {
     try {
-        const users = await db.user.findMany();
+
+        let users: User[] = [];
+
+        if (user.role == "ADMIN") {
+            users = await db.user.findMany();
+        } else if (user.role == "COORDINATOR") {
+            const coordinator = await db.user.findUnique({
+                where: {
+                    id: user.id
+                },
+                include: {
+                    coordinatedGroup: {
+                        include: {
+                            members: true,
+                        }
+                    }
+                }
+            })
+            if (coordinator?.coordinatedGroup?.members) {
+                users = coordinator.coordinatedGroup.members;
+            }
+        }
+
         return users
     } catch (error) {
         throw error;
@@ -102,6 +132,7 @@ export const getAllUsers = async (): Promise<User[] | Error> => {
 }
 
 export const getUser = async (id: string) => {
+
 
     try {
         const user = await db.user.findUnique({
