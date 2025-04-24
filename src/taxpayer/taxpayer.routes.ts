@@ -39,7 +39,7 @@ taxpayerRouter.get('/:id',
             const taxpayer = await TaxpayerServices.getTaxpayerById(id);
 
 
-            console.log('ID:', id);
+            // console.log('ID:', id);
 
             return res.status(200).json(taxpayer)
         } catch (error: any) {
@@ -73,12 +73,12 @@ taxpayerRouter.post('/',
 
     async (req: Request, res: Response, next) => {
 
-        console.log("REQUEST BODY: ", JSON.stringify(req.body, null, 2)); // The `null, 2` is for pretty-printing the JSON
+        // console.log("REQUEST BODY: ", JSON.stringify(req.body, null, 2)); // The `null, 2` is for pretty-printing the JSON
 
         // Validate input first
         const errors = validationResult(req.body);
         if (!errors.isEmpty()) {
-            console.log(errors.array())
+            console.error(errors.array())
             return res.status(400).json({ errors: errors.array() });
         }
         next(); // Proceed to multer if validation passes
@@ -170,7 +170,7 @@ taxpayerRouter.get('/event/:id/:type?',
 
 
             const events = await TaxpayerServices.getEventsbyTaxpayer(id, type)
-            console.log("EVENTS: " + JSON.stringify(events))
+            // console.log("EVENTS: " + JSON.stringify(events))
             return res.status(200).json(events)
         } catch (error: any) {
             return res.status(500).json(error.message)
@@ -218,7 +218,7 @@ taxpayerRouter.post('/fine',
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            console.log(errors.array())
+            console.error(errors.array())
             return res.status(400).json({ errors: errors.array() });
         }
         try {

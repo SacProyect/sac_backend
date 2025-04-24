@@ -13,7 +13,7 @@ import { BadRequestError } from "../utils/errors/BadRequestError";
 export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Error> => {
     try {
 
-        console.log("Received input:", JSON.stringify(input, null, 2));
+        // console.log("Received input:", JSON.stringify(input, null, 2));
 
 
         const existingTaxpayer = await db.taxpayer.findUnique({
@@ -66,7 +66,7 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
 export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
     try {
 
-        console.log("INPUT: " + JSON.stringify(input))
+        // console.log("INPUT: " + JSON.stringify(input))
 
         if (input.type == "PAYMENT_COMPROMISE") {
             const verifyEvent = await db.event.findUnique({

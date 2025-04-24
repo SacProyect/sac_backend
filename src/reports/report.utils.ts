@@ -65,7 +65,7 @@ export const getComplianceRate = (fines: Event[], payments: Payment[]): Decimal 
 
     // console.log("PAID FINES: "  + JSON.stringify(finesPaid))
 
-    console.log("TOTALFINES/FINESPAID: " + totalFines + "/" + finesPaid.length)
+    // console.log("TOTALFINES/FINESPAID: " + totalFines + "/" + finesPaid.length)
 
 
     // const totalPayments = payments.length;

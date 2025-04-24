@@ -128,8 +128,13 @@ reportRouter.get('/pending/:id?',
     authenticateToken,
     async (req: Request, res: Response) => {
         try {
+            const {user} = req as AuthRequest
+
             const id: string = req.params.id;
-            const events = await ReportService.getPendingPayments(id)
+            if (!user) {
+                return res.status(401).json("Unauthorized access");
+            }
+            const events = await ReportService.getPendingPayments(user, id);
             return res.status(200).json(events)
         } catch (error: any) {
             return res.status(500).json(error.message)
@@ -162,7 +167,7 @@ reportRouter.get('/fiscal-groups',
 
             return res.status(200).json(getGroups);
         } catch (e) {
-            console.log(e)
+            console.error(e)
             return res.status(500).json("Error returning groups")
         }
 

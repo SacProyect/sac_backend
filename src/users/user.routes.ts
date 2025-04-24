@@ -37,7 +37,7 @@ userRouter.post('/',
 
             return res.status(200).json(data)
         } catch (error: any) {
-            console.log(error)
+            console.error(error)
             return res.status(500).json(error.message)
         }
     }
@@ -70,7 +70,6 @@ userRouter.get("/me",
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
 
         try {
 
