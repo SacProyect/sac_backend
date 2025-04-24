@@ -76,6 +76,7 @@ reportRouter.get('/payments/:id?',
 
 reportRouter.post('/errors',
     authenticateToken,
+    upload.array("images", 10), // max of 10 images
     body("title").isString().optional(),
     body("description").isString().notEmpty(),
     body("type").isString(),
@@ -86,7 +87,6 @@ reportRouter.post('/errors',
 
     async (req: Request, res: Response) => {
 
-
         const errors = validationResult(req);
 
         if (!errors.isEmpty()) {
@@ -96,6 +96,7 @@ reportRouter.post('/errors',
 
         try {
             const { title, description, type, userId } = req.body
+
 
             // Extract uploaded images
             const images = (req.files as Express.Multer.File[])?.map((file) => ({
@@ -113,7 +114,7 @@ reportRouter.post('/errors',
             });
 
 
-            upload.array("images", 10) // max of 10 images
+            
 
             return res.status(200).json(err);
 
@@ -128,7 +129,7 @@ reportRouter.get('/pending/:id?',
     authenticateToken,
     async (req: Request, res: Response) => {
         try {
-            const {user} = req as AuthRequest
+            const { user } = req as AuthRequest
 
             const id: string = req.params.id;
             if (!user) {
@@ -246,8 +247,8 @@ reportRouter.get("/global-kpi",
         if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
 
 
-        try { 
-            
+        try {
+
             const response = await ReportService.getGlobalKPI();
 
             return res.status(200).json(response);

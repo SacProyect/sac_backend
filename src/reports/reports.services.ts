@@ -176,6 +176,7 @@ export const getPaymentHistory = async (taxpayerId?: string) => {
  */
 export const createError = async (input: InputError): Promise<InputError | Error> => {
 
+
     try {
         const createdError = db.errors.create({
             data: {
@@ -195,7 +196,7 @@ export const createError = async (input: InputError): Promise<InputError | Error
         return createdError;
     } catch (e) {
         console.error("Error during creation: " + e)
-        throw e
+        throw new Error("Error creating the report")
     }
 
 }
