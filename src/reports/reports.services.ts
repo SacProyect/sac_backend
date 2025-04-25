@@ -527,8 +527,8 @@ export async function getGlobalTaxpayersPerformance() {
             ; (await events).forEach((event) => {
                 if (event.type == "FINE") fines += 1;
                 if (event.type == "PAYMENT_COMPROMISE") compromises += 1;
-                if (event.debt.equals(0)) paid += 1;
-                if (event.debt.greaterThan(0)) unpaid += 1;
+                if (event.type === "FINE" && event.debt.equals(0)) paid += 1;
+                if (event.type === "FINE" && event.debt.greaterThan(0)) unpaid += 1;
             })
 
         return {
@@ -617,7 +617,6 @@ export async function getGlobalKPI() {
         let totalDelayDays = 0;
         let delayFinesCount = 0;
 
-
         const today = new Date();
         const currentMonth = today.getMonth();
         const currentYear = today.getFullYear();
@@ -629,16 +628,17 @@ export async function getGlobalKPI() {
         let thisMonthFines = 0;
         let thisMonthPaidFines = 0;
 
-        performanceKpi.forEach((taxpayer) => {
+        performanceKpi.forEach((taxpayer, taxpayerIndex) => {
             let finesPaid = 0;
 
-            taxpayer.event.forEach((event) => {
+            taxpayer.event.forEach((event, eventIndex) => {
                 if (event.type === "FINE") {
                     totalFines++;
 
-                    // ← patch here: sum the debt, not the (zero) amount
-                    const amount = event.debt.toNumber();
+                    const amount = event.amount.toNumber();
                     totalFinesAmount += amount;
+
+                    console.log(`🧾 [Taxpayer #${taxpayer.id}] Event #${event.id} | Fine amount: ${amount} | Total fines so far: ${totalFines} | Total fines amount: ${totalFinesAmount}`);
 
                     const fineDate = new Date(event.date);
                     const isPaid = event.debt.equals(0);
@@ -689,6 +689,9 @@ export async function getGlobalKPI() {
             }
         });
 
+        console.log("📊 Total fines:", totalFines);
+        console.log("💰 Total fines amount:", totalFinesAmount);
+
         const averageComplianceRate = taxpayerCount
             ? totalComplianceRate / taxpayerCount
             : 0;
@@ -698,6 +701,8 @@ export async function getGlobalKPI() {
         const averageDelay = delayFinesCount
             ? totalDelayDays / delayFinesCount
             : 0;
+
+        console.log("💡 Average fines amount:", avgFinesAmount);
 
         const taxpayersWithFines = performanceKpi.filter((t) =>
             t.event.some((e) => e.type === "FINE")
@@ -717,17 +722,13 @@ export async function getGlobalKPI() {
             ? (thisMonthPaidFines / thisMonthFines) * 100
             : 0;
         const monthlyPerformanceChange = lastMonthCompliance
-            ? ((thisMonthCompliance - lastMonthCompliance) / lastMonthCompliance) *
-            100
+            ? ((thisMonthCompliance - lastMonthCompliance) / lastMonthCompliance) * 100
             : 0;
 
         const averageFinesPerTaxpayer = taxpayersWithFines.length
             ? (totalFines / taxpayersWithFines.length)
             : 0;
 
-
-
-        // Round all stats to two decimals
         const round = (val: number) => parseFloat(val.toFixed(2));
 
         return [
@@ -743,6 +744,7 @@ export async function getGlobalKPI() {
         throw new Error("Error al realizar la solicitud.");
     }
 }
+
 
 
 
