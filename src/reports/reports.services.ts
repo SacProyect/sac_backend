@@ -638,7 +638,6 @@ export async function getGlobalKPI() {
                     const amount = event.amount.toNumber();
                     totalFinesAmount += amount;
 
-                    console.log(`🧾 [Taxpayer #${taxpayer.id}] Event #${event.id} | Fine amount: ${amount} | Total fines so far: ${totalFines} | Total fines amount: ${totalFinesAmount}`);
 
                     const fineDate = new Date(event.date);
                     const isPaid = event.debt.equals(0);
@@ -689,8 +688,6 @@ export async function getGlobalKPI() {
             }
         });
 
-        console.log("📊 Total fines:", totalFines);
-        console.log("💰 Total fines amount:", totalFinesAmount);
 
         const averageComplianceRate = taxpayerCount
             ? totalComplianceRate / taxpayerCount
@@ -702,7 +699,6 @@ export async function getGlobalKPI() {
             ? totalDelayDays / delayFinesCount
             : 0;
 
-        console.log("💡 Average fines amount:", avgFinesAmount);
 
         const taxpayersWithFines = performanceKpi.filter((t) =>
             t.event.some((e) => e.type === "FINE")

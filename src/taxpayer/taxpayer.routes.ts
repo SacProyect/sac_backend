@@ -74,7 +74,7 @@ taxpayerRouter.post('/',
 
     async (req: Request, res: Response, next) => {
 
-        console.log("REQUEST BODY: ", JSON.stringify(req.body, null, 2)); // The `null, 2` is for pretty-printing the JSON
+        // console.log("REQUEST BODY: ", JSON.stringify(req.body, null, 2)); // The `null, 2` is for pretty-printing the JSON
 
         // Validate input first
         const errors = validationResult(req.body);
