@@ -74,8 +74,6 @@ taxpayerRouter.post('/',
 
     async (req: Request, res: Response, next) => {
 
-        // console.log("REQUEST BODY: ", JSON.stringify(req.body, null, 2)); // The `null, 2` is for pretty-printing the JSON
-
         // Validate input first
         const errors = validationResult(req.body);
         if (!errors.isEmpty()) {
@@ -94,7 +92,6 @@ taxpayerRouter.post('/',
             // })) || [];
 
             const intProvidenceNum = BigInt(providenceNum);
-            // const intProvidenceNum = BigInt(789854587489);
 
             const newTaxpayer = await TaxpayerServices.createTaxpayer({
                 providenceNum: intProvidenceNum,

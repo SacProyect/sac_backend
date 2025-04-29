@@ -21,7 +21,8 @@ const allowedOrigins = [
     "http://localhost:5173",
     "http://172.16.0.145:5173",
     "https://sac-mu.vercel.app",
-    "https://sacfrontend-esfdn6llv-sacs-projects-6fc34506.vercel.app"
+    "https://sacfrontend-esfdn6llv-sacs-projects-6fc34506.vercel.app",
+    "https://main.d2inp34pig64ff.amplifyapp.com"
 ];
 
 const corsOptions = {
@@ -40,9 +41,9 @@ const corsOptions = {
 app.use(cors({
     origin: (origin, cb) => {
         if (
-            !origin ||                          
-            allowedOrigins.includes(origin) ||   
-            /\.ngrok-free\.app$/.test(origin)    
+            !origin ||
+            allowedOrigins.includes(origin) ||
+            /\.ngrok-free\.app$/.test(origin)
         ) {
             cb(null, true);
         } else {
