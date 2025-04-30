@@ -41,6 +41,6 @@
     "@types/nodemon": "^1.19.6",
     "prisma": "^6.6.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.3"
+    "typescript": "^5.8.3"
   }
 }
