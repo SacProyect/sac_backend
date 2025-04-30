@@ -22,7 +22,8 @@ const allowedOrigins = [
     "http://172.16.0.145:5173",
     "https://sac-mu.vercel.app",
     "https://sacfrontend-esfdn6llv-sacs-projects-6fc34506.vercel.app",
-    "https://main.d2inp34pig64ff.amplifyapp.com"
+    "https://main.d2inp34pig64ff.amplifyapp.com",
+    "https://sac-app.com"
 ];
 
 const corsOptions = {
