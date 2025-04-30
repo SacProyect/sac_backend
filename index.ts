@@ -37,6 +37,10 @@ const corsOptions = {
     allowedHeaders: "Content-Type, Authorization"
 };
 
+app.get("/", (req, res) => {
+    res.send("API is working!");
+});
+
 
 app.use(cors({
     origin: (origin, cb) => {
