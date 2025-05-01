@@ -25,10 +25,11 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
         if (existingTaxpayer) throw new Error("El rif ya fue registrado, por favor, corrija el número de rif.")
 
         // Ensure at least one PDF is provided
-        // if (!input.pdfs || input.pdfs.length === 0) {
-        //     throw new Error("At least one PDF must be uploaded.");
-        // }
+        if (!input.pdfs || input.pdfs.length === 0) {
+            throw new Error("At least one PDF must be uploaded.");
+        }
 
+        const emitionDate = new Date(input.emition_date);
 
         const taxpayer = await db.taxpayer.create({
             data: {
@@ -38,17 +39,19 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                 contract_type: input.contract_type,
                 officerId: input.officerId,
                 rif: input.rif,
-                address: input.address
+                address: input.address,
+                description: input.description,
+                emition_date: emitionDate.toISOString(),
             }
         })
 
         // Insert PDFs linked to this taxpayer
-        // await db.investigationPdf.createMany({
-        //     data: input.pdfs.map((pdf) => ({
-        //         pdf_url: pdf.pdf_url,
-        //         taxpayerId: taxpayer.id,
-        //     })),
-        // });
+        await db.investigationPdf.createMany({
+            data: input.pdfs.map((pdf) => ({
+                pdf_url: pdf.pdf_url,
+                taxpayerId: taxpayer.id,
+            })),
+        });
 
         return taxpayer;
 
