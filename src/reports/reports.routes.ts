@@ -6,22 +6,97 @@ import { body, validationResult } from 'express-validator';
 import { createError } from "./reports.services";
 import multer, { StorageEngine } from "multer";
 import path from "path";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { createLocalUpload } from "../utils/multer.local";
+import fs from 'fs';
 
 
+const s3 = new S3Client({ region: "us-east-2" }); // Sustituye "your-region" con la región de tu bucket S3
 export const reportRouter = Router();
 
 
-// Configure Multer storage (saving images to 'uploads/' directory)
-const storage: StorageEngine = multer.diskStorage({
-    destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
-        cb(null, path.resolve(__dirname, "../../uploads"));  // Define where the files should be stored
-    },
-    filename: (req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
-        cb(null, `${Date.now()}-${file.originalname}`); // Unique filename
-    }
-});
 
-const upload = multer({ storage });
+const uploadLocal = createLocalUpload([
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/jpg"
+]);
+
+
+
+
+reportRouter.post('/errors',
+    authenticateToken,
+    uploadLocal.array("images", 10), // Se permite subir hasta 10 imágenes
+    body("title").isString().optional(),
+    body("description").isString().notEmpty(),
+    body("type").isString(),
+    body("img_src").isString().optional(),
+    body("img_alt").isString().optional(),
+    body("userId").isString().notEmpty(),
+
+    async (req: Request, res: Response) => {
+
+        const errors = validationResult(req);
+
+        if (!errors.isEmpty()) {
+            // Si hay errores de validación, eliminar archivos locales y devolver el error
+            for (const file of req.files as Express.Multer.File[]) {
+                await fs.promises.unlink(file.path); // Eliminar archivo local
+            }
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        try {
+            const { title, description, type, userId } = req.body;
+
+            // Subir archivos a S3 y obtener las URLs públicas
+            const images = (req.files as Express.Multer.File[])?.map(async (file) => {
+                const fileStream = await fs.promises.readFile(file.path);
+                const s3Key = `errors/${Date.now()}-${file.originalname}`;
+
+                // Subir archivo a S3
+                await s3.send(new PutObjectCommand({
+                    Bucket: "sacbucketgeneral", // Nombre de tu bucket
+                    Key: s3Key,
+                    Body: fileStream,
+                    ContentType: file.mimetype,
+                }));
+
+                // Generar URL pública del archivo en S3
+                const pdfUrl = `https://s3.us-east-2.amazonaws.com/sacbucketgeneral/${s3Key}`;
+
+                // Eliminar archivo local después de la subida a S3
+                await fs.promises.unlink(file.path);
+
+                return {
+                    img_src: pdfUrl, // URL pública de la imagen
+                    img_alt: file.originalname
+                };
+            });
+
+            // Esperar a que todas las imágenes se suban
+            const uploadedImages = await Promise.all(images);
+
+            // Llamar a la función `createError` con los datos de las imágenes
+            const err = await ReportService.createError({
+                title,
+                description,
+                type,
+                userId,
+                images: uploadedImages,
+            });
+
+            return res.status(200).json(err);
+
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json(e);
+        }
+    }
+);
+
 
 
 // reportRouter.get('/kpi',
@@ -74,56 +149,7 @@ reportRouter.get('/payments/:id?',
 
 
 
-reportRouter.post('/errors',
-    authenticateToken,
-    upload.array("images", 10), // max of 10 images
-    body("title").isString().optional(),
-    body("description").isString().notEmpty(),
-    body("type").isString(),
-    body("img_src").isString().optional(),
-    body("img_alt").isString().optional(),
-    body("userId").isString().notEmpty(),
 
-
-    async (req: Request, res: Response) => {
-
-        const errors = validationResult(req);
-
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
-
-
-        try {
-            const { title, description, type, userId } = req.body
-
-
-            // Extract uploaded images
-            const images = (req.files as Express.Multer.File[])?.map((file) => ({
-                img_src: `/uploads/${file.filename}`, // Store path relative to server
-                img_alt: file.originalname
-            })) || [];
-
-            // Call createError function with the extracted data
-            const err = await ReportService.createError({
-                title,
-                description,
-                type,
-                userId,
-                images
-            });
-
-
-            
-
-            return res.status(200).json(err);
-
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json(e)
-        }
-    }
-)
 
 reportRouter.get('/pending/:id?',
     authenticateToken,

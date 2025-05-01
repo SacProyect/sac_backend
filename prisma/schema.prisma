@@ -81,6 +81,8 @@ model taxpayer {
     process            taxpayer_process       @default(NA)
     name               String
     rif                String                 @unique
+    description        String                 @default("Descripción")
+    emition_date       DateTime               @default(now())
     contract_type      taxpayer_contract_type @default(ORDINARY)
     status             Boolean                @default(true)
     officerId          String?

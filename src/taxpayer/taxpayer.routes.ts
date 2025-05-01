@@ -4,32 +4,93 @@ import * as TaxpayerServices from "./taxpayer.services"
 import { body, validationResult } from 'express-validator';
 import { EventType } from "./taxpayer.utils";
 import { authenticateToken } from "../users/user.utils";
-// import multer, { StorageEngine } from "multer";
-// import path from "path";
-// import fs from 'fs'
-import multer from "multer";
+import multer, { StorageEngine } from "multer";
+import path from "path";
+import fs from 'fs'
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { createLocalUpload } from "../utils/multer.local";
+// import upload from "../utils/multer.s3";
 
-// Multer memory storage — solo para acceder a req.body, sin guardar archivos
-const storage = multer.memoryStorage();
-
-const upload = multer({ storage });
-
-
-// Configure Multer storage (saving files to 'uploads/' directory)
-// const storage: StorageEngine = multer.diskStorage({
-//     destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
-//         cb(null, path.resolve(__dirname, "../../uploads"));  // Define where the files should be stored
-//     },
-//     filename: (req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
-//         cb(null, `${Date.now()}-${file.originalname}`); // Unique filename
-//     }
-// });
-
-// const upload = multer({ storage });
-
-
-
+const s3 = new S3Client({ region: "us-east-2" }); // Replace "your-region" with your AWS region
 export const taxpayerRouter = express.Router();
+
+
+const uploadLocal = createLocalUpload([
+    "application/pdf",
+    "application/msword", // .doc
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+]);
+
+taxpayerRouter.post(
+    '/',
+    authenticateToken,
+    uploadLocal.array("pdfs", 20), // sube solo al disco local
+    body("providenceNum").isNumeric(),
+    body("process").isString(),
+    body("name").isString(),
+    body("rif").matches(/^[JVEPG]\d{9}$/).withMessage("RIF format is invalid"),
+    body("contract_type").isString(),
+    body("officerId").isString(),
+    body("address").notEmpty(),
+    body("description").notEmpty(),
+    body("emition_date").notEmpty().isString(),
+
+    async (req: Request, res: Response) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            // Delete local files if validation fails
+            for (const file of req.files as Express.Multer.File[]) {
+                await fs.promises.unlink(file.path);
+            }
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        try {
+            const s3Files = [];
+
+            for (const file of req.files as Express.Multer.File[]) {
+                const fileStream = await fs.promises.readFile(file.path);
+                const s3Key = `pdfs/${Date.now()}-${file.originalname}`;
+
+                await s3.send(new PutObjectCommand({
+                    Bucket: "sacbucketgeneral",
+                    Key: s3Key,
+                    Body: fileStream,
+                    ContentType: file.mimetype,
+                }));
+
+                // Push the public URL (or generate it based on your bucket setup)
+                s3Files.push({ pdf_url: `https://sacbucketgeneral.s3.amazonaws.com/${s3Key}` });
+
+                // Delete local file after upload
+                await fs.promises.unlink(file.path);
+            }
+
+            const { providenceNum, process, name, rif, contract_type, officerId, address, description, emition_date } = req.body;
+
+            
+
+            const newTaxpayer = await TaxpayerServices.createTaxpayer({
+                providenceNum: BigInt(providenceNum),
+                process,
+                name,
+                rif,
+                contract_type,
+                officerId,
+                description,
+                emition_date,
+                address,
+                pdfs: s3Files,
+            });
+
+            return res.status(200).json(newTaxpayer);
+        } catch (error: any) {
+            console.error(error);
+            return res.status(500).json({ message: "Server error", error: error.message });
+        }
+    }
+);
+
 
 taxpayerRouter.get('/:id',
     authenticateToken,
@@ -61,66 +122,7 @@ taxpayerRouter.get('/all/:id',
     }
 );
 
-taxpayerRouter.post('/',
-    authenticateToken,
-    body("providenceNum").isNumeric(),
-    body("process").isString(),
-    body("name").isString(),
-    body("rif").matches(/^[JVEPG]\d{9}$/)
-        .withMessage("RIF must start with J-, V-, E-, P- or G- followed by 9 digits").isString(),
-    body("contract_type").isString(),
-    body("officerId").isString(),
-    body("address").isString().notEmpty(),
 
-    async (req: Request, res: Response, next) => {
-
-        // Validate input first
-        const errors = validationResult(req.body);
-        if (!errors.isEmpty()) {
-            console.error(errors.array())
-            return res.status(400).json({ errors: errors.array() });
-        }
-        next(); // Proceed to multer if validation passes
-    },
-    upload.array("pdfs", 20), // Apply multer only if validation is successful
-
-    async (req: Request, res: Response) => {
-        try {
-            const { providenceNum, process, name, rif, contract_type, officerId, address } = req.body;
-            // const pdfs = (req.files as Express.Multer.File[])?.map((file) => ({
-            //     pdf_url: `/uploads/${file.filename}`,
-            // })) || [];
-
-            const intProvidenceNum = BigInt(providenceNum);
-
-            const newTaxpayer = await TaxpayerServices.createTaxpayer({
-                providenceNum: intProvidenceNum,
-                process,
-                name,
-                rif,
-                contract_type,
-                officerId,
-                address,
-                // pdfs
-            });
-
-            return res.status(200).json(newTaxpayer);
-        } catch (error: any) {
-            console.error(error);
-
-            // **Delete uploaded files in case of an error**
-            // if (req.files) {
-            //     (req.files as Express.Multer.File[]).forEach((file) => {
-            //         fs.unlink(file.path, (err) => {
-            //             if (err) console.error("Failed to delete file:", file.path, err);
-            //         });
-            //     });
-            // }
-
-            return res.status(500).json({ success: false, message: error.message });
-        }
-    }
-);
 
 taxpayerRouter.put("/:id",
     authenticateToken,

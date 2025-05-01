@@ -13,11 +13,13 @@ export type Taxpayer = {
 }
 
 export type NewTaxpayer = {
-    providenceNum: bigint
-    process: taxpayer_process
-    name: string
-    rif: string
-    contract_type: taxpayer_contract_type
+    providenceNum: bigint;
+    process: taxpayer_process;
+    name: string;
+    rif: string;
+    description: string;
+    emition_date: Date;
+    contract_type: taxpayer_contract_type;
     officerId: string;
     address: string;
     pdfs? : InvestigationPdf[]
