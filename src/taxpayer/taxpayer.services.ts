@@ -171,6 +171,7 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
                     type: true,
                     taxpayerId: true,
                     debt: true,
+                    description: true,
                     taxpayer: {
                         select: {
                             name: true,
@@ -207,6 +208,7 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
                     amount: true,
                     type: true,
                     taxpayerId: true,
+                    description: true,
                     debt: true,
                     taxpayer: {
                         select: {
@@ -246,6 +248,7 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
                 type: event.type ? event.type : "payment",
                 amount: event.amount,
                 debt: event.debt,
+                description: event.description,
                 taxpayerId: event.taxpayerId,
                 taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`
             }
