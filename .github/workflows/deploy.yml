@@ -27,6 +27,12 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script: |
+            which npm
+            which pm2
+            node --version
+            npm --version
+            pm2 --version
+
             cd /home/ubuntu/project/sac_backend
             git pull origin master
             npm install
