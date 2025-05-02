@@ -214,6 +214,7 @@ taxpayerRouter.post('/fine',
     body("date").isISO8601().toDate(),
     body("amount").isDecimal(),
     body("taxpayerId").isString(),
+    body("description").isString(),
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
