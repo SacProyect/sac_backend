@@ -17,7 +17,6 @@ export type NewTaxpayer = {
     process: taxpayer_process;
     name: string;
     rif: string;
-    description: string;
     emition_date: Date;
     contract_type: taxpayer_contract_type;
     officerId: string;
