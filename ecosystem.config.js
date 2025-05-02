@@ -3,7 +3,7 @@ module.exports = {
     apps: [
         {
             name: 'sac-backend',
-            script: 'index.ts', // or app.js or src/server.js – your main entry file
+            script: 'node ./dist/index', // or app.js or src/server.js – your main entry file
             instances: 1,
             autorestart: true,
             watch: false,
