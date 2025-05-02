@@ -35,17 +35,18 @@ model FiscalGroup {
 }
 
 model event {
-    id         String     @id @default(uuid())
-    date       DateTime   @default(now()) @db.DateTime(0)
-    amount     Decimal    @default(0.00) @db.Decimal(20, 2)
-    type       event_type
-    status     Boolean    @default(true)
-    debt       Decimal    @default(0)
-    taxpayerId String
-    taxpayer   taxpayer   @relation(fields: [taxpayerId], references: [id], map: "evento_contribuyenteId_fkey", onDelete: Cascade)
-    payment    payment[]
-    expires_at DateTime   @default(now())
-    updated_at DateTime   @default(now()) @updatedAt
+    id          String     @id @default(uuid())
+    date        DateTime   @default(now()) @db.DateTime(0)
+    amount      Decimal    @default(0.00) @db.Decimal(20, 2)
+    type        event_type
+    status      Boolean    @default(true)
+    debt        Decimal    @default(0)
+    description String     @default("")
+    taxpayerId  String
+    taxpayer    taxpayer   @relation(fields: [taxpayerId], references: [id], map: "evento_contribuyenteId_fkey", onDelete: Cascade)
+    payment     payment[]
+    expires_at  DateTime   @default(now())
+    updated_at  DateTime   @default(now()) @updatedAt
 
     // Self-referential relation for linking to a fine event
     fineEventId String? // Link to the parent fine event
