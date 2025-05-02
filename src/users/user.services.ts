@@ -36,8 +36,17 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
         if (compareSync(password, user.password)) {
             const token = generateAcessToken(user);
             user.password = "";
-            if (user.role == "ADMIN") {
-                user.taxpayer = await db.taxpayer.findMany({ where: { status: true } })
+            if (user.role === "ADMIN") {
+                user.taxpayer = await db.taxpayer.findMany({
+                    where: { status: true },
+                    include: {
+                        user: {
+                            select: {
+                                name: true
+                            }
+                        }
+                    }
+                });
             }
 
             return { user, token };
