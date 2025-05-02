@@ -40,7 +40,6 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                 officerId: input.officerId,
                 rif: input.rif,
                 address: input.address,
-                description: input.description,
                 emition_date: emitionDate.toISOString(),
             }
         })

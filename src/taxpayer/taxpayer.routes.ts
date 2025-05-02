@@ -32,7 +32,6 @@ taxpayerRouter.post(
     body("contract_type").isString(),
     body("officerId").isString(),
     body("address").notEmpty(),
-    body("description").notEmpty(),
     body("emition_date").notEmpty().isString(),
 
     async (req: Request, res: Response) => {
@@ -66,7 +65,7 @@ taxpayerRouter.post(
                 await fs.promises.unlink(file.path);
             }
 
-            const { providenceNum, process, name, rif, contract_type, officerId, address, description, emition_date } = req.body;
+            const { providenceNum, process, name, rif, contract_type, officerId, address, emition_date } = req.body;
 
             
 
@@ -77,7 +76,6 @@ taxpayerRouter.post(
                 rif,
                 contract_type,
                 officerId,
-                description,
                 emition_date,
                 address,
                 pdfs: s3Files,
