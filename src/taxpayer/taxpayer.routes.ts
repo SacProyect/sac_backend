@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import * as TaxpayerServices from "./taxpayer.services"
 import { body, validationResult } from 'express-validator';
 import { EventType } from "./taxpayer.utils";
-import { authenticateToken } from "../users/user.utils";
+import { authenticateToken, AuthRequest } from "../users/user.utils";
 import multer, { StorageEngine } from "multer";
 import path from "path";
 import fs from 'fs'
@@ -67,7 +67,7 @@ taxpayerRouter.post(
 
             const { providenceNum, process, name, rif, contract_type, officerId, address, emition_date } = req.body;
 
-            
+
 
             const newTaxpayer = await TaxpayerServices.createTaxpayer({
                 providenceNum: BigInt(providenceNum),
@@ -209,6 +209,30 @@ taxpayerRouter.get('/event/all',
     }
 )
 
+taxpayerRouter.get("/get-observations/:id",
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL") return res.status(403).json("Forbidden")
+
+        try {
+
+            const id: string = (req.params.id);
+            const observations = await TaxpayerServices.getObservations(id);
+
+            return res.status(200).json(observations);
+
+        } catch (e) {
+            console.error("Error getting observations: " + e);
+            return res.status(500).json("Error getting the observations");
+        }
+    }
+)
+
 taxpayerRouter.post('/fine',
     authenticateToken,
     body("date").isISO8601().toDate(),
@@ -253,6 +277,34 @@ taxpayerRouter.post('/payment',
 
             console.error(error)
             return res.status(500).json(error.message)
+        }
+    }
+)
+
+taxpayerRouter.post("/observations",
+    authenticateToken,
+    body("description").notEmpty().isString(),
+    body("date").notEmpty().isString().isISO8601(),
+    body("taxpayerId").notEmpty().isString(),
+
+    async (req: Request, res: Response) => {
+
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+
+        try {
+            const input = { ...req.body }
+
+            const observation = await TaxpayerServices.createObservation(input);
+
+            return res.status(200).json(observation);
+
+        } catch (e) {
+            console.error("Error: ", e)
+            return res.status(500).json(e);
         }
     }
 )

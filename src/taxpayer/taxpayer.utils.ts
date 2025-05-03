@@ -24,6 +24,12 @@ export type NewTaxpayer = {
     pdfs? : InvestigationPdf[]
 }
 
+export interface NewObservation {
+    description: string, 
+    date: string,
+    taxpayerId: string,
+}
+
 export type InvestigationPdf = {
     id?: string,
     pdf_url: string,

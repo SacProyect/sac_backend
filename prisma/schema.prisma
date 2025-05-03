@@ -91,10 +91,19 @@ model taxpayer {
     user               user?                  @relation(fields: [officerId], references: [id], map: "contribuyente_funcionarioId_fkey")
     updated_at         DateTime               @default(now()) @updatedAt
     investigation_pdfs InvestigationPdf[]
+    observations       Observations[]
 
     @@index([officerId], map: "contribuyente_funcionarioId_fkey")
     @@index([process], map: "contribuyente_procedimiento_idx")
     @@index([contract_type], map: "contribuyente_tipoContrato_idx")
+}
+
+model Observations {
+    id          String   @id @default(uuid())
+    description String
+    date        DateTime @default(now())
+    taxpayerId  String
+    taxpayer    taxpayer @relation(fields: [taxpayerId], references: [id])
 }
 
 model InvestigationPdf {

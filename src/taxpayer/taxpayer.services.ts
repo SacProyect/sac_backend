@@ -1,7 +1,9 @@
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { db } from "../utils/db.server";
-import { Event, getStatistics, NewEvent, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
+import { Event, getStatistics, NewEvent, NewObservation, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 import { BadRequestError } from "../utils/errors/BadRequestError";
+
+
 
 
 /**
@@ -83,8 +85,8 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
             }
         }
 
-         // Set expires_at to 25 days from now if it's not provided
-         const expiresAt = input.expires_at ?? new Date(Date.now() + 25 * 24 * 60 * 60 * 1000);
+        // Set expires_at to 25 days from now if it's not provided
+        const expiresAt = input.expires_at ?? new Date(Date.now() + 25 * 24 * 60 * 60 * 1000);
 
 
         const event = await db.event.create({
@@ -102,6 +104,10 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
         throw error;
     }
 }
+
+
+
+
 
 /**
  * Creates a new payment.
@@ -287,6 +293,7 @@ export const getTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Er
         throw error;
     }
 }
+
 
 /**
  * Gets all taxpayers associated with a given user.
@@ -524,6 +531,45 @@ export async function getTaxpayerData(id: string) {
 
     } catch (e) {
         console.error(e);
-        throw new Error("Error obteniendo la respuesta");
+        throw new Error("Error getting the taxpayer data ");
+    }
+}
+
+export async function getObservations(taxpayerId: string) {
+    try {
+
+        const taxpayerObservations = await db.observations.findMany({
+            where: {
+                taxpayerId: taxpayerId,
+            }
+        })
+
+        return taxpayerObservations
+    } catch (e) {
+        console.error(e)
+        throw new Error("Error getting the observations")
+    }
+}
+
+
+export const createObservation = async (input: NewObservation) => {
+    if (!input.taxpayerId) {
+        throw new Error("Missing taxpayerId for observation");
+    }
+
+    try {
+        const observation = db.observations.create({
+            data: {
+                taxpayerId: input.taxpayerId,
+                description: input.description,
+                date: new Date(input.date),
+            }
+        })
+
+        return observation
+
+    } catch (e) {
+        console.error("Error", e)
+        throw new Error("Error when creating observation")
     }
 }
