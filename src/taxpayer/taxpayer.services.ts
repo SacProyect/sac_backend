@@ -402,6 +402,22 @@ export const deletePayment = async (eventId: string): Promise<Payment | Error> =
     }
 }
 
+
+export const deleteObservation = async (id: string) => {
+    try {
+        const deleteEvent = await db.observations.delete({
+            where: {
+                id: id,
+            }
+        })
+
+        return deleteEvent;
+    } catch (e) {
+        console.error("Error erasing the observation: ", e);
+        throw new Error("Error erasing the observation");
+    }
+}
+
 /**
  * Updates a taxpayer object.
  * 
@@ -471,6 +487,24 @@ export const updatePayment = async (eventId: string, data: Partial<NewPayment>):
         return updatedEvent;
     } catch (error) {
         throw error;
+    }
+}
+
+export const updateObservation = async (id: string, newDescription: string) => {
+    try {
+        const updatedObservation = await db.observations.update({
+            where: {
+                id: id,
+            },
+            data: {
+                description: newDescription,
+            },
+        })
+
+        return updatedObservation
+    } catch (e) {
+        console.error("Error updating observation:", e)
+        throw new Error("Error updating observation")
     }
 }
 
