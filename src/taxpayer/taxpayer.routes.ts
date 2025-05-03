@@ -9,6 +9,7 @@ import path from "path";
 import fs from 'fs'
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { createLocalUpload } from "../utils/multer.local";
+import { commonParams } from "@aws-sdk/client-s3/dist-types/endpoint/EndpointParameters";
 // import upload from "../utils/multer.s3";
 
 const s3 = new S3Client({ region: "us-east-2" }); // Replace "your-region" with your AWS region
@@ -147,6 +148,39 @@ taxpayerRouter.put("/:id",
 
 )
 
+taxpayerRouter.put("/modify-observations/:id",
+    authenticateToken,
+    body("newDescription").notEmpty().isString(),
+
+    async (req: Request, res: Response) => {
+
+
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { user } = req as AuthRequest;
+
+        if (!user) return res.status(401).json("Unauthorized");
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden");
+
+        try {
+
+        const id: string = (req.params.id);
+        const {newDescription} = req.body;
+
+        const updatedObservation = await TaxpayerServices.updateObservation(id, newDescription);
+
+        return res.status(200).json(updatedObservation);
+        } catch(e) {
+            console.error(e);
+            return res.status(500).json("Can't update the description");
+        }
+    }
+)
+
+
 taxpayerRouter.delete('/:id',
     authenticateToken,
     async (req: Request, res: Response) => {
@@ -156,6 +190,29 @@ taxpayerRouter.delete('/:id',
             return res.status(200).json(taxpayer)
         } catch (error: any) {
             return res.status(500).json(error.message);
+        }
+    }
+)
+
+taxpayerRouter.delete("/del-observation/:id",
+    authenticateToken,
+    async (req: Request, res: Response) => {
+        try {
+
+            const { user } = req as AuthRequest
+
+            if (!user) return res.status(401).json("Unauthorized");
+
+            if (user.role !== "ADMIN") return res.status(403).json("Forbidden");
+
+            const id: string = (req.params.id);
+            const observation = await TaxpayerServices.deleteObservation(id);
+
+            return res.status(200).json(observation);
+
+        } catch (e) {
+            console.error("Error erasing the observation");
+            return res.status(500).json("Couldn't erase the observation");
         }
     }
 )
