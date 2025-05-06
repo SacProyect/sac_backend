@@ -1,7 +1,8 @@
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { db } from "../utils/db.server";
-import { Event, getStatistics, NewEvent, NewObservation, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
+import { Event, getStatistics, NewEvent, NewFase, NewObservation, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 import { BadRequestError } from "../utils/errors/BadRequestError";
+import { Taxpayer_Fases } from "@prisma/client";
 
 
 
@@ -507,6 +508,50 @@ export const updateObservation = async (id: string, newDescription: string) => {
         throw new Error("Error updating observation")
     }
 }
+
+export const updateFase = async (data: NewFase) => {
+
+    try {
+        const updatedTaxpayerFase = await db.taxpayer.update({
+            where: {
+                id: data.id,
+            },
+            data: {
+                fase: data.fase,
+            }
+        })
+
+        return updatedTaxpayerFase
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("Could not update the fase")
+    }
+}
+
+export const notifyTaxpayer = async (id: string) => {
+
+    try {
+
+        const notifiedTaxpayer = await db.taxpayer.update({
+            where: {
+                id: id,
+            },
+            data: {
+                notified: true,
+            }
+        })
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("error marking the taxpayer as notified")
+    }
+
+}
+
+
+
+
 
 export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> => {
     try {
