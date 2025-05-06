@@ -85,6 +85,8 @@ model taxpayer {
     emition_date       DateTime               @default(now())
     contract_type      taxpayer_contract_type @default(ORDINARY)
     status             Boolean                @default(true)
+    fase               Taxpayer_Fases         @default(FASE_1)
+    notified           Boolean                @default(false)
     officerId          String?
     event              event[]
     payment            payment[]
@@ -180,4 +182,11 @@ enum user_roles {
     FISCAL
     ADMIN
     COORDINATOR
+}
+
+enum Taxpayer_Fases {
+    FASE_1
+    FASE_2
+    FASE_3
+    FASE_4
 }

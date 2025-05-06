@@ -1,6 +1,6 @@
 import { Decimal } from "@prisma/client/runtime/library"
 import { db } from "../utils/db.server"
-import { taxpayer_contract_type, taxpayer_process } from "@prisma/client"
+import { taxpayer_contract_type, Taxpayer_Fases, taxpayer_process } from "@prisma/client"
 
 export type Taxpayer = {
     providenceNum: bigint
@@ -9,6 +9,7 @@ export type Taxpayer = {
     name: string
     rif: string
     contract_type: string
+    fase: Taxpayer_Fases
     events?: Event[]
 }
 
@@ -28,6 +29,11 @@ export interface NewObservation {
     description: string, 
     date: string,
     taxpayerId: string,
+}
+
+export interface NewFase {
+    id: string, 
+    fase: Taxpayer_Fases
 }
 
 export type InvestigationPdf = {

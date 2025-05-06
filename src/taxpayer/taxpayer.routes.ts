@@ -167,15 +167,79 @@ taxpayerRouter.put("/modify-observations/:id",
 
         try {
 
-        const id: string = (req.params.id);
-        const {newDescription} = req.body;
+            const id: string = (req.params.id);
+            const { newDescription } = req.body;
 
-        const updatedObservation = await TaxpayerServices.updateObservation(id, newDescription);
+            const updatedObservation = await TaxpayerServices.updateObservation(id, newDescription);
 
-        return res.status(200).json(updatedObservation);
-        } catch(e) {
+            return res.status(200).json(updatedObservation);
+        } catch (e) {
             console.error(e);
             return res.status(500).json("Can't update the description");
+        }
+    }
+)
+
+taxpayerRouter.put("/update-fase/:id",
+    authenticateToken,
+    body("fase").notEmpty().isString(),
+
+
+    async (req: Request, res: Response) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { user } = req as AuthRequest;
+        const id: string = req.params.id;
+        const { fase } = req.body;
+
+        const validFases = ["FASE_1", "FASE_2", "FASE_3", "FASE_4"];
+        if (!validFases.includes(fase)) {
+            return res.status(400).json({ error: "Invalid fase value" });
+        }
+
+        if (!user) return res.status(401).json({ error: "Unauthorized" });
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR") return res.status(403).json({ error: "Forbidden" });
+
+        const data = {
+            id: id,
+            fase: fase,
+        }
+
+        try {
+            const updatedFase = await TaxpayerServices.updateFase(data);
+            return res.status(200).json(updatedFase);
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json("Could not update the taxpayer fase");
+        }
+    }
+)
+
+taxpayerRouter.put("/notify/:id",
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { user } = req as AuthRequest;
+        const id: string = req.params.id;
+
+        if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+        try {
+
+            const notified = await TaxpayerServices.notifyTaxpayer(id);
+
+            return res.status(200).json(notified);
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json({error: "Error reporting the taxpayer as notified"})
         }
     }
 )
