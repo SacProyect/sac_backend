@@ -239,7 +239,40 @@ taxpayerRouter.put("/notify/:id",
             return res.status(200).json(notified);
         } catch (e) {
             console.error(e);
-            return res.status(500).json({error: "Error reporting the taxpayer as notified"})
+            return res.status(500).json({ error: "Error reporting the taxpayer as notified" })
+        }
+    }
+)
+
+
+taxpayerRouter.put("/updatePayment/:id",
+    authenticateToken,
+    body("status").isString(),
+
+    async (req: Request, res: Response) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { user } = req as AuthRequest;
+        const id: string = req.params.id;
+
+        if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+        const { status } = req.body;
+
+        if (status !== "paid" && status !== "not_paid") return res.status(400).json({ error: "Bad Request" });
+
+        try {
+
+            const updatedPayment = await TaxpayerServices.updatePayment(id, status)
+
+            return res.status(200).json(updatedPayment);
+
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json({ error: "Error updating payment for this fine." })
         }
     }
 )
