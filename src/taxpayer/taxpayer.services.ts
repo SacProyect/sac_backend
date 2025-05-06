@@ -472,24 +472,24 @@ export const updateEvent = async (eventId: string, data: Partial<NewEvent>): Pro
  * @param data The updated data for the payment.
  * @returns The updated payment object or an error if the operation fails.
  */
-export const updatePayment = async (eventId: string, data: Partial<NewPayment>): Promise<Payment | Error> => {
-    try {
-        const updatedEvent = await db.payment.update({
-            where: {
-                id: eventId
-            },
-            include: {
-                event: true
-            },
-            data: {
-                ...data
-            }
-        });
-        return updatedEvent;
-    } catch (error) {
-        throw error;
-    }
-}
+// export const updatePayment = async (eventId: string, data: Partial<NewPayment>): Promise<Payment | Error> => {
+//     try {
+//         const updatedEvent = await db.payment.update({
+//             where: {
+//                 id: eventId
+//             },
+//             include: {
+//                 event: true
+//             },
+//             data: {
+//                 ...data
+//             }
+//         });
+//         return updatedEvent;
+//     } catch (error) {
+//         throw error;
+//     }
+// }
 
 export const updateObservation = async (id: string, newDescription: string) => {
     try {
@@ -529,10 +529,58 @@ export const updateFase = async (data: NewFase) => {
     }
 }
 
+
+export const updatePayment = async (id: string, newStatus: string) => {
+
+    try {
+        let updatedPayment;
+
+        if (newStatus === "paid") {
+            updatedPayment = await db.event.update({
+                where: {
+                    id: id,
+                },
+                data: {
+                    debt: 0,
+                }
+            })
+        } else {
+            const getFineAmount = await db.event.findFirst({
+                where: {
+                    id: id,
+                }
+            })
+
+            if (getFineAmount) {
+
+                const amount = getFineAmount.amount;
+
+                updatedPayment = await db.event.update({
+                    where: {
+                        id: id,
+                    },
+                    data: {
+                        debt: amount,
+                    }
+                })
+            }
+        }
+
+        return updatedPayment
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("Can not update the debt for this fine.")
+    }
+}
+
+
+
+
+
 export const notifyTaxpayer = async (id: string) => {
 
     try {
-
         const notifiedTaxpayer = await db.taxpayer.update({
             where: {
                 id: id,
@@ -542,11 +590,11 @@ export const notifyTaxpayer = async (id: string) => {
             }
         })
 
+        return notifiedTaxpayer;
     } catch (e) {
         console.error(e);
         throw new Error("error marking the taxpayer as notified")
     }
-
 }
 
 
