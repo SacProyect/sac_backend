@@ -31,6 +31,15 @@ export interface NewObservation {
     taxpayerId: string,
 }
 
+export interface NewIvaReport {
+    taxpayerId: string, 
+    iva: number, 
+    purchases: number, 
+    sells: number,
+    excess: number, 
+    date: Date,
+}
+
 export interface NewFase {
     id: string, 
     fase: Taxpayer_Fases

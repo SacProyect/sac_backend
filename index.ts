@@ -26,36 +26,28 @@ const allowedOrigins = [
     "https://sac-app.com"
 ];
 
-const corsOptions = {
-    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-        if (!origin || allowedOrigins.includes(origin)) {
+app.use(cors({
+    origin: (origin, callback) => {
+        if (
+            !origin ||
+            allowedOrigins.includes(origin) ||
+            /\.ngrok-free\.app$/.test(origin)
+        ) {
             callback(null, true);
         } else {
             callback(new Error("Not allowed by CORS"));
         }
     },
-    methods: "GET, POST, PUT, DELETE",
-    allowedHeaders: "Content-Type, Authorization"
-};
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
+}));
 
 app.get("/", (req, res) => {
     res.send("API is working!");
 });
 
 
-app.use(cors({
-    origin: (origin, cb) => {
-        if (
-            !origin ||
-            allowedOrigins.includes(origin) ||
-            /\.ngrok-free\.app$/.test(origin)
-        ) {
-            cb(null, true);
-        } else {
-            cb(new Error("Not allowed by CORS"));
-        }
-    }
-}));
 app.use("/user", userRouter)
 app.use("/taxpayer", taxpayerRouter)
 app.use("/reports", reportRouter)
