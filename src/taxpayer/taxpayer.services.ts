@@ -1,6 +1,6 @@
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { db } from "../utils/db.server";
-import { Event, getStatistics, NewEvent, NewFase, NewObservation, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
+import { Event, getStatistics, NewEvent, NewFase, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 import { BadRequestError } from "../utils/errors/BadRequestError";
 import { Taxpayer_Fases } from "@prisma/client";
 
@@ -678,6 +678,24 @@ export async function getObservations(taxpayerId: string) {
     }
 }
 
+export async function getTaxpayerSummary(taxpayerId: string) {
+
+    try {
+        const taxpayerSummary = await db.iVAReports.findMany({
+            where: {
+                taxpayerId: taxpayerId,
+            }
+        })
+
+        return taxpayerSummary;
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("Error getting the taxpayer summary");
+    }
+}
+
+
 
 export const createObservation = async (input: NewObservation) => {
     if (!input.taxpayerId) {
@@ -700,3 +718,51 @@ export const createObservation = async (input: NewObservation) => {
         throw new Error("Error when creating observation")
     }
 }
+
+export const createIVA = async (data: NewIvaReport) => {
+    // 1. Validar duplicados para el mes
+    const reportDate = new Date(data.date);
+    const year = reportDate.getFullYear();
+    const month = reportDate.getMonth() + 1;
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    const existing = await db.iVAReports.findFirst({
+        where: {
+            taxpayerId: data.taxpayerId,
+            date: { gte: startDate, lte: endDate },
+        },
+    });
+    if (existing) {
+        throw new Error("IVA report for this taxpayer and month already exists.");
+    }
+
+    // 2. Obtener el 'excess' del último reporte
+    const latest = await db.iVAReports.findFirst({
+        where: { taxpayerId: data.taxpayerId },
+        orderBy: { date: 'desc' },
+        select: { excess: true },
+    });
+    const previousExcess = latest?.excess ?? 0;
+
+    // 3. Construir el objeto de creación
+    const createData: any = {
+        taxpayerId: data.taxpayerId,
+        purchases: data.purchases,
+        sells: data.sells,
+        date: data.date,
+        // Si viene IVA, lo usamos:
+        ...(data.iva != null && { iva: data.iva }),
+        // Si no viene 'excess', usamos el anterior; 
+        // si viene (incluso 0), usamos el valor que el cliente envió
+        excess: data.excess != null
+            ? data.excess
+            : BigInt(previousExcess) - BigInt(data.iva),
+    };
+
+    // 4. Crear y devolver
+    const report = await db.iVAReports.create({
+        data: createData,
+    });
+    return report;
+};

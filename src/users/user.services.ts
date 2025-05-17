@@ -43,8 +43,9 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
                         user: {
                             select: {
                                 name: true
-                            }
-                        }
+                            },
+                        },
+                        IVAReports: true,
                     }
                 });
             }
@@ -158,7 +159,9 @@ export const getUser = async (id: string) => {
         }
 
         if (user.role == "ADMIN") {
-            user.taxpayer = await db.taxpayer.findMany({ where: { status: true } })
+            user.taxpayer = await db.taxpayer.findMany(
+                { where: { status: true }, include: { IVAReports: true } }
+            )
         }
 
         // 3) remove password before sending back

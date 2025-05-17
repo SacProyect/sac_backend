@@ -387,6 +387,33 @@ taxpayerRouter.get("/get-observations/:id",
     }
 )
 
+taxpayerRouter.get("/getTaxSummary/:id",
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL") return res.status(403).json("Forbidden")
+
+        const id: string = (req.params.id);
+
+        try {
+
+            const taxSummary = await TaxpayerServices.getTaxpayerSummary(id);
+
+            return res.status(200).json(taxSummary);
+
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json({ error: "Can not get the Tax Summary for this taxpayer." })
+        }
+
+    }
+
+
+)
+
 taxpayerRouter.post('/fine',
     authenticateToken,
     body("date").isISO8601().toDate(),
@@ -407,6 +434,55 @@ taxpayerRouter.post('/fine',
             return res.status(200).json(fine)
         } catch (error: any) {
             return res.status(500).json(error.message)
+        }
+    }
+)
+
+taxpayerRouter.post('/createIVA',
+    authenticateToken,
+    body("taxpayerId").isString().notEmpty(),
+    body("iva").optional(),
+    body("purchases").notEmpty().isNumeric(),
+    body("sells").notEmpty().isNumeric(),
+    body("excess").optional(),
+    body("date").isISO8601().notEmpty(),
+
+
+    async (req: Request, res: Response) => {
+
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            console.error(errors.array())
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL") return res.status(403).json("Forbidden")
+
+        const data = req.body;
+
+        if (!data.iva && !data.excess) return res.status(400).json("Either IVA or Excess must be provided");
+
+
+        console.log("Received IVA data:", req.body);
+
+        try {
+            const response = await TaxpayerServices.createIVA(data)
+
+            return res.status(200).json(response);
+
+        } catch (e: any) {
+            console.error(e);
+
+
+            if (e.message === "IVA report for this taxpayer and month already exists.") {
+                return res.status(400).json({ error: e.message });
+            }
+
+            return res.status(500).json({ error: "Error creating the report." })
+
         }
     }
 )
