@@ -13,6 +13,7 @@ interface InputFiscalGroups {
     id?: string,
     startDate?: string,
     endDate?: string,
+    userId?: string,
 }
 
 
@@ -288,99 +289,121 @@ export const getPendingPayments = async (
 
 
 export const getFiscalGroups = async (data: InputFiscalGroups) => {
+    const { id, role, startDate, endDate } = data;
 
-    if (data.role == "ADMIN" || data.role == "COORDINATOR") {
+    const filters: any = {};
 
-        const { id, startDate, endDate } = data;
-
-
-        const filters: any = {}
-
-
-        if (data.id) {
-            filters.id = id
-        }
-
-
-
-        try {
-            const groups = await db.fiscalGroup.findMany({
-                where: filters,
-                include: {
-                    members: {
-                        include: {
-                            taxpayer: {
-                                include: {
-                                    event: {
-                                        where: {
-                                            date: {
-                                                gte: startDate ? new Date(startDate) : undefined,
-                                                lt: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : undefined,
-                                            }
-                                        }
-                                    },
-                                    payment: {
-                                        where: {
-                                            date: {
-                                                gte: startDate ? new Date(startDate) : undefined,
-                                                lt: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : undefined,
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                        }
-                    }
-                }
-            });
-
-            // Iterate over each group and calculate the `collected` for each group
-            const updatedGroups = groups.map((group) => {
-                // Calculate the total collected for this group
-                let groupCollected: Decimal = new Decimal(0);
-                let fines: Decimal = new Decimal(0);
-
-                // Flatten the data structure and accumulate payments for this group
-                group.members.forEach((member) => {
-
-                    member.taxpayer.forEach((contributor) => {
-
-                        contributor.event.forEach((e) => {
-                            if (e.type == "FINE") {
-                                fines = fines.plus(1)
-                            }
-                        })
-
-                        contributor.payment.forEach((pay) => {
-                            groupCollected = groupCollected.plus(pay.amount);
-                        });
-
-                    });
-
-                });
-
-                // Return the group with its added `collected` amount
-                return {
-                    ...group,
-                    collected: groupCollected,
-                    totalFines: fines,
-                };
-            });
-
-            return updatedGroups
-
-        } catch (e) {
-            console.error(e)
-            throw e
-        }
+    if (role !== "ADMIN" && role !== "COORDINATOR") {
+        throw new Error("Unauthorized");
     }
 
+    try {
+        // Si es COORDINATOR y no se especifica un ID, usar su grupo coordinado
+        if (role === "COORDINATOR") {
+            const coordinatorGroup = await db.fiscalGroup.findUnique({
+                where: {
+                    coordinatorId: data.userId,
+                },
+            });
+
+            if (!coordinatorGroup) {
+                throw new Error("Este usuario no coordina ningún grupo.");
+            }
+
+            if (id) {
+                if (id !== coordinatorGroup.id) {
+                    throw new Error("Acceso no autorizado: este grupo no pertenece al coordinador.");
+                }
+                filters.id = id;
+            } else {
+                filters.id = coordinatorGroup.id;
+            }
+        }
+
+        if (id) {
+            filters.id = id;
+        }
 
 
-    // If the role is not "ADMIN" or "COORDINATOR", throw an error 
-    throw Error("Unauthorized")
 
-}
+        // Ahora usamos filters como siempre
+        const groups = await db.fiscalGroup.findMany({
+            where: filters,
+            include: {
+                members: {
+                    include: {
+                        taxpayer: {
+                            include: {
+                                event: {
+                                    where: {
+                                        date: {
+                                            gte: startDate ? new Date(startDate) : undefined,
+                                            lt: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : undefined,
+                                        },
+                                    },
+                                },
+                                payment: {
+                                    where: {
+                                        date: {
+                                            gte: startDate ? new Date(startDate) : undefined,
+                                            lt: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : undefined,
+                                        },
+                                    },
+                                },
+                                IVAReports: {
+                                    where: {
+                                        date: {
+                                            gte: startDate ? new Date(startDate) : undefined,
+                                            lt: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : undefined,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        // Procesar resultados
+        const updatedGroups = groups.map((group) => {
+            let groupCollected: Decimal = new Decimal(0);
+            let fines: Decimal = new Decimal(0);
+            let totalIva: bigint = BigInt(0);
+
+            group.members.forEach((member) => {
+                member.taxpayer.forEach((contributor) => {
+                    contributor.event.forEach((e) => {
+                        if (e.type === "FINE") {
+                            fines = fines.plus(1);
+                        }
+                    });
+
+                    contributor.payment.forEach((pay) => {
+                        groupCollected = groupCollected.plus(pay.amount);
+                    });
+
+                    contributor.IVAReports.forEach((report) => {
+                        if (report.iva) totalIva += report.iva;
+                    });
+                });
+            });
+
+            return {
+                ...group,
+                collected: groupCollected,
+                totalFines: fines,
+                totalIva: totalIva,
+            };
+        });
+
+        return updatedGroups;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+};
+
 
 export async function getGlobalPerformance() {
     const now = new Date();
