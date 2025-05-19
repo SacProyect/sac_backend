@@ -179,6 +179,8 @@ reportRouter.get('/fiscal-groups',
 
         const role = user.role
 
+        const userId = user.id;
+
         // Object for filtering based on the params
         const { id, startDate, endDate } = req.query
 
@@ -190,7 +192,7 @@ reportRouter.get('/fiscal-groups',
 
         try {
 
-            const getGroups = await ReportService.getFiscalGroups({ role, ...filterParams })
+            const getGroups = await ReportService.getFiscalGroups({ role, userId, ...filterParams })
 
             return res.status(200).json(getGroups);
         } catch (e) {

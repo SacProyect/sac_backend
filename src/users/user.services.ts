@@ -13,7 +13,11 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
     try {
         const user = await db.user.findUniqueOrThrow({
             include: {
-                taxpayer: true,
+                taxpayer: {
+                    include: {
+                        IVAReports: true,
+                    }
+                },
                 coordinatedGroup: {
                     include: {
                         members: {
@@ -150,7 +154,11 @@ export const getUser = async (id: string) => {
             include: {
                 coordinatedGroup: true,
                 // only include taxpayer for ADMIN:
-                taxpayer: true,
+                taxpayer: {
+                    include: {
+                        IVAReports: true,
+                    }
+                },
             },
         });
 
@@ -160,7 +168,16 @@ export const getUser = async (id: string) => {
 
         if (user.role == "ADMIN") {
             user.taxpayer = await db.taxpayer.findMany(
-                { where: { status: true }, include: { IVAReports: true } }
+                {
+                    where: { status: true }, include: {
+                        IVAReports: true,
+                        user: {
+                            select: {
+                                name: true
+                            },
+                        },
+                    }
+                }
             )
         }
 

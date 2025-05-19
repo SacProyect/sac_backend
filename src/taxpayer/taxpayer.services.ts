@@ -751,13 +751,14 @@ export const createIVA = async (data: NewIvaReport) => {
         purchases: data.purchases,
         sells: data.sells,
         date: data.date,
-        // Si viene IVA, lo usamos:
         ...(data.iva != null && { iva: data.iva }),
-        // Si no viene 'excess', usamos el anterior; 
-        // si viene (incluso 0), usamos el valor que el cliente envió
-        excess: data.excess != null
-            ? data.excess
-            : BigInt(previousExcess) - BigInt(data.iva),
+        excess:
+            data.excess != null
+                ? data.excess
+                : (() => {
+                    const calculatedExcess = BigInt(previousExcess) - BigInt(data.iva);
+                    return calculatedExcess > BigInt(0) ? calculatedExcess : BigInt(0);
+                })(),
     };
 
     // 4. Crear y devolver
