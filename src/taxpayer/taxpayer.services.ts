@@ -3,6 +3,10 @@ import { db } from "../utils/db.server";
 import { Event, getStatistics, NewEvent, NewFase, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 import { BadRequestError } from "../utils/errors/BadRequestError";
 import { Taxpayer_Fases } from "@prisma/client";
+import { Resend } from 'resend';
+
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 
 
@@ -17,6 +21,69 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
     try {
 
         // console.log("Received input:", JSON.stringify(input, null, 2));
+
+        const userName = await db.user.findFirst(({
+            where: {
+                id: input.userId,
+            },
+            select: {
+                name: true,
+            }
+
+        }))
+
+        if (input.process === "AF") {
+            if (!userName?.name) {
+                throw new Error("El nombre del fiscal no se pudo obtener.");
+            }
+
+            const emailHtml = `
+            <div style="font-family: Arial, sans-serif; color: #333;">
+                <h2 style="color: #2c3e50;">🆕 Nuevo Contribuyente para Auditoría Fiscal</h2>
+                <p><strong>Fiscal Responsable:</strong> ${userName.name}</p>
+                <p>Se ha creado un nuevo contribuyente con el procedimiento <strong>Auditoría Fiscal (AF)</strong>.</p>
+                
+                <h3 style="margin-top: 20px; color: #2980b9;">📋 Detalles del Contribuyente</h3>
+                <ul style="line-height: 1.6;">
+                <li><strong>Nombre:</strong> ${input.name}</li>
+                <li><strong>RIF:</strong> ${input.rif}</li>
+                <li><strong>Tipo de contrato:</strong> ${input.contract_type == "SPECIAL"? "ESPECIAL" : "ORDINARIO"}</li>
+                <li><strong>Número de providencia:</strong> ${input.providenceNum}</li>
+                <li><strong>Fecha de emisión:</strong> ${new Date(input.emition_date).toLocaleDateString()}</li>
+                <li><strong>Dirección:</strong> ${input.address}</li>
+                </ul>
+
+                <p style="margin-top: 20px;">
+                Puede acceder a la información y fases de este contribuyente a través del sistema:
+                </p>
+
+                <a href="https://sac-app.com" target="_blank" 
+                style="
+                    display: inline-block;
+                    background-color: #2980b9;
+                    color: white;
+                    padding: 10px 20px;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    margin-top: 10px;
+                ">
+                🔗 Ir a SAC App
+                </a>
+
+                <hr style="margin-top: 30px;" />
+                <footer style="font-size: 12px; color: #888;">
+                Este correo fue generado automáticamente por el sistema de gestión fiscal.
+                </footer>
+            </div>
+            `;
+
+            await resend.emails.send({
+                from: 'onboarding@resend.dev',
+                to: 'victorenrique2002@gmail.com',
+                subject: '🔍 Nuevo contribuyente creado para Auditoría Fiscal',
+                html: emailHtml
+            });
+        }
 
 
         const existingTaxpayer = await db.taxpayer.findUnique({

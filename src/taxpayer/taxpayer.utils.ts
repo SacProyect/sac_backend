@@ -22,7 +22,8 @@ export type NewTaxpayer = {
     contract_type: taxpayer_contract_type;
     officerId: string;
     address: string;
-    pdfs? : InvestigationPdf[]
+    pdfs? : InvestigationPdf[];
+    userId?: string;
 }
 
 export interface NewObservation {
