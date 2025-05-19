@@ -46,6 +46,9 @@ taxpayerRouter.post(
         }
 
         try {
+
+            const { user } = req as AuthRequest;
+            const userId = user?.id;
             const s3Files = [];
 
             for (const file of req.files as Express.Multer.File[]) {
@@ -80,6 +83,7 @@ taxpayerRouter.post(
                 emition_date,
                 address,
                 pdfs: s3Files,
+                userId: userId,
             });
 
             return res.status(200).json(newTaxpayer);
