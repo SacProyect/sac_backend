@@ -1,6 +1,6 @@
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { db } from "../utils/db.server";
-import { Event, getStatistics, NewEvent, NewFase, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
+import { Event, getStatistics, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 import { BadRequestError } from "../utils/errors/BadRequestError";
 import { Taxpayer_Fases } from "@prisma/client";
 // import { Resend } from 'resend';
@@ -42,7 +42,7 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
         //         <h2 style="color: #2c3e50;">🆕 Nuevo Contribuyente para Auditoría Fiscal</h2>
         //         <p><strong>Fiscal Responsable:</strong> ${userName.name}</p>
         //         <p>Se ha creado un nuevo contribuyente con el procedimiento <strong>Auditoría Fiscal (AF)</strong>.</p>
-                
+
         //         <h3 style="margin-top: 20px; color: #2980b9;">📋 Detalles del Contribuyente</h3>
         //         <ul style="line-height: 1.6;">
         //         <li><strong>Nombre:</strong> ${input.name}</li>
@@ -762,6 +762,29 @@ export async function getTaxpayerSummary(taxpayerId: string) {
     }
 }
 
+export async function getIslrReports(taxpayerId: string) {
+    try {
+        const reports = await db.iSLRReports.findMany({
+            where: {
+                taxpayerId: taxpayerId,
+            }, 
+            include: {
+                taxpayer: {
+                    select: {
+                        name: true,
+                        process: true,
+                    }
+                }
+            }
+        })
+
+        return reports;
+    } catch (e) {
+        console.error(e);
+        throw new Error("Couldn't get the ISLR reports for this taxpayer.");
+    }
+}
+
 
 
 export const createObservation = async (input: NewObservation) => {
@@ -785,6 +808,7 @@ export const createObservation = async (input: NewObservation) => {
         throw new Error("Error when creating observation")
     }
 }
+
 
 export const createIVA = async (data: NewIvaReport) => {
     // 1. Validar duplicados para el mes
@@ -833,4 +857,42 @@ export const createIVA = async (data: NewIvaReport) => {
         data: createData,
     });
     return report;
+};
+
+export const createISLR = async (data: NewIslrReport) => {
+    try {
+        // Convert emition_date to Date object and get the year
+        const emitionYear = new Date(data.emition_date).getFullYear();
+
+        // Busca si ya existe un reporte para ese contribuyente en ese mismo año
+        const existingReport = await db.iSLRReports.findFirst({
+            where: {
+                taxpayerId: data.taxpayerId,
+                AND: [
+                    {
+                        emition_date: {
+                            gte: new Date(`${emitionYear}-01-01`),
+                            lte: new Date(`${emitionYear}-12-31`)
+                        }
+                    }
+                ]
+            }
+        });
+
+        // Si ya existe, lanza error
+        if (existingReport) {
+            throw new Error(`ISLR Report for this taxpayer in: ${emitionYear} was already created`);
+        }
+
+        // Si no existe, crea el reporte
+        const response = await db.iSLRReports.create({
+            data,
+        });
+
+        return response;
+
+    } catch (e: any) {
+        console.error(e);
+        throw new Error(e.message || "Couldn't create the ISLR Report");
+    }
 };

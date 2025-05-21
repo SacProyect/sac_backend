@@ -15,6 +15,7 @@ model user {
     personId   Int        @unique(map: "usuario_cedula_key")
     password   String
     status     Boolean    @default(true)
+    email      String     @default("")
     taxpayer   taxpayer[]
     errors     errors[]   @relation("UserErrors")
     updated_at DateTime   @default(now()) @updatedAt
@@ -91,14 +92,27 @@ model taxpayer {
     event              event[]
     payment            payment[]
     user               user?                  @relation(fields: [officerId], references: [id], map: "contribuyente_funcionarioId_fkey")
+    created_at         DateTime               @default(now())
     updated_at         DateTime               @default(now()) @updatedAt
     investigation_pdfs InvestigationPdf[]
     observations       Observations[]
     IVAReports         IVAReports[]
+    ISLRReports        ISLRReports[]
 
     @@index([officerId], map: "contribuyente_funcionarioId_fkey")
     @@index([process], map: "contribuyente_procedimiento_idx")
     @@index([contract_type], map: "contribuyente_tipoContrato_idx")
+}
+
+model ISLRReports {
+    id           String   @id @default(uuid())
+    incomes      Decimal
+    costs        Decimal
+    expent       Decimal
+    emition_date DateTime @default(now())
+    updatedAt    DateTime @default(now()) @updatedAt
+    taxpayerId   String
+    taxpayer     taxpayer @relation(fields: [taxpayerId], references: [id])
 }
 
 model IVAReports {

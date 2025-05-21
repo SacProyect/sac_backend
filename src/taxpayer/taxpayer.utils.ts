@@ -13,6 +13,14 @@ export type Taxpayer = {
     events?: Event[]
 }
 
+export type NewIslrReport = {
+    incomes: Decimal;
+    costs: Decimal;
+    expent: Decimal;
+    emition_date: Date;
+    taxpayerId: string;
+}
+
 export type NewTaxpayer = {
     providenceNum: bigint;
     process: taxpayer_process;

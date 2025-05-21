@@ -367,6 +367,8 @@ taxpayerRouter.get('/event/all',
     }
 )
 
+
+
 taxpayerRouter.get("/get-observations/:id",
     authenticateToken,
 
@@ -387,6 +389,31 @@ taxpayerRouter.get("/get-observations/:id",
         } catch (e) {
             console.error("Error getting observations: " + e);
             return res.status(500).json("Error getting the observations");
+        }
+    }
+)
+
+taxpayerRouter.get('/get-islr/:id',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL") return res.status(403).json("Forbidden")
+
+        try {
+
+            const id: string = req.params.id;
+
+            const islrReport = await TaxpayerServices.getIslrReports(id);
+
+            return res.status(200).json(islrReport);
+
+        } catch (e: any) {
+            console.error(e);
+            return res.status(500).json(e);
         }
     }
 )
@@ -491,6 +518,47 @@ taxpayerRouter.post('/createIVA',
     }
 )
 
+taxpayerRouter.post('/create-islr-report',
+    authenticateToken,
+    body("incomes").isDecimal(),
+    body("costs").isDecimal(),
+    body("expent").isDecimal(),
+    body("emition_date").isISO8601().notEmpty(),
+    body("taxpayerId").isString().notEmpty(),
+
+    async (req: Request, res: Response) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL") return res.status(403).json("Forbidden")
+
+
+        const input = { ...req.body }
+
+        const emitionYear = new Date(input.emition_date).getFullYear();
+        try {
+
+            const report = await TaxpayerServices.createISLR(input);
+
+            return res.status(200).json(report);
+
+        } catch (e: any) {
+
+            if (e.message === `ISLR Report for this taxpayer in: ${emitionYear} was already created`) {
+                return res.status(400).json({ error: e.message });
+            }
+
+            console.error(e);
+            return res.status(500).json(e);
+        }
+    }
+)
+
 taxpayerRouter.post('/payment',
     authenticateToken,
     body("date").isISO8601().toDate(),
@@ -582,6 +650,8 @@ taxpayerRouter.post('/warning',
         }
     }
 )
+
+
 
 taxpayerRouter.put('/fine/:eventId',
     authenticateToken,
