@@ -369,7 +369,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
         const updatedGroups = groups.map((group) => {
             let groupCollected: Decimal = new Decimal(0);
             let fines: Decimal = new Decimal(0);
-            let totalIva: bigint = BigInt(0);
+            let totalIva: Decimal = new Decimal(0);
 
             group.members.forEach((member) => {
                 member.taxpayer.forEach((contributor) => {
@@ -384,7 +384,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                     });
 
                     contributor.IVAReports.forEach((report) => {
-                        if (report.iva) totalIva += report.iva;
+                        if (report.paid) totalIva = totalIva.plus(report.paid);
                     });
                 });
             });
