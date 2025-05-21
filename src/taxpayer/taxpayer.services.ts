@@ -3,12 +3,36 @@ import { db } from "../utils/db.server";
 import { Event, getStatistics, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 import { BadRequestError } from "../utils/errors/BadRequestError";
 import { Taxpayer_Fases } from "@prisma/client";
-// import { Resend } from 'resend';
+import { Resend } from 'resend';
 
 
-// const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 
+
+// Helper para 'dormir' N milisegundos
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function sendEmailWithRetry(
+    params: Parameters<typeof resend.emails.send>[0],
+    retries = 3,
+    delayMs = 3000
+) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            return await resend.emails.send(params);
+        } catch (err) {
+            console.error(`Intento ${attempt} de envío de email fallido:`, err);
+            if (attempt < retries) {
+                // espera antes del próximo intento
+                await sleep(delayMs);
+            } else {
+                // tras último intento, registra error y sigue adelante
+                console.error("Todos los intentos de envío de email han fallado.");
+            }
+        }
+    }
+}
 
 
 /**
@@ -22,68 +46,15 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
 
         // console.log("Received input:", JSON.stringify(input, null, 2));
 
-        // const userName = await db.user.findFirst(({
-        //     where: {
-        //         id: input.userId,
-        //     },
-        //     select: {
-        //         name: true,
-        //     }
+        const userName = await db.user.findFirst(({
+            where: {
+                id: input.userId,
+            },
+            select: {
+                name: true,
+            }
 
-        // }))
-
-        // if (input.process === "AF") {
-        //     if (!userName?.name) {
-        //         throw new Error("El nombre del fiscal no se pudo obtener.");
-        //     }
-
-        //     const emailHtml = `
-        //     <div style="font-family: Arial, sans-serif; color: #333;">
-        //         <h2 style="color: #2c3e50;">🆕 Nuevo Contribuyente para Auditoría Fiscal</h2>
-        //         <p><strong>Fiscal Responsable:</strong> ${userName.name}</p>
-        //         <p>Se ha creado un nuevo contribuyente con el procedimiento <strong>Auditoría Fiscal (AF)</strong>.</p>
-
-        //         <h3 style="margin-top: 20px; color: #2980b9;">📋 Detalles del Contribuyente</h3>
-        //         <ul style="line-height: 1.6;">
-        //         <li><strong>Nombre:</strong> ${input.name}</li>
-        //         <li><strong>RIF:</strong> ${input.rif}</li>
-        //         <li><strong>Tipo de contrato:</strong> ${input.contract_type == "SPECIAL"? "ESPECIAL" : "ORDINARIO"}</li>
-        //         <li><strong>Número de providencia:</strong> ${input.providenceNum}</li>
-        //         <li><strong>Fecha de emisión:</strong> ${new Date(input.emition_date).toLocaleDateString()}</li>
-        //         <li><strong>Dirección:</strong> ${input.address}</li>
-        //         </ul>
-
-        //         <p style="margin-top: 20px;">
-        //         Puede acceder a la información y fases de este contribuyente a través del sistema:
-        //         </p>
-
-        //         <a href="https://sac-app.com" target="_blank" 
-        //         style="
-        //             display: inline-block;
-        //             background-color: #2980b9;
-        //             color: white;
-        //             padding: 10px 20px;
-        //             text-decoration: none;
-        //             border-radius: 5px;
-        //             margin-top: 10px;
-        //         ">
-        //         🔗 Ir a SAC App
-        //         </a>
-
-        //         <hr style="margin-top: 30px;" />
-        //         <footer style="font-size: 12px; color: #888;">
-        //         Este correo fue generado automáticamente por el sistema de gestión fiscal.
-        //         </footer>
-        //     </div>
-        //     `;
-
-        //     await resend.emails.send({
-        //         from: 'onboarding@resend.dev',
-        //         to: 'victorenrique2002@gmail.com',
-        //         subject: '🔍 Nuevo contribuyente creado para Auditoría Fiscal',
-        //         html: emailHtml
-        //     });
-        // }
+        }))
 
         // Buscamos todos los contribuyentes con el mismo providenceNum
         const provCandidates = await db.taxpayer.findMany({
@@ -191,6 +162,8 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
             }
         })
 
+
+
         // Insert PDFs linked to this taxpayer
         await db.investigationPdf.createMany({
             data: input.pdfs.map((pdf) => ({
@@ -198,6 +171,87 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                 taxpayerId: taxpayer.id,
             })),
         });
+
+        // 3) Si es AF, enviamos email
+        if (input.process === "AF") {
+            // buscamos el usuario "officer"
+            const officer = await db.user.findUnique({
+                where: { id: input.officerId },
+                include: {
+                    group: {
+                        include: {
+                            coordinator: {
+                                select: { email: true }
+                            }
+                        }
+                    }
+                }
+            });
+
+            const fiscalName = (await db.user.findUnique({
+                where: { id: input.userId },
+                select: { name: true }
+            }))?.name ?? "—";
+
+            const fromAddress = process.env.EMAIL_FROM ?? 'no-reply@sac-app.com';
+            const recipients = [
+                // 'victorenrique2002@gmail.com',
+                // 'glonga10@gmail.com',
+                // si existe coordinador, lo agregamos
+                ...(officer?.group?.coordinator?.email ? [officer.group.coordinator.email] : [])
+            ];
+
+            const contractTypeMap: Record<string, string> = {
+                SPECIAL: "ESPECIAL",
+                ORDINARY: "ORDINARIO",
+            };
+
+            const displayContractType =
+                contractTypeMap[input.contract_type] ?? input.contract_type;
+
+
+            const emailHtml = `
+                <div style="font-family: Arial, sans-serif; color: #333;">
+                <h2 style="color: #2c3e50;">🆕 Nuevo Contribuyente para Auditoría Fiscal</h2>
+                <p><strong>Fiscal Responsable:</strong> ${fiscalName}</p>
+                <p>Se ha creado un nuevo contribuyente con el procedimiento <strong>Auditoría Fiscal (AF)</strong>.</p>
+                <h3 style="margin-top:20px;color:#2980b9;">📋 Detalles</h3>
+                <ul style="line-height:1.6;">
+                    <li><strong>Nombre:</strong> ${input.name}</li>
+                    <li><strong>RIF:</strong> ${input.rif}</li>
+                    <li><strong>Tipo de contrato:</strong> ${displayContractType ?? "Desconocido"}</li>
+                    <li><strong>Número de providencia:</strong> ${input.providenceNum}</li>
+                    <li><strong>Fecha de emisión:</strong> ${new Date(input.emition_date).toLocaleDateString()}</li>
+                    <li><strong>Dirección:</strong> ${input.address}</li>
+                </ul>
+                <a href="https://sac-app.com" target="_blank" 
+                style="
+                    display: inline-block;
+                    background-color: #2980b9;
+                    color: white;
+                    padding: 10px 20px;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    margin-top: 10px;
+                ">
+                🔗 Ir a SAC App
+                </a>
+
+                <hr style="margin-top: 30px;" />
+                <footer style="font-size: 12px; color: #888;">
+                Este correo fue generado automáticamente por el sistema de gestión fiscal.
+                </footer>
+                </div>
+            `;
+
+            // disparamos el envío sin bloquear la creación
+            sendEmailWithRetry({
+                from: fromAddress,
+                to: recipients,
+                subject: '🔍 Nuevo contribuyente creado para Auditoría Fiscal',
+                html: emailHtml
+            }).catch(err => console.error("Error inesperado al enviar email:", err));
+        }
 
         return taxpayer;
 
