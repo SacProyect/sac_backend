@@ -25,7 +25,7 @@ const uploadLocal = createLocalUpload([
 taxpayerRouter.post(
     '/',
     authenticateToken,
-    uploadLocal.array("pdfs", 20), // sube solo al disco local
+    uploadLocal.array("pdfs", 20),
     body("providenceNum").isNumeric(),
     body("process").isString(),
     body("name").isString(),
@@ -49,6 +49,7 @@ taxpayerRouter.post(
 
             const { user } = req as AuthRequest;
             const userId = user?.id;
+            const role = user?.role;
             const s3Files = [];
 
             for (const file of req.files as Express.Multer.File[]) {
@@ -84,6 +85,7 @@ taxpayerRouter.post(
                 address,
                 pdfs: s3Files,
                 userId: userId,
+                role: role,
             });
 
             return res.status(200).json(newTaxpayer);

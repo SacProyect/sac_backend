@@ -32,6 +32,7 @@ export type NewTaxpayer = {
     address: string;
     pdfs? : InvestigationPdf[];
     userId?: string;
+    role?: string;
 }
 
 export interface NewObservation {

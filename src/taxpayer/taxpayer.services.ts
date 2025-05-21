@@ -85,6 +85,32 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
         //     });
         // }
 
+        // Buscamos todos los contribuyentes con el mismo providenceNum
+        const provCandidates = await db.taxpayer.findMany({
+            where: { providenceNum: input.providenceNum },
+            select: { process: true }
+        });
+
+        for (const cand of provCandidates) {
+            const existing = cand.process;
+            const incoming = input.process;
+
+            // mismo proceso => no permitido
+            if (existing === incoming) {
+                throw new Error(
+                    `Ya existe un contribuyente con providenceNum=${input.providenceNum} y proceso=${existing}.`
+                );
+            }
+
+            // AF vs VDF => no permitido
+            const pair = [existing, incoming].sort().join('|');
+            if (pair === 'AF|VDF') {
+                throw new Error(
+                    `No puedes reutilizar el providenceNum=${input.providenceNum} para procedimientos AF y VDF.`
+                );
+            }
+        }
+
 
         const existingTaxpayer = await db.taxpayer.findUnique({
             where: {
@@ -100,6 +126,57 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
         }
 
         const emitionDate = new Date(input.emition_date);
+
+        if (input.role !== "ADMIN") {
+            // Normalizamos el nuevo nombre (quitando espacios y a minúsculas)
+            const normalizedNew = input.name.replace(/\s+/g, "").toLowerCase();
+
+            // Extraemos la primera palabra para acotar la búsqueda
+            const firstWord = input.name.trim().split(/\s+/)[0];
+
+            // 1) Traemos candidatos que contengan esa primera palabra
+            const candidates = await db.taxpayer.findMany({
+                where: {
+                    name: { contains: firstWord },
+                },
+                select: {
+                    name: true,
+                    emition_date: true,
+                    process: true,
+                },
+            });
+
+            // 2) Filtramos aquellos cuya normalización coincida exactamente
+            const sameName = candidates
+                .filter((c) =>
+                    c.name.replace(/\s+/g, "").toLowerCase() === normalizedNew
+                )
+                .sort(
+                    (a, b) =>
+                        new Date(b.emition_date).getTime() -
+                        new Date(a.emition_date).getTime()
+                );
+
+            const lastSame = sameName[0];
+            if (lastSame) {
+                const newDate = new Date(input.emition_date);
+                const prevDate = new Date(lastSame.emition_date);
+                // Diferencia en meses aproximada
+                const diffMonths =
+                    (newDate.getTime() - prevDate.getTime()) /
+                    (1000 * 60 * 60 * 24 * 30);
+                // Umbral: 14 para VDF/FP, 15 para AF
+                const threshold = ["VDF", "FP"].includes(input.process) ? 14 : 15;
+
+                if (diffMonths < threshold) {
+                    throw new Error(
+                        `No puede crear un contribuyente con nombre "${input.name}" porque el último con ese nombre fue registrado hace ${Math.floor(
+                            diffMonths
+                        )} meses (mínimo requerido: ${threshold} meses).`
+                    );
+                }
+            }
+        }
 
         const taxpayer = await db.taxpayer.create({
             data: {
@@ -767,7 +844,7 @@ export async function getIslrReports(taxpayerId: string) {
         const reports = await db.iSLRReports.findMany({
             where: {
                 taxpayerId: taxpayerId,
-            }, 
+            },
             include: {
                 taxpayer: {
                     select: {
