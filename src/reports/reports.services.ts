@@ -2,11 +2,11 @@ import { event_type } from "@prisma/client"
 import { db } from "../utils/db.server"
 import { avgValue, getComplianceRate, getLatestEvents, getPunctuallityAnalysis, getTaxpayerComplianceRate, InputError, sumTransactions } from "./report.utils"
 import { Event, Payment } from "../taxpayer/taxpayer.utils"
-import { group } from "console"
-import { taxpayerRouter } from "../taxpayer/taxpayer.routes"
 import { Decimal } from "@prisma/client/runtime/library"
-import { format } from "date-fns";
-import { AuthRequest, AuthUser, User } from "../users/user.utils"
+import dayjs from "dayjs";
+import isBetween from 'dayjs/plugin/isBetween';
+
+dayjs.extend(isBetween);
 
 interface InputFiscalGroups {
     role: string,
@@ -405,202 +405,225 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
 };
 
 
-export async function getGlobalPerformance() {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const lastYear = currentYear - 1;
-
-    const startDate = new Date(currentYear, 0, 1);
-    const endDate = new Date(currentYear, 11, 31, 23, 59, 59);
-
+export const getGlobalPerformance = async () => {
     try {
-        // Get fines per month (including paid)
-        const fines = await db.event.groupBy({
-            by: ["date"],
+        // Obtener todos los datos relevantes
+        const ivaReports = await db.iVAReports.findMany();
+        const islrReports = await db.iSLRReports.findMany();
+        const fines = await db.event.findMany({
             where: {
                 type: "FINE",
-                date: {
-                    gte: startDate,
-                    lte: endDate,
-                },
-            },
-            _count: {
-                _all: true,
-            },
-            _sum: {
-                debt: true,
             },
         });
 
-        // Get paid fines per month
-        const paidFines = await db.event.groupBy({
-            by: ["date"],
-            where: {
-                type: "FINE",
-                date: {
-                    gte: startDate,
-                    lte: endDate,
-                },
-                debt: 0,
-            },
-            _count: {
-                _all: true,
-            },
+        // Agrupar IVA por mes
+        const ivaByMonth: Record<string, number> = {};
+        ivaReports.forEach((report) => {
+            const date = new Date(report.date);
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+            ivaByMonth[key] = (ivaByMonth[key] || 0) + Number(report.iva);
         });
+        // console.log("IVA por mes:", ivaByMonth);
 
-        // Get payments collected per month
-        const payments = await db.payment.groupBy({
-            by: ["date"],
-            where: {
-                date: {
-                    gte: startDate,
-                    lte: endDate,
-                },
-            },
-            _sum: {
-                amount: true,
-            },
+        // ISLR anual prorrateado en 12 meses
+        const islrByMonth: Record<string, number> = {};
+        islrReports.forEach((report) => {
+            const date = new Date(report.emition_date);
+            const year = date.getFullYear();
+            const monthlyAmount =
+                (report.incomes.toNumber() - report.expent.toNumber() - report.costs.toNumber()) / 12;
+
+            for (let month = 1; month <= 12; month++) {
+                const key = `${year}-${String(month).padStart(2, "0")}`;
+                islrByMonth[key] = (islrByMonth[key] || 0) + monthlyAmount;
+            }
         });
+        // console.log("ISLR por mes (prorrateado):", islrByMonth);
 
-        // Initialize empty stats
-        const monthlyStats: Record<
-            string,
-            { paid: number; fines: number; collected: number; lastYear: number }
-        > = {
-            January: { paid: 0, fines: 0, collected: 0, lastYear: 0 },
-            February: { paid: 0, fines: 0, collected: 0, lastYear: 0 },
-            March: { paid: 0, fines: 0, collected: 0, lastYear: 0 },
-            April: { paid: 0, fines: 0, collected: 0, lastYear: 0 },
-            May: { paid: 0, fines: 0, collected: 0, lastYear: 0 },
-            June: { paid: 0, fines: 0, collected: 0, lastYear: 0 },
-            July: { paid: 0, fines: 0, collected: 0, lastYear: 0 },
-            August: { paid: 0, fines: 0, collected: 0, lastYear: 0 },
-            September: { paid: 0, fines: 0, collected: 0, lastYear: 0 },
-            October: { paid: 0, fines: 0, collected: 0, lastYear: 0 },
-            November: { paid: 0, fines: 0, collected: 0, lastYear: 0 },
-            December: { paid: 0, fines: 0, collected: 0, lastYear: 0 },
+        // Cumplimiento de multas
+        const fineCountByMonth: Record<string, number> = {};
+        const paidFineCountByMonth: Record<string, number> = {};
+
+        fines.forEach((fine) => {
+            const date = new Date(fine.date);
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+            fineCountByMonth[key] = (fineCountByMonth[key] || 0) + 1;
+            if (fine.debt.equals(0)) {
+                paidFineCountByMonth[key] = (paidFineCountByMonth[key] || 0) + 1;
+            }
+        });
+        // console.log("Total multas por mes:", fineCountByMonth);
+        // console.log("Multas pagadas por mes:", paidFineCountByMonth);
+
+        const complianceByMonth: Record<string, number> = {};
+        Object.keys(fineCountByMonth).forEach((key) => {
+            const total = fineCountByMonth[key];
+            const paid = paidFineCountByMonth[key] || 0;
+            complianceByMonth[key] = (paid / total) * 100;
+        });
+        // console.log("Tasa de cumplimiento por mes:", complianceByMonth);
+
+        // Unificar todos los meses presentes
+        const allMonthsSet = new Set([
+            ...Object.keys(ivaByMonth),
+            ...Object.keys(islrByMonth),
+            ...Object.keys(complianceByMonth),
+        ]);
+        const allMonths = Array.from(allMonthsSet).sort();
+        // console.log("Meses analizados:", allMonths);
+
+        // Calcular índice global mensual
+        type Result = {
+            month: string;
+            ivaAmount: number;
+            islrAmount: number;
+            complianceRate: number;
+            globalIndex: number;
+            previousIndex?: number;
+            percentageChange?: number | null;
         };
 
-        // Populate fines
-        for (const item of fines) {
-            const monthName = format(item.date, "LLLL");
-            monthlyStats[monthName].fines += item._count._all;
-        }
+        const monthlyData: Record<string, Result> = {};
 
-        // Populate paid
-        for (const item of paidFines) {
-            const monthName = format(item.date, "LLLL");
-            monthlyStats[monthName].paid += item._count._all;
-        }
+        allMonths.forEach((monthKey) => {
+            const ivaAmount = ivaByMonth[monthKey] || 0;
+            const islrAmount = islrByMonth[monthKey] || 0;
+            const complianceRate = complianceByMonth[monthKey] || 0;
 
-        // Populate collected
-        for (const item of payments) {
-            const monthName = format(item.date, "LLLL");
-            monthlyStats[monthName].collected += Number(item._sum.amount ?? 0);
-        }
+            const globalIndex = ivaAmount * 0.4 + islrAmount * 0.4 + complianceRate * 0.2;
 
-        // Step 1: Upsert current year into globalStatistics
-        for (const monthName of Object.keys(monthlyStats)) {
-            await db.globalStatistics.upsert({
-                where: {
-                    month_year: { month: monthName, year: currentYear },
-                },
-                update: {
-                    collected: monthlyStats[monthName].collected,
-                },
-                create: {
-                    month: monthName,
-                    year: currentYear,
-                    collected: monthlyStats[monthName].collected,
-                },
-            });
-        }
+            // console.log(`\n>>> Cálculo para ${monthKey}`);
+            // console.log(`IVA: ${ivaAmount}`);
+            // console.log(`ISLR: ${islrAmount}`);
+            // console.log(`Tasa de cumplimiento: ${complianceRate}`);
+            // console.log(`Índice global: ${globalIndex}`);
 
-        // Step 2: Add last year stats
-        const lastYearStats = await db.globalStatistics.findMany({
-            where: { year: lastYear },
+            monthlyData[monthKey] = {
+                month: monthKey,
+                ivaAmount,
+                islrAmount,
+                complianceRate,
+                globalIndex,
+            };
         });
 
-        for (const stat of lastYearStats) {
-            if (monthlyStats[stat.month]) {
-                monthlyStats[stat.month].lastYear = Number(stat.collected);
-            }
-        }
+        // Comparar con el mismo mes del año anterior
+        Object.keys(monthlyData).forEach((monthKey) => {
+            const [year, month] = monthKey.split("-");
+            const previousYear = `${Number(year) - 1}-${month}`;
+            const current = monthlyData[monthKey];
+            const previous = monthlyData[previousYear] || {
+                globalIndex: 0,
+            };
 
-        return monthlyStats;
-    } catch (e) {
-        console.error(e);
-        throw new Error("An error has occurred");
+            current.previousIndex = previous.globalIndex;
+            current.percentageChange =
+                previous.globalIndex === 0
+                    ? 0.1 // 100% de crecimiento respecto a 0
+                    : ((current.globalIndex - previous.globalIndex) / previous.globalIndex) * 100;
+
+            // console.log(`\n>>> Comparación para ${monthKey} vs ${previousYear}`);
+            // console.log(`Actual: ${current.globalIndex}, Anterior: ${previous.globalIndex}`);
+            // console.log(`% Cambio: ${current.percentageChange}`);
+        });
+
+        const result = Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month));
+        return result;
+    } catch (error) {
+        console.error("Error in getGlobalPerformance:", error);
+        throw new Error("Can't get the global performance");
     }
-}
+};
+
 
 
 export async function getGlobalTaxpayersPerformance() {
-
-    let fines = 0;
-    let compromises = 0;
-    let paid = 0;
-    let unpaid = 0;
-
+    let ivaCollected = 0;
+    let islrCollected = 0;
+    let finesCollected = 0;
 
     try {
+        const events = await db.event.findMany();
 
-        const events = await db.event.findMany()
+        events.forEach((event) => {
+            if (event.type === "FINE") {
+                finesCollected += Number(event.amount);
+            }
+        });
 
-            ; (await events).forEach((event) => {
-                if (event.type == "FINE") fines += 1;
-                if (event.type == "PAYMENT_COMPROMISE") compromises += 1;
-                if (event.type === "FINE" && event.debt.equals(0)) paid += 1;
-                if (event.type === "FINE" && event.debt.greaterThan(0)) unpaid += 1;
-            })
+        const iva = await db.iVAReports.findMany();
+
+        iva.forEach((rep) => {
+            ivaCollected += Number(rep.paid);
+        })
+
+        const islr = await db.iSLRReports.findMany();
+
+        islr.forEach((rep) => {
+            islrCollected += Number(rep.paid);
+        })
+
+
+
+        const totalCollected = ivaCollected + islrCollected + finesCollected;
+
 
         return {
-            fines,
-            compromises,
-            paid,
-            unpaid,
+            ivaCollected: Number(ivaCollected.toFixed(2)),
+            islrCollected: Number(islrCollected.toFixed(2)),
+            finesCollected: Number(finesCollected.toFixed(2)),
+            totalCollected: Number(totalCollected.toFixed(2)),
         };
 
-
     } catch (e) {
-        console.log(e)
-        throw new Error("Error obteniendo el rendimiendo de los contribuyentes")
+        console.log(e);
+        throw new Error("Error obteniendo el rendimiento de los contribuyentes");
     }
-
 }
 
 
 export async function getGroupPerformance() {
-
     try {
-
-        const groupPerformance = await db.fiscalGroup.findMany(
-            {
-                include: {
-                    members: {
-                        include: {
-                            taxpayer: {
-                                include: {
-                                    event: true,
-                                }
+        const groupPerformance = await db.fiscalGroup.findMany({
+            include: {
+                members: {
+                    include: {
+                        taxpayer: {
+                            include: {
+                                event: true,
+                                IVAReports: true,  // Asegúrate que el nombre del campo en Prisma sea este
+                                ISLRReports: true,  // Asegúrate que el nombre del campo en Prisma sea este
                             }
                         }
                     }
                 }
             }
-        );
+        });
 
         const performanceByGroup = groupPerformance.map((group) => {
             let totalPaidFines = 0;
             let totalPaidAmount = 0;
+            let totalIvaCollected = 0;
+            let totalIslrCollected = 0;
 
             group.members.forEach((member) => {
                 member.taxpayer.forEach((taxp) => {
+                    // Multas pagadas
                     taxp.event.forEach((ev) => {
                         if (ev.type === "FINE" && ev.debt.equals(0)) {
                             totalPaidFines++;
                             totalPaidAmount += ev.amount.toNumber();
                         }
+                    });
+
+                    // IVA recaudado
+                    taxp.IVAReports?.forEach((iva) => {
+                        totalIvaCollected += Number(iva.paid);
+                    });
+
+                    // ISLR recaudado
+                    taxp.ISLRReports?.forEach((islr) => {
+                        totalIslrCollected += Number(islr.paid);
                     });
                 });
             });
@@ -609,158 +632,161 @@ export async function getGroupPerformance() {
                 groupId: group.id,
                 groupName: group.name,
                 totalPaidFines,
-                totalPaidAmount,
+                totalPaidAmount: Number(totalPaidAmount).toFixed(2),
+                totalIvaCollected: Number(totalIvaCollected).toFixed(2),
+                totalIslrCollected: Number(totalIslrCollected).toFixed(2),
             };
         });
 
         return performanceByGroup;
 
     } catch (e) {
-        console.error(e)
-        throw new Error("Error en la api" + e)
+        console.error(e);
+        throw new Error("Error en la API: " + e);
     }
 }
 
+/**
+ * Calcula el excedente de crédito fiscal de un contribuyente
+ * siguiendo tu lógica de consumo por IVA.
+ */
+function calculateCreditSurplus(
+    reports: { date: Date; excess: bigint | null; iva: bigint | null }[]
+): number {
+    // Ordenar de más antiguo a más reciente
+    const sorted = reports
+        .slice()
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    let accumulated = 0;
+    let totalAdded = 0;
+
+    for (const r of sorted) {
+        const ex = r.excess ? Number(r.excess) : 0;
+        const iv = r.iva ? Number(r.iva) : 0;
+
+        // Si no hay excedente acumulado y encontramos uno >0, lo sumamos
+        if (accumulated === 0 && ex > 0) {
+            accumulated = ex;
+            totalAdded += ex;
+        }
+        // Si tenemos excedente pendiente, lo consumimos con el IVA
+        else if (accumulated > 0) {
+            accumulated -= iv;
+            if (accumulated < 0) accumulated = 0;
+        }
+        // Seguimos al siguiente reporte...
+    }
+
+    return totalAdded;
+}
 export async function getGlobalKPI() {
     try {
-        const performanceKpi = await db.taxpayer.findMany({
+        // 1) Cargar todos los contribuyentes con sus reportes y eventos
+        const taxpayers = await db.taxpayer.findMany({
             include: {
-                event: {
-                    include: { payment: true },
-                },
+                IVAReports: true,
+                ISLRReports: true,
+                event: true,
             },
         });
 
-        let totalComplianceRate = 0;
-        let taxpayerCount = 0;
+        let totalCollection = 0;      // IVA + ISLR + Multas pagadas
+        let creditSurplusSum = 0;     // Suma de excedentes válidos
+        let creditSurplusCount = 0;   // Contribuyentes con excedente
+        let withFineCount = 0;        // Contribuyentes que recibieron multa
+        let totalDebt = 0;            // Suma de deudas pendientes
 
-        let totalFinesAmount = 0;
-        let totalFines = 0;
+        // Fecha para crecimiento interanual
+        const now = dayjs();
+        const startThisYear = now.startOf("year");
+        const startLastYear = now.subtract(1, "year").startOf("year");
+        const endLastYear = now.subtract(1, "year").endOf("year");
 
-        let totalDelayDays = 0;
-        let delayFinesCount = 0;
+        let lastYearCollection = 0;
 
-        const today = new Date();
-        const currentMonth = today.getMonth();
-        const currentYear = today.getFullYear();
-        const lastMonthDate = new Date(currentYear, currentMonth - 1, 1);
-        const thisMonthDate = new Date(currentYear, currentMonth, 1);
+        // Recabar datos de cada contribuyente
+        for (const tp of taxpayers) {
+            // a) Recaudación IVA e ISLR
+            tp.IVAReports.forEach(r => totalCollection += Number(r.paid));
+            tp.ISLRReports.forEach(r => totalCollection += Number(r.paid));
 
-        let lastMonthFines = 0;
-        let lastMonthPaidFines = 0;
-        let thisMonthFines = 0;
-        let thisMonthPaidFines = 0;
-
-        performanceKpi.forEach((taxpayer, taxpayerIndex) => {
-            let finesPaid = 0;
-
-            taxpayer.event.forEach((event, eventIndex) => {
-                if (event.type === "FINE") {
-                    totalFines++;
-
-                    const amount = event.amount.toNumber();
-                    totalFinesAmount += amount;
-
-
-                    const fineDate = new Date(event.date);
-                    const isPaid = event.debt.equals(0);
-
-                    if (fineDate >= lastMonthDate && fineDate < thisMonthDate) {
-                        lastMonthFines++;
-                        if (isPaid) lastMonthPaidFines++;
-                    } else if (
-                        fineDate.getFullYear() === currentYear &&
-                        fineDate.getMonth() === currentMonth
-                    ) {
-                        thisMonthFines++;
-                        if (isPaid) thisMonthPaidFines++;
-                    }
-
-                    let delayInDays = 0;
-                    if (isPaid) {
-                        finesPaid++;
-                        const latestPayment = event.payment
-                            .sort(
-                                (a, b) =>
-                                    new Date(b.date).getTime() - new Date(a.date).getTime()
-                            )[0];
-                        if (latestPayment) {
-                            delayInDays = Math.round(
-                                (new Date(latestPayment.date).getTime() - fineDate.getTime()) /
-                                (1000 * 60 * 60 * 24)
-                            );
-                        }
-                    } else {
-                        delayInDays = Math.round(
-                            (today.getTime() - fineDate.getTime()) / (1000 * 60 * 60 * 24)
-                        );
-                    }
-
-                    totalDelayDays += delayInDays;
-                    delayFinesCount++;
+            // b) Multas pagadas (event.type === 'FINE' && debt === 0)
+            const fines = tp.event.filter(e => e.type === "FINE");
+            if (fines.length > 0) withFineCount++;
+            fines.forEach(e => {
+                if (e.debt.toString() === "0") {
+                    totalCollection += Number(e.amount);
+                } else {
+                    totalDebt += Number(e.debt);
                 }
             });
 
-            const finesForThisTaxpayer = taxpayer.event.filter(
-                (e) => e.type === "FINE"
-            ).length;
-            if (finesForThisTaxpayer > 0) {
-                const complianceRate = (finesPaid / finesForThisTaxpayer) * 100;
-                totalComplianceRate += complianceRate;
-                taxpayerCount++;
+            // c) Excedente de crédito fiscal complejo (solo IVAReports, usa fields .excess y .iva)
+            const surplus = calculateCreditSurplus(
+                tp.IVAReports.map(r => ({
+                    date: r.date,
+                    excess: r.excess,
+                    iva: r.iva,
+                }))
+            );
+            if (surplus > 0) {
+                creditSurplusSum += surplus;
+                creditSurplusCount++;
             }
-        });
 
+            // d) Recaudación año pasado para crecimiento
+            tp.IVAReports
+                .filter(r => dayjs(r.date).isBetween(startLastYear, endLastYear, null, "[]"))
+                .forEach(r => lastYearCollection += Number(r.paid));
+            tp.ISLRReports
+                .filter(r => dayjs(r.emition_date).isBetween(startLastYear, endLastYear, null, "[]"))
+                .forEach(r => lastYearCollection += Number(r.paid));
+            tp.event
+                .filter(e =>
+                    e.type === "FINE" &&
+                    e.debt.equals(0) &&
+                    dayjs(e.date).isBetween(startLastYear, endLastYear, null, "[]")
+                )
+                .forEach(e => lastYearCollection += Number(e.amount));
+        }
 
-        const averageComplianceRate = taxpayerCount
-            ? totalComplianceRate / taxpayerCount
-            : 0;
-        const avgFinesAmount = totalFines
-            ? totalFinesAmount / totalFines
-            : 0;
-        const averageDelay = delayFinesCount
-            ? totalDelayDays / delayFinesCount
-            : 0;
+        const totalTaxpayers = taxpayers.length;
 
+        // 1. Recaudación total
+        const totalTaxCollection = totalCollection;
 
-        const taxpayersWithFines = performanceKpi.filter((t) =>
-            t.event.some((e) => e.type === "FINE")
-        );
-        const compliantCount = taxpayersWithFines.filter((t) => {
-            const fines = t.event.filter((e) => e.type === "FINE");
-            return fines.length > 0 && fines.every((e) => e.debt.equals(0));
-        }).length;
-        const percentageCompliantTaxpayers = taxpayersWithFines.length
-            ? (compliantCount / taxpayersWithFines.length) * 100
-            : 0;
+        // 2. Promedio de excedente
+        const averageCreditSurplus =
+            creditSurplusCount > 0
+                ? creditSurplusSum / creditSurplusCount
+                : 0;
 
-        const lastMonthCompliance = lastMonthFines
-            ? (lastMonthPaidFines / lastMonthFines) * 100
-            : 0;
-        const thisMonthCompliance = thisMonthFines
-            ? (thisMonthPaidFines / thisMonthFines) * 100
-            : 0;
-        const monthlyPerformanceChange = lastMonthCompliance
-            ? ((thisMonthCompliance - lastMonthCompliance) / lastMonthCompliance) * 100
+        // 3. % con multas
+        const finePercentage = totalTaxpayers > 0
+            ? (withFineCount / totalTaxpayers) * 100
             : 0;
 
-        const averageFinesPerTaxpayer = taxpayersWithFines.length
-            ? (totalFines / taxpayersWithFines.length)
+        // 4. Tasa de crecimiento interanual
+        const growthRate = lastYearCollection > 0
+            ? ((totalCollection - lastYearCollection) / lastYearCollection) * 100
             : 0;
 
-        const round = (val: number) => parseFloat(val.toFixed(2));
+        // 5. Índice de morosidad
+        const delinquencyRate = totalCollection > 0
+            ? (totalDebt / totalCollection) * 100
+            : 0;
 
-        return [
-            { name: "Tasa de cumplimiento", value: round(averageComplianceRate) },
-            { name: "Monto promedio de multa", value: round(avgFinesAmount) },
-            { name: "Demora promedio", value: round(averageDelay) },
-            { name: "Contribuyentes cumplidores", value: round(percentageCompliantTaxpayers) },
-            { name: "Cambio en rendimiento", value: round(monthlyPerformanceChange) },
-            { name: "Multas promedio", value: round(averageFinesPerTaxpayer) },
-        ]
+        return {
+            totalTaxCollection: Number(totalTaxCollection).toFixed(2),     // Bs.
+            averageCreditSurplus: Number(averageCreditSurplus).toFixed(2),   // Bs.
+            finePercentage: Number(finePercentage).toFixed(2),         // %
+            growthRate: Number(growthRate).toFixed(2),             // %
+            delinquencyRate: Number(delinquencyRate).toFixed(2),        // %
+        };
     } catch (e) {
-        console.error("❌ An error occurred while calculating the global KPI:", e);
-        throw new Error("Error al realizar la solicitud.");
+        console.error("Error in getGlobalKPI:", e);
+        throw new Error("Error al calcular KPIs globales");
     }
 }
 

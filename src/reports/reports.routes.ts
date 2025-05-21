@@ -240,7 +240,7 @@ reportRouter.get("/global-taxpayer-performance",
     }
 )
 
-reportRouter.get("/group-perfomance",
+reportRouter.get("/group-performance",
     authenticateToken,
     async (req: Request, res: Response) => {
 

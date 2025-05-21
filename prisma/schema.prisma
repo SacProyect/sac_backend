@@ -109,6 +109,7 @@ model ISLRReports {
     incomes      Decimal
     costs        Decimal
     expent       Decimal
+    paid         Decimal  @default(0)
     emition_date DateTime @default(now())
     updatedAt    DateTime @default(now()) @updatedAt
     taxpayerId   String
@@ -121,6 +122,7 @@ model IVAReports {
     purchases  BigInt
     sells      BigInt
     excess     BigInt?
+    paid       Decimal  @default(0)
     date       DateTime @default(now())
     taxpayerId String
     taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id])

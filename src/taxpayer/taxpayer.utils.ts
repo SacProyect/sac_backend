@@ -19,6 +19,7 @@ export type NewIslrReport = {
     expent: Decimal;
     emition_date: Date;
     taxpayerId: string;
+    paid: Decimal;
 }
 
 export type NewTaxpayer = {
@@ -48,6 +49,7 @@ export interface NewIvaReport {
     sells: number,
     excess: number, 
     date: Date,
+    paid: Decimal,
 }
 
 export interface NewFase {

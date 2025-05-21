@@ -981,6 +981,7 @@ export const createIVA = async (data: NewIvaReport) => {
                     const calculatedExcess = BigInt(previousExcess) - BigInt(data.iva);
                     return calculatedExcess > BigInt(0) ? calculatedExcess : BigInt(0);
                 })(),
+        paid: data.paid,
     };
 
     // 4. Crear y devolver

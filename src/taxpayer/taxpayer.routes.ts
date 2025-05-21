@@ -479,6 +479,7 @@ taxpayerRouter.post('/createIVA',
     body("sells").notEmpty().isNumeric(),
     body("excess").optional(),
     body("date").isISO8601().notEmpty(),
+    body("paid").notEmpty(),
 
 
     async (req: Request, res: Response) => {
@@ -527,6 +528,7 @@ taxpayerRouter.post('/create-islr-report',
     body("expent").isDecimal(),
     body("emition_date").isISO8601().notEmpty(),
     body("taxpayerId").isString().notEmpty(),
+    body("paid").notEmpty(),
 
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
