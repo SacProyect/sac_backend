@@ -2,7 +2,7 @@ import { JwtPayload, sign, verify } from "jsonwebtoken"
 import { NextFunction, Request, Response } from "express"
 import { hash } from "bcrypt";
 import { Taxpayer } from "../taxpayer/taxpayer.utils";
-import { user_roles } from "@prisma/client";
+import { Taxpayer_Fases, user_roles } from "@prisma/client";
 
 const TOKEN_SECRET = process.env.TOKEN_SECRET as string
 
@@ -21,8 +21,20 @@ export type User = {
     personId: number;
     name: string;
     role: string;
-    taxpayer?: Taxpayer[]
+    taxpayer?: Taxpayer[];
+    // fase?: Taxpayer_Fases;
 };
+
+export type UpdateUserByNameInput = {
+    name: string,
+    data: DataUserByNameInput,
+}
+
+export type DataUserByNameInput = {
+    name?: string;
+    personId?: string;
+    email?: string;
+}
 
 
 

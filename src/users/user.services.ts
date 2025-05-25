@@ -1,6 +1,6 @@
 import { compareSync } from "bcrypt";
 import { db } from "../utils/db.server";
-import { generateAcessToken, NewUserInput, passwordHashing, User } from "./user.utils";
+import { generateAcessToken, NewUserInput, passwordHashing, UpdateUserByNameInput, User } from "./user.utils";
 
 /**
  * Logs in a user.
@@ -194,5 +194,36 @@ export const getUser = async (id: string) => {
         console.error(e);
         throw new Error("Error getting the updated user with the new token.")
     }
+}
+
+
+export async function updateUserByName(name: string, data: UpdateUserByNameInput) {
+    try {
+        const normalizedName = normalizeText(name);
+
+        const users = await db.user.findMany(); // todos los usuarios
+
+        // Buscar manualmente el primer nombre que haga match "sin acentos" e insensible a mayúsculas
+        const userFound = users.find(u =>
+            normalizeText(u.name).toLowerCase() === normalizedName.toLowerCase()
+        );
+
+        if (!userFound) throw new Error("User not found");
+
+        const updatedUser = await db.user.update({
+            where: { personId: userFound.personId },
+            data,
+        });
+
+        return updatedUser;
+    } catch (e) {
+        console.error(e);
+        throw new Error("Couldn't update the user.");
+    }
+}
+
+// Helper
+function normalizeText(text: string): string {
+    return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 

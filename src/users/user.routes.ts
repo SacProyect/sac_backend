@@ -11,7 +11,7 @@ userRouter.get('/all',
     authenticateToken,
     async (req: Request, res: Response) => {
 
-        const {user} = req as AuthRequest
+        const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
 
@@ -89,5 +89,35 @@ userRouter.get("/me",
             console.error("Error in /users/me:", err);
             res.status(500).json({ message: "Server error" });
         }
+    }
+)
+
+userRouter.put('/update-by-name/:name',
+    authenticateToken,
+    body("name").optional(),
+    body("personId").optional(),
+    body("email").optional(),
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access");
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden");
+
+        try {
+            const name: string = req.params.name;
+
+            const data = req.body;
+            
+            const response = await UserService.updateUserByName(name, data);
+
+            return res.status(200).json(response);
+
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json(e);
+        }
+
     }
 )

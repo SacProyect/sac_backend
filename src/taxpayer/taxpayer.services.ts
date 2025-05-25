@@ -1,6 +1,6 @@
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { db } from "../utils/db.server";
-import { Event, getStatistics, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
+import { Event, getStatistics, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 import { BadRequestError } from "../utils/errors/BadRequestError";
 import { Taxpayer_Fases } from "@prisma/client";
 import { Resend } from 'resend';
@@ -260,6 +260,81 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
         throw error;
     }
 }
+
+
+export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
+    const {
+        providenceNum,
+        process,
+        name,
+        rif,
+        contract_type,
+        officerName,
+        address,
+        emition_date,
+    } = data;
+
+    try {
+        // Traemos todos los usuarios para hacer una comparación manual del nombre
+        const users = await db.user.findMany();
+
+        // Normalizamos los nombres y buscamos coincidencias exactas (sin importar mayúsculas/minúsculas ni tildes)
+        const normalizedInputName = normalize(officerName);
+        const matchedOfficer = users.find((u) => normalize(u.name) === normalizedInputName);
+
+        if (!matchedOfficer) {
+            throw new Error(`No officer found with name similar to "${officerName}"`);
+        }
+
+        // Creamos el nuevo contribuyente
+        const newTaxpayer = await db.taxpayer.create({
+            data: {
+                providenceNum,
+                process: process as any,
+                name,
+                rif,
+                contract_type: contract_type as any,
+                officerId: matchedOfficer.id,
+                address,
+                emition_date: new Date(emition_date),
+            },
+        });
+
+        return newTaxpayer;
+    } catch (error: any) {
+        console.error("Error creating taxpayer:", error);
+
+        // Prisma client error
+        if (error.code === 'P2002') {
+            // Unique constraint failed (por ejemplo, rif duplicado)
+            throw new Error(`A taxpayer with this RIF already exists: ${rif}`);
+        }
+
+        // Validación de fecha inválida
+        if (error instanceof RangeError && error.message.includes("Invalid time value")) {
+            throw new Error(`Invalid emition_date: "${emition_date}"`);
+        }
+
+        // Prisma validation error
+        if (error.name === "PrismaClientValidationError") {
+            throw new Error(`Invalid data sent to database: ${error.message}`);
+        }
+
+        // Otro error genérico
+        throw new Error(error.message || "Unknown error creating taxpayer");
+    }
+}
+
+// Función para normalizar strings (quita mayúsculas y tildes)
+function normalize(str: string): string {
+    return str
+        .normalize("NFD") // Separa letras de sus tildes
+        .replace(/[\u0300-\u036f]/g, "") // Elimina los caracteres de tilde
+        .toLowerCase()
+        .trim();
+}
+
+
 
 /**
  * Creates a new event.
@@ -724,6 +799,29 @@ export const updateFase = async (data: NewFase) => {
     } catch (e) {
         console.error(e);
         throw new Error("Could not update the fase")
+    }
+}
+
+export const updateCulminated = async (id: string, culminated: boolean) => {
+
+    console.log(id);
+    console.log(culminated);
+
+    try {
+        const updatedCulminatedProcess = await db.taxpayer.update({
+            where: {
+                id: id,
+            },
+            data: {
+                culminated: true,
+            }
+        })
+
+        return updatedCulminatedProcess;
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("Couldn't update the culminated field.");
     }
 }
 

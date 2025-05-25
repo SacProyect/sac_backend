@@ -96,6 +96,41 @@ taxpayerRouter.post(
     }
 );
 
+taxpayerRouter.post(
+    '/create-taxpayer',
+    authenticateToken,
+    body("providenceNum").isNumeric().withMessage("providenceNum must be numeric"),
+    body("process").isString().withMessage("process must be a string"),
+    body("name").isString().withMessage("name must be a string"),
+    body("rif").matches(/^[JVEPG]\d{9}$/).withMessage("RIF format is invalid (must start with J, V, E, P or G followed by 9 digits)"),
+    body("contract_type").isString().withMessage("contract_type must be a string"),
+    body("officerName").isString().withMessage("officerName must be a string"),
+    body("address").notEmpty().withMessage("address is required"),
+    body("emition_date").notEmpty().withMessage("emition_date is required").isString().withMessage("emition_date must be a string"),
+    async (req: Request, res: Response) => {
+        try {
+            const { user } = req as AuthRequest;
+
+            if (!user) return res.status(401).json({ error: "Unauthorized access" });
+            if (!["ADMIN", "COORDINATOR", "FISCAL"].includes(user.role)) {
+                return res.status(403).json({ error: "Forbidden role" });
+            }
+
+            const errors = validationResult(req);
+            if (!errors.isEmpty()) {
+                return res.status(400).json({ errors: errors.array() });
+            }
+
+            const response = await TaxpayerServices.createTaxpayerExcel(req.body);
+            return res.status(201).json(response);
+
+        } catch (error: any) {
+            console.error("API Error:", error);
+            return res.status(500).json({ error: error.message || "Internal Server Error" });
+        }
+    }
+);
+
 
 taxpayerRouter.get('/:id',
     authenticateToken,
@@ -692,6 +727,40 @@ taxpayerRouter.put('/payment/:eventId',
         }
     }
 );
+
+taxpayerRouter.put('/update-culminated/:id',
+    authenticateToken,
+    body("culminated").isBoolean().notEmpty(),
+
+    async (req: Request, res: Response) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL") return res.status(403).json("Forbidden")
+
+        
+        try {
+
+            const id: string = req.params.id;
+            const culminated = req.body
+
+            const culminatedSuccesfully = await TaxpayerServices.updateCulminated(id, culminated);
+
+            return res.status(201).json(culminatedSuccesfully);
+
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json({message: e});
+        }
+
+
+    }
+)
 
 taxpayerRouter.put('/payment_compromise/:eventId',
     authenticateToken,

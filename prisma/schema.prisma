@@ -68,7 +68,7 @@ model payment {
     status     Boolean  @default(true)
     eventId    String
     taxpayerId String
-    taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], map: "pago_contribuyenteId_fkey")
+    taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], map: "pago_contribuyenteId_fkey", onDelete: Cascade)
     event      event    @relation(fields: [eventId], references: [id], map: "pago_eventoId_fkey", onDelete: Cascade)
     updated_at DateTime @default(now()) @updatedAt
 
@@ -88,10 +88,11 @@ model taxpayer {
     status             Boolean                @default(true)
     fase               Taxpayer_Fases         @default(FASE_1)
     notified           Boolean                @default(false)
+    culminated         Boolean                @default(false)
     officerId          String?
     event              event[]
     payment            payment[]
-    user               user?                  @relation(fields: [officerId], references: [id], map: "contribuyente_funcionarioId_fkey")
+    user               user?                  @relation(fields: [officerId], references: [id], map: "contribuyente_funcionarioId_fkey", onDelete: Cascade)
     created_at         DateTime               @default(now())
     updated_at         DateTime               @default(now()) @updatedAt
     investigation_pdfs InvestigationPdf[]
@@ -113,7 +114,7 @@ model ISLRReports {
     emition_date DateTime @default(now())
     updatedAt    DateTime @default(now()) @updatedAt
     taxpayerId   String
-    taxpayer     taxpayer @relation(fields: [taxpayerId], references: [id])
+    taxpayer     taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 }
 
 model IVAReports {
@@ -125,7 +126,7 @@ model IVAReports {
     paid       Decimal  @default(0)
     date       DateTime @default(now())
     taxpayerId String
-    taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id])
+    taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
     updated_at DateTime @default(now()) @updatedAt
 }
 
@@ -134,14 +135,14 @@ model Observations {
     description String
     date        DateTime @default(now())
     taxpayerId  String
-    taxpayer    taxpayer @relation(fields: [taxpayerId], references: [id])
+    taxpayer    taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 }
 
 model InvestigationPdf {
     id         String   @id @default(uuid())
     pdf_url    String
     taxpayerId String
-    taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id])
+    taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 }
 
 model errors {
@@ -150,7 +151,7 @@ model errors {
     title       String       @default("error")
     description String
     status      Boolean      @default(true)
-    user        user         @relation("UserErrors", fields: [userId], references: [id])
+    user        user         @relation("UserErrors", fields: [userId], references: [id], onDelete: Cascade)
     userId      String
     created_at  DateTime     @default(now()) @db.DateTime(0)
     closed_at   DateTime?    @db.DateTime(0)

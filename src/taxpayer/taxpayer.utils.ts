@@ -22,6 +22,21 @@ export type NewIslrReport = {
     paid: Decimal;
 }
 
+export type NewTaxpayerExcelInput = {
+    providenceNum: bigint;
+    process: taxpayer_process;
+    name: string;
+    rif: string;
+    emition_date: Date;
+    contract_type: taxpayer_contract_type;
+    officerName: string;
+    officerId?: string;
+    address: string;
+    pdfs?: InvestigationPdf[];
+    userId?: string;
+    role?: string;
+}
+
 export type NewTaxpayer = {
     providenceNum: bigint;
     process: taxpayer_process;
@@ -31,29 +46,29 @@ export type NewTaxpayer = {
     contract_type: taxpayer_contract_type;
     officerId: string;
     address: string;
-    pdfs? : InvestigationPdf[];
+    pdfs?: InvestigationPdf[];
     userId?: string;
     role?: string;
 }
 
 export interface NewObservation {
-    description: string, 
+    description: string,
     date: string,
     taxpayerId: string,
 }
 
 export interface NewIvaReport {
-    taxpayerId: string, 
-    iva: number, 
-    purchases: number, 
+    taxpayerId: string,
+    iva: number,
+    purchases: number,
     sells: number,
-    excess: number, 
+    excess: number,
     date: Date,
     paid: Decimal,
 }
 
 export interface NewFase {
-    id: string, 
+    id: string,
     fase: Taxpayer_Fases
 }
 
@@ -80,8 +95,8 @@ export type NewEvent = {
     amount?: Decimal
     type: EventType
     taxpayerId: string;
-    fineEventId? : string;
-    expires_at? : Date;
+    fineEventId?: string;
+    expires_at?: Date;
 }
 
 export type Payment = {
