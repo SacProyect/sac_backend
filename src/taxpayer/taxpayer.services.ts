@@ -947,6 +947,9 @@ export async function getTaxpayerData(id: string) {
         const taxpayerData = await db.taxpayer.findUnique({
             where: {
                 id: id
+            },
+            include: {
+                RepairReports: true,
             }
         });
 

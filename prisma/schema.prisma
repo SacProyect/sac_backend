@@ -99,10 +99,18 @@ model taxpayer {
     observations       Observations[]
     IVAReports         IVAReports[]
     ISLRReports        ISLRReports[]
+    RepairReports      RepairReport[]
 
     @@index([officerId], map: "contribuyente_funcionarioId_fkey")
     @@index([process], map: "contribuyente_procedimiento_idx")
     @@index([contract_type], map: "contribuyente_tipoContrato_idx")
+}
+
+model RepairReport {
+    id         String   @id @default(uuid())
+    pdf_url    String
+    taxpayerId String
+    taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 }
 
 model ISLRReports {

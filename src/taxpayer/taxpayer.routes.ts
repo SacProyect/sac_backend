@@ -10,7 +10,6 @@ import fs from 'fs'
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { createLocalUpload } from "../utils/multer.local";
 import { commonParams } from "@aws-sdk/client-s3/dist-types/endpoint/EndpointParameters";
-// import upload from "../utils/multer.s3";
 
 const s3 = new S3Client({ region: "us-east-2" }); // Replace "your-region" with your AWS region
 export const taxpayerRouter = express.Router();
@@ -95,6 +94,15 @@ taxpayerRouter.post(
         }
     }
 );
+
+taxpayerRouter.post('/repair-report/:id',
+    authenticateToken,
+
+    async(req: Request, res: Response) => {
+
+        
+    }
+)
 
 taxpayerRouter.post(
     '/create-taxpayer',
@@ -506,6 +514,8 @@ taxpayerRouter.post('/fine',
     }
 )
 
+
+
 taxpayerRouter.post('/createIVA',
     authenticateToken,
     body("taxpayerId").isString().notEmpty(),
@@ -672,6 +682,10 @@ taxpayerRouter.post('/payment_compromise',
         }
     }
 )
+
+
+
+
 
 taxpayerRouter.post('/warning',
     authenticateToken,
