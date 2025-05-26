@@ -214,11 +214,17 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                 select: { name: true }
             }))?.name ?? "—";
 
+            const admins = await db.user.findMany({
+                where: {
+                    role: "ADMIN",
+                }
+            })
+
             const fromAddress = process.env.EMAIL_FROM ?? 'no-reply@sac-app.com';
             const recipients = [
-                // 'victorenrique2002@gmail.com',
-                // 'glonga10@gmail.com',
-                // si existe coordinador, lo agregamos
+                // address admins in the email
+                ...admins.map(admin => admin.email),
+                // if coordinator exists, add it on the list of receivers
                 ...(officer?.group?.coordinator?.email ? [officer.group.coordinator.email] : [])
             ];
 
@@ -282,69 +288,175 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
     }
 }
 
-
-export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
-    const {
-        providenceNum,
-        process,
-        name,
-        rif,
-        contract_type,
-        officerName,
-        address,
-        emition_date,
-    } = data;
-
+export const updateFase = async (data: NewFase) => {
     try {
-        // Traemos todos los usuarios para hacer una comparación manual del nombre
-        const users = await db.user.findMany();
-
-        // Normalizamos los nombres y buscamos coincidencias exactas (sin importar mayúsculas/minúsculas ni tildes)
-        const normalizedInputName = normalize(officerName);
-        const matchedOfficer = users.find((u) => normalize(u.name) === normalizedInputName);
-
-        if (!matchedOfficer) {
-            throw new Error(`No officer found with name similar to "${officerName}"`);
-        }
-
-        // Creamos el nuevo contribuyente
-        const newTaxpayer = await db.taxpayer.create({
-            data: {
-                providenceNum,
-                process: process as any,
-                name,
-                rif,
-                contract_type: contract_type as any,
-                officerId: matchedOfficer.id,
-                address,
-                emition_date: new Date(emition_date),
+        // Obtener al contribuyente antes de hacer el update para comparar fases
+        const taxpayerBefore = await db.taxpayer.findUnique({
+            where: { id: data.id },
+            include: {
+                user: {
+                    include: {
+                        group: {
+                            include: {
+                                coordinator: true, // para acceder al coordinador del grupo
+                            },
+                        },
+                    },
+                },
             },
         });
 
-        return newTaxpayer;
-    } catch (error: any) {
-        console.error("Error creating taxpayer:", error);
-
-        // Prisma client error
-        if (error.code === 'P2002') {
-            // Unique constraint failed (por ejemplo, rif duplicado)
-            throw new Error(`A taxpayer with this RIF already exists: ${rif}`);
+        if (!taxpayerBefore) {
+            throw new Error('Taxpayer not found');
         }
 
-        // Validación de fecha inválida
-        if (error instanceof RangeError && error.message.includes("Invalid time value")) {
-            throw new Error(`Invalid emition_date: "${emition_date}"`);
-        }
+        const oldFase = taxpayerBefore.fase.replace("_", " ");
 
-        // Prisma validation error
-        if (error.name === "PrismaClientValidationError") {
-            throw new Error(`Invalid data sent to database: ${error.message}`);
-        }
+        // Actualizar la fase
+        const updatedTaxpayerFase = await db.taxpayer.update({
+            where: {
+                id: data.id,
+            },
+            data: {
+                fase: data.fase,
+            },
+        });
 
-        // Otro error genérico
-        throw new Error(error.message || "Unknown error creating taxpayer");
+        // Obtener todos los admins
+        const adminUsers = await db.user.findMany({
+            where: { role: 'ADMIN' },
+            select: { email: true },
+        });
+
+        // Construir lista de destinatarios
+        const recipients = [
+            taxpayerBefore.user?.email,
+            ...adminUsers.map((admin) => admin.email),
+        ].filter(Boolean); // Elimina null/undefined
+
+        // Obtener nombres de personas
+        const fiscalName = taxpayerBefore.user?.name || 'Fiscal asignado';
+        const coordinatorName = taxpayerBefore.user?.group?.coordinator?.name || 'Coordinador asignado';
+        const taxpayerName = taxpayerBefore.name;
+        const taxpayerRif = taxpayerBefore.rif;
+        const newFase = data.fase.replace("_", " ");
+
+        // Enviar correo con Resend
+        await resend.emails.send({
+            from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com', // asegúrate que esté verificado en Resend
+            to: recipients.join(', '),
+            subject: `Cambio de fase de auditoría fiscal - ${taxpayerName}`,
+            html: `
+            <div style="font-family: Arial, sans-serif; background-color: #f7f7f7; padding: 20px;">
+            <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                <h2 style="color: #2c3e50;">🔔 Cambio de Fase de Auditoría Fiscal</h2>
+                <p style="font-size: 16px; color: #333;">Se ha actualizado la fase del contribuyente <strong>${taxpayerName}</strong> (RIF: ${taxpayerRif}).</p>
+                
+                <table style="width: 100%; font-size: 15px; color: #555; margin: 20px 0;">
+                <tr>
+                    <td><strong>Fase anterior:</strong></td>
+                    <td>${oldFase}</td>
+                </tr>
+                <tr>
+                    <td><strong>Nueva fase:</strong></td>
+                    <td>${newFase}</td>
+                </tr>
+                <tr>
+                    <td><strong>Fiscal responsable:</strong></td>
+                    <td>${fiscalName}</td>
+                </tr>
+                <tr>
+                    <td><strong>Coordinador del grupo:</strong></td>
+                    <td>${coordinatorName}</td>
+                </tr>
+                </table>
+
+                <p style="font-size: 15px; color: #333;">
+                Puedes acceder a la plataforma para revisar el detalle del cambio haciendo clic en el siguiente botón:
+                </p>
+
+                <div style="text-align: center; margin: 30px 0;">
+                <a href="https://sac-app.com/taxpayer/${data.id}" style="background-color: #1e88e5; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; display: inline-block;">
+                    Ver contribuyente
+                </a>
+                </div>
+
+                <p style="font-size: 13px; color: #888;">Este cambio fue registrado automáticamente por el sistema SAC.</p>
+            </div>
+            </div>
+        `,
+        });
+
+        return updatedTaxpayerFase;
+    } catch (e) {
+        console.error(e);
+        throw new Error('Could not update the fase');
     }
-}
+};
+
+
+// export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
+//     const {
+//         providenceNum,
+//         process,
+//         name,
+//         rif,
+//         contract_type,
+//         officerName,
+//         address,
+//         emition_date,
+//     } = data;
+
+//     try {
+//         // Traemos todos los usuarios para hacer una comparación manual del nombre
+//         const users = await db.user.findMany();
+
+//         // Normalizamos los nombres y buscamos coincidencias exactas (sin importar mayúsculas/minúsculas ni tildes)
+//         const normalizedInputName = normalize(officerName);
+//         const matchedOfficer = users.find((u) => normalize(u.name) === normalizedInputName);
+
+//         if (!matchedOfficer) {
+//             throw new Error(`No officer found with name similar to "${officerName}"`);
+//         }
+
+//         // Creamos el nuevo contribuyente
+//         const newTaxpayer = await db.taxpayer.create({
+//             data: {
+//                 providenceNum,
+//                 process: process as any,
+//                 name,
+//                 rif,
+//                 contract_type: contract_type as any,
+//                 officerId: matchedOfficer.id,
+//                 address,
+//                 emition_date: new Date(emition_date),
+//             },
+//         });
+
+//         return newTaxpayer;
+//     } catch (error: any) {
+//         console.error("Error creating taxpayer:", error);
+
+//         // Prisma client error
+//         if (error.code === 'P2002') {
+//             // Unique constraint failed (por ejemplo, rif duplicado)
+//             throw new Error(`A taxpayer with this RIF already exists: ${rif}`);
+//         }
+
+//         // Validación de fecha inválida
+//         if (error instanceof RangeError && error.message.includes("Invalid time value")) {
+//             throw new Error(`Invalid emition_date: "${emition_date}"`);
+//         }
+
+//         // Prisma validation error
+//         if (error.name === "PrismaClientValidationError") {
+//             throw new Error(`Invalid data sent to database: ${error.message}`);
+//         }
+
+//         // Otro error genérico
+//         throw new Error(error.message || "Unknown error creating taxpayer");
+//     }
+// }
 
 // Función para normalizar strings (quita mayúsculas y tildes)
 function normalize(str: string): string {
@@ -803,25 +915,7 @@ export const updateObservation = async (id: string, newDescription: string) => {
     }
 }
 
-export const updateFase = async (data: NewFase) => {
 
-    try {
-        const updatedTaxpayerFase = await db.taxpayer.update({
-            where: {
-                id: data.id,
-            },
-            data: {
-                fase: data.fase,
-            }
-        })
-
-        return updatedTaxpayerFase
-
-    } catch (e) {
-        console.error(e);
-        throw new Error("Could not update the fase")
-    }
-}
 
 export const updateCulminated = async (id: string, culminated: boolean) => {
 
