@@ -13,6 +13,7 @@
   "author": "Juan Isturiz",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/s3-request-presigner": "^3.817.0",
     "@prisma/client": "^6.6.0",
     "aws-sdk": "^2.1692.0",
     "bcrypt": "^5.1.1",

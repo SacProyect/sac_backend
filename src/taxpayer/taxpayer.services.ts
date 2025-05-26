@@ -1,13 +1,34 @@
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { db } from "../utils/db.server";
-import { Event, getStatistics, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
+import { Event, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 import { BadRequestError } from "../utils/errors/BadRequestError";
-import { Taxpayer_Fases } from "@prisma/client";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { Resend } from 'resend';
+import {
+    getSignedUrl,
+    S3RequestPresigner,
+} from "@aws-sdk/s3-request-presigner";
 
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+const s3 = new S3Client({ region: "us-east-2" });
 
+
+
+export async function generateDownloadUrl(key: string) {
+    try {
+        const command = new GetObjectCommand({
+            Bucket: "sacbucketgeneral",
+            Key: key, // Ej: "reparos/acta-123.pdf"
+            ResponseContentDisposition: "attachment",
+        });
+
+        const url = await getSignedUrl(s3, command, { expiresIn: 180 }); // 3 minutes
+        return url;
+    } catch (error) {
+        console.error("Error generating signed URL for key:", key, error);
+        throw new Error("No se pudo generar la URL de descarga.");
+    }
+}
 
 
 // Helper para 'dormir' N milisegundos
@@ -958,6 +979,47 @@ export async function getTaxpayerData(id: string) {
     } catch (e) {
         console.error(e);
         throw new Error("Error getting the taxpayer data ");
+    }
+}
+
+export async function uploadRepairReport(taxpayerId: string, pdf_url: string) {
+    try {
+        const newRepairReport = await db.repairReport.create({
+            data: {
+                taxpayerId,
+                pdf_url,
+            },
+        });
+
+        return newRepairReport;
+
+    } catch (e) {
+        throw new Error("Can't create the repair report")
+    }
+}
+
+// Actualizar luego de subir exitosamente a S3
+export async function updateRepairReportPdfUrl(id: string, pdf_url: string) {
+    try {
+        return await db.repairReport.update({
+            where: { id },
+            data: { pdf_url },
+        });
+    } catch (error) {
+        console.error(`❌ Failed to update pdf_url for RepairReport with ID ${id}:`, error);
+        throw new Error("Could not update pdf_url for RepairReport");
+    }
+}
+
+// Eliminar si falla la subida
+export async function deleteRepairReportById(id: string) {
+    try {
+        return await db.repairReport.delete({
+            where: { id },
+        });
+    } catch (error) {
+        console.error(`❌ Failed to delete RepairReport with ID ${id}:`, error);
+        throw new Error("Could not delete RepairReport");
     }
 }
 

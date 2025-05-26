@@ -4,12 +4,13 @@ import * as TaxpayerServices from "./taxpayer.services"
 import { body, validationResult } from 'express-validator';
 import { EventType } from "./taxpayer.utils";
 import { authenticateToken, AuthRequest } from "../users/user.utils";
-import multer, { StorageEngine } from "multer";
-import path from "path";
+// import multer, { StorageEngine } from "multer";
+// import path from "path";
 import fs from 'fs'
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand} from "@aws-sdk/client-s3";
 import { createLocalUpload } from "../utils/multer.local";
-import { commonParams } from "@aws-sdk/client-s3/dist-types/endpoint/EndpointParameters";
+import { uploadMemory } from "../utils/multer.memory";
+// import { commonParams } from "@aws-sdk/client-s3/dist-types/endpoint/EndpointParameters";
 
 const s3 = new S3Client({ region: "us-east-2" }); // Replace "your-region" with your AWS region
 export const taxpayerRouter = express.Router();
@@ -20,6 +21,30 @@ const uploadLocal = createLocalUpload([
     "application/msword", // .doc
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
 ]);
+
+
+taxpayerRouter.get('/download-repair-report/:key',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+        try {
+
+            const key: string = decodeURIComponent(req.params.key);
+
+            const presignedUrl = await TaxpayerServices.generateDownloadUrl(key);
+
+            return res.status(201).json(presignedUrl);
+
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json({message: "Couldn't generate a repair report url"})
+        }
+
+    }
+)
+
+
+
 
 taxpayerRouter.post(
     '/',
@@ -95,14 +120,68 @@ taxpayerRouter.post(
     }
 );
 
-taxpayerRouter.post('/repair-report/:id',
+taxpayerRouter.post(
+    "/repair-report/:id",
     authenticateToken,
+    uploadMemory.single("repairReport"),
+    async (req: Request, res: Response) => {
+        const taxpayerId = req.params.id;
 
-    async(req: Request, res: Response) => {
+        if (!req.file) {
+            return res.status(400).json({ error: "PDF file is required" });
+        }
 
-        
+        const file = req.file;
+        const s3Key = `repair-reports/${Date.now()}-${file.originalname}`;
+        const pdf_url = `https://sacbucketgeneral.s3.amazonaws.com/${s3Key}`;
+
+        let repairReportId: string | null = null;
+
+        try {
+            // Paso 1: Crear el registro sin el PDF
+            const newRepairReport = await TaxpayerServices.uploadRepairReport(taxpayerId, "");
+
+            if (!newRepairReport || !newRepairReport.id) {
+                console.error("❌ Failed to create RepairReport record for taxpayer:", taxpayerId);
+                return res.status(500).json({ error: "Could not create RepairReport record" });
+            }
+
+            repairReportId = newRepairReport.id;
+
+            // Paso 2: Subir el archivo a S3
+            await s3.send(
+                new PutObjectCommand({
+                    Bucket: "sacbucketgeneral",
+                    Key: s3Key,
+                    Body: file.buffer,
+                    ContentType: file.mimetype,
+                })
+            );
+
+            // Paso 3: Actualizar el PDF URL del registro
+            const updatedRepairReport = await TaxpayerServices.updateRepairReportPdfUrl(repairReportId, pdf_url);
+
+            return res.status(201).json(updatedRepairReport);
+        } catch (error: any) {
+            console.error("❌ Error during repair report upload flow:", error);
+
+            // Intentar limpiar el registro si ya fue creado
+            if (repairReportId) {
+                try {
+                    await TaxpayerServices.deleteRepairReportById(repairReportId);
+                    console.warn(`⚠️ Deleted RepairReport with ID ${repairReportId} due to failure`);
+                } catch (deleteError) {
+                    console.error(`❌ Failed to delete RepairReport with ID ${repairReportId}:`, deleteError);
+                }
+            }
+
+            return res.status(500).json({
+                error: "An error occurred while uploading the file or saving the repair report",
+                details: error?.message || "Unknown error",
+            });
+        }
     }
-)
+);
 
 taxpayerRouter.post(
     '/create-taxpayer',
@@ -156,6 +235,7 @@ taxpayerRouter.get('/:id',
         }
     }
 )
+
 
 taxpayerRouter.get('/all/:id',
     authenticateToken,
@@ -757,7 +837,7 @@ taxpayerRouter.put('/update-culminated/:id',
         if (!user) return res.status(401).json("Unauthorized access")
         if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL") return res.status(403).json("Forbidden")
 
-        
+
         try {
 
             const id: string = req.params.id;
@@ -769,7 +849,7 @@ taxpayerRouter.put('/update-culminated/:id',
 
         } catch (e) {
             console.error(e);
-            return res.status(500).json({message: e});
+            return res.status(500).json({ message: e });
         }
 
 
