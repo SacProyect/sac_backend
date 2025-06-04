@@ -80,27 +80,37 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
         // Buscamos todos los contribuyentes con el mismo providenceNum
         const provCandidates = await db.taxpayer.findMany({
             where: { providenceNum: input.providenceNum },
-            select: { process: true }
+            select: { process: true, emition_date: true, }
         });
 
+        const twelveMonthsMs = 1000 * 60 * 60 * 24 * 30 * 12;
+        const nowDate = new Date(input.emition_date);
+
         for (const cand of provCandidates) {
-            const existing = cand.process;
-            const incoming = input.process;
+            const existingProcess = cand.process;
+            const incomingProcess = input.process;
+            const diffTime = Math.abs(nowDate.getTime() - new Date(cand.emition_date).getTime());
+            const diffMonths = diffTime / (1000 * 60 * 60 * 24 * 30);
 
-            // mismo proceso => no permitido
-            if (existing === incoming) {
-                throw new Error(
-                    `Ya existe un contribuyente con providenceNum=${input.providenceNum} y proceso=${existing}.`
-                );
+            const sameProcess = existingProcess === incomingProcess;
+            const combination = [existingProcess, incomingProcess].sort().join('|');
+
+            // Caso 1: Si es el mismo proceso y no han pasado 12 meses => no permitido
+            if (sameProcess && diffTime < twelveMonthsMs) {
+                throw new Error(`Ya existe un contribuyente con proceso ${existingProcess} y el mismo número de providencia creado hace menos de 12 meses.`);
             }
 
-            // AF vs VDF => no permitido
-            const pair = [existing, incoming].sort().join('|');
-            if (pair === 'AF|VDF') {
-                throw new Error(
-                    `No puedes reutilizar el providenceNum=${input.providenceNum} para procedimientos AF y VDF.`
-                );
+            // Caso 2: AF y VDF juntos => no permitido si no han pasado 12 meses
+            if (combination === 'AF|VDF' && diffTime < twelveMonthsMs) {
+                throw new Error(`No puedes registrar un contribuyente con proceso ${incomingProcess} si ya existe uno con proceso ${existingProcess} y mismo providenceNum, a menos que hayan pasado 12 meses.`);
             }
+
+            // Caso 3: Si es FP y ya existe otro FP en menos de 12 meses => no permitido
+            if (existingProcess === 'FP' && incomingProcess === 'FP' && diffTime < twelveMonthsMs) {
+                throw new Error(`No puedes registrar otro FP con el mismo número de providencia si no han pasado 12 meses.`);
+            }
+
+            // Caso 4: FP junto a AF o VDF => permitido aunque no hayan pasado 12 meses (no hacemos nada)
         }
 
 

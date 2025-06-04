@@ -82,7 +82,7 @@ model taxpayer {
     address            String                 @default("Caracas")
     process            taxpayer_process       @default(NA)
     name               String
-    rif                String                 @unique
+    rif                String                 
     emition_date       DateTime               @default(now())
     contract_type      taxpayer_contract_type @default(ORDINARY)
     status             Boolean                @default(true)
