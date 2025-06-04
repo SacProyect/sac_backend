@@ -114,13 +114,13 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
         }
 
 
-        const existingTaxpayer = await db.taxpayer.findUnique({
-            where: {
-                rif: input.rif,
-            }
-        })
+        // const existingTaxpayer = await db.taxpayer.findUnique({
+        //     where: {
+        //         rif: input.rif,
+        //     }
+        // })
 
-        if (existingTaxpayer) throw new Error("El rif ya fue registrado, por favor, corrija el número de rif.")
+        // if (existingTaxpayer) throw new Error("El rif ya fue registrado, por favor, corrija el número de rif.")
 
         // Ensure at least one PDF is provided
         if (!input.pdfs || input.pdfs.length === 0) {
