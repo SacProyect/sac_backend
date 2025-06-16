@@ -123,7 +123,7 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                     const combo = [entry.process, input.process].sort().join('|');
 
                     if (entry.process === input.process && diffMonths < 14) {
-                        throw new Error(`Ya existe un ${entry.process} con el mismo número de providencia hace menos de 14 meses.`);
+                        throw new Error(`Ya existe un ${entry.process} con el mismo número de ${entry.process === "VDF" ? "providencia" : "orden"} hace menos de 14 meses.`);
                     }
 
                     if (combo === 'AF|VDF' && diffMonths < (entry.process === 'AF' ? 15 : 14)) {
