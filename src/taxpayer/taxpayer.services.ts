@@ -14,7 +14,7 @@ const s3 = new S3Client({ region: "us-east-2" });
 
 
 
-export async function generateDownloadUrl(key: string) {
+export async function generateDownloadRepairUrl(key: string) {
     try {
         const command = new GetObjectCommand({
             Bucket: "sacbucketgeneral",
@@ -28,6 +28,26 @@ export async function generateDownloadUrl(key: string) {
         console.error("Error generating signed URL for key:", key, error);
         throw new Error("No se pudo generar la URL de descarga.");
     }
+}
+
+export async function generateDownloadInvestigationPdfUrl(key: string) {
+
+    try {
+        const command = new GetObjectCommand({
+            Bucket: "sacbucketgeneral",
+            Key: key,
+            ResponseContentDisposition: "attachment",
+        })
+
+        const url = await getSignedUrl(s3, command, {expiresIn: 180});
+        return url;
+
+    } catch (e) {
+        console.error("Error generating signed URL for key:", key, e);
+        throw new Error("No se pudo generar la url de descarga")
+    }
+
+
 }
 
 
@@ -64,119 +84,73 @@ async function sendEmailWithRetry(
  */
 export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Error> => {
     try {
-
-        // console.log("Received input:", JSON.stringify(input, null, 2));
-
-        const userName = await db.user.findFirst(({
-            where: {
-                id: input.userId,
-            },
-            select: {
-                name: true,
-            }
-
-        }))
-
-        // Buscamos todos los contribuyentes con el mismo providenceNum
-        const provCandidates = await db.taxpayer.findMany({
-            where: { providenceNum: input.providenceNum },
-            select: { process: true, emition_date: true }
+        const userName = await db.user.findFirst({
+            where: { id: input.userId },
+            select: { name: true }
         });
 
-        const inputYear = new Date(input.emition_date).getFullYear();
-
-        for (const cand of provCandidates) {
-            const existingProcess = cand.process;
-            const incomingProcess = input.process;
-            const existingYear = new Date(cand.emition_date).getFullYear();
-
-            const sameYear = inputYear === existingYear;
-            const sameProcess = existingProcess === incomingProcess;
-            const combination = [existingProcess, incomingProcess].sort().join('|');
-
-            // Caso 1: Mismo proceso y mismo año => no permitido
-            if (sameProcess && sameYear) {
-                throw new Error(`Ya existe un contribuyente con proceso ${existingProcess} y el mismo número de providencia en el mismo año.`);
-            }
-
-            // Caso 2: AF y VDF en el mismo año => no permitido
-            if (combination === 'AF|VDF' && sameYear) {
-                throw new Error(`No puedes registrar un ${incomingProcess} si ya existe un ${existingProcess} con el mismo número de providencia en el mismo año.`);
-            }
-
-            // Caso 3: FP + FP en el mismo año => no permitido
-            if (existingProcess === 'FP' && incomingProcess === 'FP' && sameYear) {
-                throw new Error(`No puedes registrar dos FP con el mismo número de providencia en el mismo año.`);
-            }
-
-            // Caso 4: FP con AF o VDF en el mismo año => permitido (no se bloquea)
-        }
-
-
-        // const existingTaxpayer = await db.taxpayer.findUnique({
-        //     where: {
-        //         rif: input.rif,
-        //     }
-        // })
-
-        // if (existingTaxpayer) throw new Error("El rif ya fue registrado, por favor, corrija el número de rif.")
-
-        // Ensure at least one PDF is provided
-        if (!input.pdfs || input.pdfs.length === 0) {
-            throw new Error("At least one PDF must be uploaded.");
-        }
-
         const emitionDate = new Date(input.emition_date);
+        const inputYear = emitionDate.getFullYear();
 
         if (input.role !== "ADMIN") {
-            // Normalizamos el nuevo nombre (quitando espacios y a minúsculas)
-            const normalizedNew = input.name.replace(/\s+/g, "").toLowerCase();
-
-            // Extraemos la primera palabra para acotar la búsqueda
+            const normalizedName = input.name.replace(/\s+/g, "").toLowerCase();
             const firstWord = input.name.trim().split(/\s+/)[0];
 
-            // 1) Traemos candidatos que contengan esa primera palabra
-            const candidates = await db.taxpayer.findMany({
+            const matches = await db.taxpayer.findMany({
                 where: {
-                    name: { contains: firstWord },
+                    OR: [
+                        { providenceNum: input.providenceNum },
+                        { name: { contains: firstWord } }
+                    ]
                 },
                 select: {
                     name: true,
                     emition_date: true,
                     process: true,
-                },
+                    providenceNum: true
+                }
             });
 
-            // 2) Filtramos aquellos cuya normalización coincida exactamente
-            const sameName = candidates
-                .filter((c) =>
-                    c.name.replace(/\s+/g, "").toLowerCase() === normalizedNew
-                )
-                .sort(
-                    (a, b) =>
-                        new Date(b.emition_date).getTime() -
-                        new Date(a.emition_date).getTime()
-                );
+            for (const entry of matches) {
+                const normalized = entry.name.replace(/\s+/g, "").toLowerCase();
+                const sameName = normalized === normalizedName;
+                const sameProvidence = entry.providenceNum === input.providenceNum;
+                const prevDate = new Date(entry.emition_date);
+                const prevYear = prevDate.getFullYear();
+                const diffMonths = (emitionDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24 * 30);
 
-            const lastSame = sameName[0];
-            if (lastSame) {
-                const newDate = new Date(input.emition_date);
-                const prevDate = new Date(lastSame.emition_date);
-                // Diferencia en meses aproximada
-                const diffMonths =
-                    (newDate.getTime() - prevDate.getTime()) /
-                    (1000 * 60 * 60 * 24 * 30);
-                // Umbral: 14 para VDF/FP, 15 para AF
-                const threshold = ["VDF", "FP"].includes(input.process) ? 14 : 15;
+                if (sameProvidence) {
+                    const combo = [entry.process, input.process].sort().join('|');
 
-                if (diffMonths < threshold) {
-                    throw new Error(
-                        `No puede crear un contribuyente con nombre "${input.name}" porque el último con ese nombre fue registrado hace ${Math.floor(
-                            diffMonths
-                        )} meses (mínimo requerido: ${threshold} meses).`
-                    );
+                    if (entry.process === input.process && diffMonths < 14) {
+                        throw new Error(`Ya existe un ${entry.process} con el mismo número de providencia hace menos de 14 meses.`);
+                    }
+
+                    if (combo === 'AF|VDF' && diffMonths < (entry.process === 'AF' ? 15 : 14)) {
+                        throw new Error(`No se puede registrar un ${input.process} con el mismo número de providencia hasta que pasen ${entry.process === 'AF' ? 15 : 14} meses del ${entry.process} anterior.`);
+                    }
+                } else if (sameName) {
+                    if (entry.process === input.process && inputYear === prevYear) {
+                        throw new Error(`No se pueden registrar dos ${input.process} en el mismo año para el mismo contribuyente.`);
+                    }
+
+                    const afFpCombo = (entry.process === "AF" && input.process === "FP") ||
+                        (entry.process === "FP" && input.process === "AF");
+
+                    if (afFpCombo && inputYear === prevYear) {
+                        throw new Error(`No se pueden registrar AF y FP en el mismo año para el mismo contribuyente.`);
+                    }
+
+                    const nameCombo = [entry.process, input.process].sort().join('|');
+                    if (["AF|FP", "FP|VDF", "AF|VDF"].includes(nameCombo) && inputYear === prevYear) {
+                        throw new Error(`No se pueden registrar ${entry.process} y ${input.process} en el mismo año para el mismo contribuyente.`);
+                    }
                 }
             }
+        }
+
+        if (!input.pdfs || input.pdfs.length === 0) {
+            throw new Error("At least one PDF must be uploaded.");
         }
 
         const taxpayer = await db.taxpayer.create({
@@ -190,11 +164,8 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                 address: input.address,
                 emition_date: emitionDate.toISOString(),
             }
-        })
+        });
 
-
-
-        // Insert PDFs linked to this taxpayer
         await db.investigationPdf.createMany({
             data: input.pdfs.map((pdf) => ({
                 pdf_url: pdf.pdf_url,
@@ -202,9 +173,7 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
             })),
         });
 
-        // 3) Si es AF, enviamos email
         if (input.process === "AF") {
-            // buscamos el usuario "officer"
             const officer = await db.user.findUnique({
                 where: { id: input.officerId },
                 include: {
@@ -224,16 +193,12 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
             }))?.name ?? "—";
 
             const admins = await db.user.findMany({
-                where: {
-                    role: "ADMIN",
-                }
-            })
+                where: { role: "ADMIN" },
+            });
 
             const fromAddress = process.env.EMAIL_FROM ?? 'no-reply@sac-app.com';
             const recipients = [
-                // address admins in the email
                 ...admins.map(admin => admin.email),
-                // if coordinator exists, add it on the list of receivers
                 ...(officer?.group?.coordinator?.email ? [officer.group.coordinator.email] : [])
             ];
 
@@ -242,9 +207,7 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                 ORDINARY: "ORDINARIO",
             };
 
-            const displayContractType =
-                contractTypeMap[input.contract_type] ?? input.contract_type;
-
+            const displayContractType = contractTypeMap[input.contract_type] ?? input.contract_type;
 
             const emailHtml = `
                 <div style="font-family: Arial, sans-serif; color: #333;">
@@ -280,7 +243,6 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                 </div>
             `;
 
-            // disparamos el envío sin bloquear la creación
             sendEmailWithRetry({
                 from: fromAddress,
                 to: recipients,
@@ -292,10 +254,12 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
         return taxpayer;
 
     } catch (error: any) {
-        console.error(error)
+        console.error(error);
         throw error;
     }
-}
+};
+
+
 
 export const updateFase = async (data: NewFase) => {
     try {
@@ -404,78 +368,133 @@ export const updateFase = async (data: NewFase) => {
 };
 
 
-// export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
-//     const {
-//         providenceNum,
-//         process,
-//         name,
-//         rif,
-//         contract_type,
-//         officerName,
-//         address,
-//         emition_date,
-//     } = data;
+export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
+    const {
+        providenceNum,
+        process,
+        name,
+        rif,
+        contract_type,
+        officerName,
+        address,
+        emition_date,
+    } = data;
 
-//     try {
-//         // Traemos todos los usuarios para hacer una comparación manual del nombre
-//         const users = await db.user.findMany();
+    try {
+        const users = await db.user.findMany();
+        const normalizedInputName = normalize(officerName);
+        const matchedOfficer = users.find((u) =>
+            normalize(u.name).includes(normalizedInputName) || normalizedInputName.includes(normalize(u.name))
+        );
 
-//         // Normalizamos los nombres y buscamos coincidencias exactas (sin importar mayúsculas/minúsculas ni tildes)
-//         const normalizedInputName = normalize(officerName);
-//         const matchedOfficer = users.find((u) => normalize(u.name) === normalizedInputName);
+        if (!matchedOfficer) {
+            throw new Error(`No officer found with name similar to "${officerName}"`);
+        }
 
-//         if (!matchedOfficer) {
-//             throw new Error(`No officer found with name similar to "${officerName}"`);
-//         }
+        const existingByProvidence = await db.taxpayer.findMany({
+            where: {
+                providenceNum,
+            },
+            select: {
+                process: true,
+                emition_date: true
+            }
+        });
 
-//         // Creamos el nuevo contribuyente
-//         const newTaxpayer = await db.taxpayer.create({
-//             data: {
-//                 providenceNum,
-//                 process: process as any,
-//                 name,
-//                 rif,
-//                 contract_type: contract_type as any,
-//                 officerId: matchedOfficer.id,
-//                 address,
-//                 emition_date: new Date(emition_date),
-//             },
-//         });
+        const inputYear = new Date(emition_date).getFullYear();
 
-//         return newTaxpayer;
-//     } catch (error: any) {
-//         console.error("Error creating taxpayer:", error);
+        for (const entry of existingByProvidence) {
+            const existingProcess = entry.process;
+            const existingYear = new Date(entry.emition_date).getFullYear();
+            const sameYear = inputYear === existingYear;
 
-//         // Prisma client error
-//         if (error.code === 'P2002') {
-//             // Unique constraint failed (por ejemplo, rif duplicado)
-//             throw new Error(`A taxpayer with this RIF already exists: ${rif}`);
-//         }
+            const combination = [existingProcess, process].sort().join('|');
 
-//         // Validación de fecha inválida
-//         if (error instanceof RangeError && error.message.includes("Invalid time value")) {
-//             throw new Error(`Invalid emition_date: "${emition_date}"`);
-//         }
+            if (existingProcess === process && sameYear) {
+                throw new Error(`Ya existe un contribuyente con proceso ${process} y el mismo número de providencia en el mismo año.`);
+            }
 
-//         // Prisma validation error
-//         if (error.name === "PrismaClientValidationError") {
-//             throw new Error(`Invalid data sent to database: ${error.message}`);
-//         }
+            if (combination === 'AF|VDF' && sameYear) {
+                throw new Error(`No puedes registrar un ${process} si ya existe un ${existingProcess} con el mismo número de providencia en el mismo año.`);
+            }
 
-//         // Otro error genérico
-//         throw new Error(error.message || "Unknown error creating taxpayer");
-//     }
-// }
+            if (existingProcess === 'FP' && process === 'FP' && sameYear) {
+                throw new Error(`No puedes registrar dos FP con el mismo número de providencia en el mismo año.`);
+            }
 
-// Función para normalizar strings (quita mayúsculas y tildes)
-function normalize(str: string): string {
-    return str
-        .normalize("NFD") // Separa letras de sus tildes
-        .replace(/[\u0300-\u036f]/g, "") // Elimina los caracteres de tilde
-        .toLowerCase()
-        .trim();
+            // // Para restricciones por meses
+            // const monthsDiff = (new Date(emition_date).getTime() - new Date(entry.emition_date).getTime()) / (1000 * 60 * 60 * 24 * 30);
+            // const threshold = ['VDF', 'FP'].includes(process) ? 14 : 15;
+
+            // if (existingProcess === process && monthsDiff < threshold) {
+            //     throw new Error(`No han pasado los ${threshold} meses requeridos para crear otro contribuyente con el proceso ${process} y el mismo número de providencia.`);
+            // }
+        }
+
+        // Verificación por nombre similar en el mismo año
+        const normalizedName = name.replace(/\s+/g, "").toLowerCase();
+        const firstWord = name.trim().split(/\s+/)[0];
+
+        const candidates = await db.taxpayer.findMany({
+            where: {
+                name: { contains: firstWord },
+            },
+            select: {
+                name: true,
+                emition_date: true,
+            },
+        });
+
+        const sameName = candidates.filter((c) =>
+            c.name.replace(/\s+/g, "").toLowerCase() === normalizedName &&
+            new Date(c.emition_date).getFullYear() === inputYear
+        );
+
+        if (sameName.length > 0) {
+            throw new Error(`Ya existe un contribuyente con un nombre similar a "${name}" en el mismo año ${inputYear}.`);
+        }
+
+        const newTaxpayer = await db.taxpayer.create({
+            data: {
+                providenceNum,
+                process: process as any,
+                name,
+                rif,
+                contract_type: contract_type as any,
+                officerId: matchedOfficer.id,
+                address,
+                emition_date: new Date(emition_date),
+            },
+        });
+
+        return newTaxpayer;
+    } catch (error: any) {
+        console.error("Error creating taxpayer:", error);
+
+        if (error.code === 'P2002') {
+            throw new Error(`A taxpayer with this RIF already exists: ${rif}`);
+        }
+
+        if (error instanceof RangeError && error.message.includes("Invalid time value")) {
+            throw new Error(`Invalid emition_date: "${emition_date}"`);
+        }
+
+        if (error.name === "PrismaClientValidationError") {
+            throw new Error(`Invalid data sent to database: ${error.message}`);
+        }
+
+        throw new Error(error.message || "Unknown error creating taxpayer");
+    }
 }
 
+function normalize(str: string): string {
+    return str
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+}
 
 
 /**
@@ -928,8 +947,6 @@ export const updateObservation = async (id: string, newDescription: string) => {
 
 export const updateCulminated = async (id: string, culminated: boolean) => {
 
-    console.log(id);
-    console.log(culminated);
 
     try {
         const updatedCulminatedProcess = await db.taxpayer.update({
@@ -940,6 +957,74 @@ export const updateCulminated = async (id: string, culminated: boolean) => {
                 culminated: true,
             }
         })
+
+        const taxpayer = await db.taxpayer.findFirst({
+            where: {
+                id: id,
+            },
+            include: {
+                user: {
+                    select: {
+                        name: true,
+                        group: { select: { coordinator: { select: { email: true } } } }
+                    }
+                }
+            }
+        })
+
+        const coordinatorEmail = taxpayer?.user?.group?.coordinator?.email;
+        const fiscalName = taxpayer?.user?.name;
+        const taxpayerName = taxpayer?.name;
+        const taxpayerProcess = taxpayer?.process;
+        const providenceNum = taxpayer?.providenceNum;
+        const address = taxpayer?.address;
+        const taxpayerId = taxpayer?.id;
+
+        const now = new Date();
+        const formattedDate = now.toLocaleDateString('es-VE', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+        });
+        const formattedTime = now.toLocaleTimeString('es-VE', {
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+
+        if (coordinatorEmail) {
+            await resend.emails.send({
+                from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com',
+                to: coordinatorEmail,
+                subject: `Procedimiento culminado para ${taxpayerName}`,
+                html: `
+                <div style="font-family: sans-serif; background-color: #f3f4f6; padding: 30px;">
+                    <div style="max-width: 600px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.1);">
+                    <h2 style="color: #2563eb;">📌 Procedimiento Culminado</h2>
+                    <p>Se ha marcado como <strong>culminado</strong> el procedimiento correspondiente al siguiente contribuyente:</p>
+
+                    <ul style="line-height: 1.6; font-size: 14px; padding-left: 20px; color: #374151;">
+                        <li><strong>Contribuyente:</strong> ${taxpayerName}</li>
+                        <li><strong>Proceso:</strong> ${taxpayerProcess}</li>
+                        <li><strong>Número de Providencia:</strong> ${providenceNum}</li>
+                        <li><strong>Dirección:</strong> ${address}</li>
+                        <li><strong>Finalizado por:</strong> ${fiscalName}</li>
+                        <li><strong>Fecha y hora:</strong> ${formattedDate} a las ${formattedTime}</li>
+                    </ul>
+
+                    <p>Puede consultar el detalle del contribuyente directamente en la plataforma:</p>
+
+                    <a href="https://www.sac-app.com/taxpayer/${taxpayerId}" target="_blank" style="display: inline-block; margin-top: 12px; padding: 10px 18px; background-color: #2563eb; color: white; border-radius: 8px; text-decoration: none;">Ver contribuyente</a>
+
+                    <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+                    <p style="font-size: 13px; color: #6b7280;">Este mensaje ha sido generado automáticamente por el sistema SAC. No es necesario responder a este correo.</p>
+                    <p style="font-size: 12px; color: #9ca3af;">© ${now.getFullYear()} Sistema de Administración de Contribuyentes</p>
+                    </div>
+                </div>
+                `,
+            });
+        }
+
 
         return updatedCulminatedProcess;
 
@@ -1010,6 +1095,73 @@ export const notifyTaxpayer = async (id: string) => {
             }
         })
 
+        const taxpayer = await db.taxpayer.findFirst({
+            where: { id: id },
+            include: {
+                user: {
+                    select: {
+                        name: true,
+                        group: { select: { coordinator: { select: { email: true } } } }
+                    }
+                }
+            }
+        })
+
+        const coordinatorEmail = taxpayer?.user?.group?.coordinator?.email;
+        const fiscalName = taxpayer?.user?.name;
+        const taxpayerName = taxpayer?.name;
+        const taxpayerProcess = taxpayer?.process;
+        const providenceNum = taxpayer?.providenceNum;
+        const address = taxpayer?.address;
+        const taxpayerId = taxpayer?.id;
+
+        const now = new Date();
+        const formattedDate = now.toLocaleDateString('es-VE', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+        });
+        const formattedTime = now.toLocaleTimeString('es-VE', {
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+
+        if (coordinatorEmail) {
+            await resend.emails.send({
+                from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com',
+                to: coordinatorEmail,
+                subject: `Contribuyente notificado: ${taxpayerName}`,
+                html: `
+                <div style="font-family: sans-serif; background-color: #f3f4f6; padding: 30px;">
+                    <div style="max-width: 600px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.1);">
+                    <h2 style="color: #2563eb;">📬 Contribuyente Notificado</h2>
+                    <p>El contribuyente <strong>${taxpayerName}</strong> ha sido <span style="color: green; font-weight: bold;">notificado</span> por el fiscal <strong>${fiscalName}</strong>.</p>
+
+                    <ul style="line-height: 1.6; font-size: 14px; padding-left: 20px; color: #374151;">
+                        <li><strong>Contribuyente:</strong> ${taxpayerName}</li>
+                        <li><strong>Proceso:</strong> ${taxpayerProcess}</li>
+                        <li><strong>Número de Providencia:</strong> ${providenceNum}</li>
+                        <li><strong>Dirección:</strong> ${address}</li>
+                        <li><strong>Notificado por:</strong> ${fiscalName}</li>
+                        <li><strong>Fecha y hora:</strong> ${formattedDate} a las ${formattedTime}</li>
+                    </ul>
+
+                    <p>Puedes ver los detalles directamente en la plataforma:</p>
+
+                    <a href="https://www.sac-app.com/taxpayer/${taxpayerId}" target="_blank" style="display: inline-block; margin-top: 12px; padding: 10px 18px; background-color: #2563eb; color: white; border-radius: 8px; text-decoration: none;">Ver contribuyente</a>
+
+                    <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+                    <p style="font-size: 13px; color: #6b7280;">Este mensaje fue generado automáticamente por el sistema. No respondas a este correo.</p>
+                    <p style="font-size: 12px; color: #9ca3af;">© ${now.getFullYear()} Sistema de Administración de Contribuyentes</p>
+                    </div>
+                </div>
+                `,
+            });
+        }
+
+
+
         return notifiedTaxpayer;
     } catch (e) {
         console.error(e);
@@ -1074,6 +1226,7 @@ export async function getTaxpayerData(id: string) {
             },
             include: {
                 RepairReports: true,
+                investigation_pdfs: true,
             }
         });
 

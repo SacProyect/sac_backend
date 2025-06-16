@@ -293,7 +293,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
 
     const filters: any = {};
 
-    if (role !== "ADMIN" && role !== "COORDINATOR") {
+    if (role !== "ADMIN" && role !== "COORDINATOR" && role !== "SUPERVISOR") {
         throw new Error("Unauthorized");
     }
 
@@ -333,6 +333,12 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                 members: {
                     include: {
                         taxpayer: {
+                            where: {
+                                emition_date: {
+                                    gte: startDate ? new Date(startDate) : undefined,
+                                    lte: endDate ? new Date(endDate) : undefined,
+                                },
+                            },
                             include: {
                                 event: {
                                     where: {

@@ -7,7 +7,7 @@ import { authenticateToken, AuthRequest } from "../users/user.utils";
 // import multer, { StorageEngine } from "multer";
 // import path from "path";
 import fs from 'fs'
-import { S3Client, PutObjectCommand, GetObjectCommand} from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { createLocalUpload } from "../utils/multer.local";
 import { uploadMemory } from "../utils/multer.memory";
 // import { commonParams } from "@aws-sdk/client-s3/dist-types/endpoint/EndpointParameters";
@@ -31,15 +31,40 @@ taxpayerRouter.get('/download-repair-report/:key',
 
             const key: string = decodeURIComponent(req.params.key);
 
-            const presignedUrl = await TaxpayerServices.generateDownloadUrl(key);
+            const presignedUrl = await TaxpayerServices.generateDownloadRepairUrl(key);
 
             return res.status(201).json(presignedUrl);
 
         } catch (e) {
             console.error(e);
-            return res.status(500).json({message: "Couldn't generate a repair report url"})
+            return res.status(500).json({ message: "Couldn't generate a repair report url" })
         }
 
+    }
+)
+
+taxpayerRouter.get("/download-investigation",
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+        console.log("SE ACTIVA ESTO")
+        try {
+
+            const key = decodeURIComponent(req.query.key as string);
+
+            console.log(decodeURIComponent("pdfs%2F1749919201388-Documento%20sin%20t%C3%ADtulo.docx"))
+
+
+
+
+            const presignedUrl = await TaxpayerServices.generateDownloadInvestigationPdfUrl(key);
+
+            return res.status(200).json(presignedUrl);
+
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json({ message: "Error del servidor." })
+        }
     }
 )
 
@@ -183,40 +208,40 @@ taxpayerRouter.post(
     }
 );
 
-// taxpayerRouter.post(
-//     '/create-taxpayer',
-//     authenticateToken,
-//     body("providenceNum").isNumeric().withMessage("providenceNum must be numeric"),
-//     body("process").isString().withMessage("process must be a string"),
-//     body("name").isString().withMessage("name must be a string"),
-//     body("rif").matches(/^[JVEPG]\d{9}$/).withMessage("RIF format is invalid (must start with J, V, E, P or G followed by 9 digits)"),
-//     body("contract_type").isString().withMessage("contract_type must be a string"),
-//     body("officerName").isString().withMessage("officerName must be a string"),
-//     body("address").notEmpty().withMessage("address is required"),
-//     body("emition_date").notEmpty().withMessage("emition_date is required").isString().withMessage("emition_date must be a string"),
-//     async (req: Request, res: Response) => {
-//         try {
-//             const { user } = req as AuthRequest;
+taxpayerRouter.post(
+    '/create-taxpayer',
+    authenticateToken,
+    body("providenceNum").isNumeric().withMessage("providenceNum must be numeric"),
+    body("process").isString().withMessage("process must be a string"),
+    body("name").isString().withMessage("name must be a string"),
+    body("rif").matches(/^[JVEPG]\d{9}$/).withMessage("RIF format is invalid (must start with J, V, E, P or G followed by 9 digits)"),
+    body("contract_type").isString().withMessage("contract_type must be a string"),
+    body("officerName").isString().withMessage("officerName must be a string"),
+    body("address").notEmpty().withMessage("address is required"),
+    body("emition_date").notEmpty().withMessage("emition_date is required").isString().withMessage("emition_date must be a string"),
+    async (req: Request, res: Response) => {
+        try {
+            const { user } = req as AuthRequest;
 
-//             if (!user) return res.status(401).json({ error: "Unauthorized access" });
-//             if (!["ADMIN", "COORDINATOR", "FISCAL"].includes(user.role)) {
-//                 return res.status(403).json({ error: "Forbidden role" });
-//             }
+            if (!user) return res.status(401).json({ error: "Unauthorized access" });
+            if (!["ADMIN", "COORDINATOR", "FISCAL", "SUPERVISOR"].includes(user.role)) {
+                return res.status(403).json({ error: "Forbidden role" });
+            }
 
-//             const errors = validationResult(req);
-//             if (!errors.isEmpty()) {
-//                 return res.status(400).json({ errors: errors.array() });
-//             }
+            const errors = validationResult(req);
+            if (!errors.isEmpty()) {
+                return res.status(400).json({ errors: errors.array() });
+            }
 
-//             const response = await TaxpayerServices.createTaxpayerExcel(req.body);
-//             return res.status(201).json(response);
+            const response = await TaxpayerServices.createTaxpayerExcel(req.body);
+            return res.status(201).json(response);
 
-//         } catch (error: any) {
-//             console.error("API Error:", error);
-//             return res.status(500).json({ error: error.message || "Internal Server Error" });
-//         }
-//     }
-// );
+        } catch (error: any) {
+            console.error("API Error:", error);
+            return res.status(500).json({ error: error.message || "Internal Server Error" });
+        }
+    }
+);
 
 
 taxpayerRouter.get('/:id',
