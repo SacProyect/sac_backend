@@ -798,17 +798,41 @@ export const deleteTaxpayerById = async (taxpayerId: string): Promise<Taxpayer |
  */
 export const deleteEvent = async (eventId: string): Promise<Event | Error> => {
     try {
-        const updatedEvent = await db.event.update({
+        const updatedEvent = await db.event.delete({
             where: {
                 id: eventId
             },
-            data: {
-                status: false
-            }
         });
         return updatedEvent;
     } catch (error) {
         throw error;
+    }
+}
+
+export const deleteIva = async (id: string) => {
+    try {
+        const deletedReport = await db.iVAReports.delete({
+            where: {id: id},
+        })
+
+        return deletedReport;
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo borrar el reporte de IVA");
+    }
+}
+
+export const deleteIslr = async (id: string) => {
+    try {
+
+        const deletedReport = await db.iSLRReports.delete({
+            where: {id: id}
+        })
+        return deletedReport;
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo eliminar el reporte de ISLR.")
     }
 }
 

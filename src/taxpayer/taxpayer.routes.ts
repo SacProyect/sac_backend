@@ -915,11 +915,16 @@ taxpayerRouter.put('/warning/:eventId',
 taxpayerRouter.delete('/event/:id',
     authenticateToken,
     async (req: Request, res: Response) => {
+        
         try {
             const id: string = (req.params.id);
+
+            console.log("ID: " + id);
+
             const event = await TaxpayerServices.deleteEvent(id)
             return res.status(200).json(event)
         } catch (error: any) {
+            console.error(error);
             return res.status(500).json(error.message)
         }
     }
@@ -933,10 +938,45 @@ taxpayerRouter.delete('/payment/:id',
             const event = await TaxpayerServices.deletePayment(id)
             return res.status(200).json(event)
         } catch (error: any) {
+            console.error(error);
             return res.status(500).json(error.message)
         }
     }
 );
+
+taxpayerRouter.delete("/delete-iva/:id",
+    authenticateToken,
+    async (req: Request, res: Response) => {
+
+        try {
+            const id:string = req.params.id;
+
+            const ivaReport = await TaxpayerServices.deleteIva(id);
+
+            return res.status(201).json(ivaReport);
+
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json({message: "Server error."})
+        }
+    }
+);
+
+taxpayerRouter.delete("/delete-islr/:id",
+    authenticateToken,
+    async (req: Request, res: Response) => {
+        try {
+            const id: string = req.params.id;
+
+            const islrReport = await TaxpayerServices.deleteIslr(id);
+
+            return res.status(201).json(islrReport);
+        } catch (e) {
+            console.error(e);
+            throw new Error("Server error.");
+        }
+    }
+)
 
 
 
