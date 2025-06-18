@@ -7,6 +7,7 @@ import {
     getSignedUrl,
     S3RequestPresigner,
 } from "@aws-sdk/s3-request-presigner";
+import { Decimal } from "@prisma/client/runtime/library";
 
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -39,7 +40,7 @@ export async function generateDownloadInvestigationPdfUrl(key: string) {
             ResponseContentDisposition: "attachment",
         })
 
-        const url = await getSignedUrl(s3, command, {expiresIn: 180});
+        const url = await getSignedUrl(s3, command, { expiresIn: 180 });
         return url;
 
     } catch (e) {
@@ -812,7 +813,7 @@ export const deleteEvent = async (eventId: string): Promise<Event | Error> => {
 export const deleteIva = async (id: string) => {
     try {
         const deletedReport = await db.iVAReports.delete({
-            where: {id: id},
+            where: { id: id },
         })
 
         return deletedReport;
@@ -826,7 +827,7 @@ export const deleteIslr = async (id: string) => {
     try {
 
         const deletedReport = await db.iSLRReports.delete({
-            where: {id: id}
+            where: { id: id }
         })
         return deletedReport;
 
@@ -1402,29 +1403,15 @@ export const createIVA = async (data: NewIvaReport) => {
         throw new Error("IVA report for this taxpayer and month already exists.");
     }
 
-    // 2. Obtener el 'excess' del último reporte
-    const latest = await db.iVAReports.findFirst({
-        where: { taxpayerId: data.taxpayerId },
-        orderBy: { date: 'desc' },
-        select: { excess: true },
-    });
-    const previousExcess = latest?.excess ?? 0;
-
     // 3. Construir el objeto de creación
-    const createData: any = {
+    const createData = {
         taxpayerId: data.taxpayerId,
-        purchases: data.purchases,
-        sells: data.sells,
-        date: data.date,
-        ...(data.iva != null && { iva: data.iva }),
-        excess:
-            data.excess != null
-                ? data.excess
-                : (() => {
-                    const calculatedExcess = BigInt(previousExcess) - BigInt(data.iva);
-                    return calculatedExcess > BigInt(0) ? calculatedExcess : BigInt(0);
-                })(),
-        paid: data.paid,
+        purchases: new Decimal(data.purchases),
+        sells: new Decimal(data.sells),
+        paid: new Decimal(data.paid),
+        date: new Date(data.date),
+        iva: data.iva != null ? new Decimal(data.iva) : null,
+        excess: data.excess != null ? new Decimal(data.excess) : null,
     };
 
     // 4. Crear y devolver

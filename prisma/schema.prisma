@@ -127,10 +127,10 @@ model ISLRReports {
 
 model IVAReports {
     id         String   @id @default(uuid())
-    iva        BigInt?
-    purchases  BigInt
-    sells      BigInt
-    excess     BigInt?
+    iva        Decimal?
+    purchases  Decimal
+    sells      Decimal
+    excess     Decimal?
     paid       Decimal  @default(0)
     date       DateTime @default(now())
     taxpayerId String

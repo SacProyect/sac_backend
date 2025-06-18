@@ -58,13 +58,13 @@ export interface NewObservation {
 }
 
 export interface NewIvaReport {
-    taxpayerId: string,
-    iva: number,
-    purchases: number,
-    sells: number,
-    excess: number,
-    date: Date,
-    paid: Decimal,
+    taxpayerId: string;
+    iva?: string | Decimal;
+    purchases: string | Decimal;
+    sells: string | Decimal;
+    excess?: string | Decimal;
+    date: string | Date;
+    paid: string | Decimal;
 }
 
 export interface NewFase {

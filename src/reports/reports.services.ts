@@ -657,7 +657,7 @@ export async function getGroupPerformance() {
  * siguiendo tu lógica de consumo por IVA.
  */
 function calculateCreditSurplus(
-    reports: { date: Date; excess: bigint | null; iva: bigint | null }[]
+    reports: { date: Date; excess: Decimal | null; iva: Decimal | null }[]
 ): number {
     // Ordenar de más antiguo a más reciente
     const sorted = reports
