@@ -831,6 +831,22 @@ taxpayerRouter.put('/fine/:eventId',
     }
 );
 
+taxpayerRouter.put('/updateIva/:ivaId',
+    authenticateToken,
+    // Agrega validaciones opcionales si deseas (date, iva, etc.)
+    async (req: Request, res: Response) => {
+        try {
+            const ivaId = req.params.ivaId;
+            const input = { ...req.body };
+            const updated = await TaxpayerServices.updateIvaReport(ivaId, input);
+            return res.status(200).json(updated);
+        } catch (error: any) {
+            console.error(error);
+            return res.status(500).json({ message: error.message });
+        }
+    }
+);
+
 taxpayerRouter.put('/payment/:eventId',
     authenticateToken,
     body("date").isISO8601().toDate().optional({ checkFalsy: true }),

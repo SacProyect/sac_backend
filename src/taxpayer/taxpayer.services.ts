@@ -8,6 +8,7 @@ import {
     S3RequestPresigner,
 } from "@aws-sdk/s3-request-presigner";
 import { Decimal } from "@prisma/client/runtime/library";
+import { IVAReports } from "@prisma/client";
 
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -923,6 +924,32 @@ export const updateEvent = async (eventId: string, data: Partial<NewEvent>): Pro
         throw error;
     }
 }
+
+/**
+ * Updates an IVA report.
+ * 
+ * @param ivaId The ID of the IVA report to update.
+ * @param data The updated fields for the IVA report.
+ * @returns The updated IVA report.
+ */
+export const updateIvaReport = async (ivaId: string, data: Partial<IVAReports>): Promise<IVAReports> => {
+    try {
+        // Remover campos que no deben ser actualizados directamente
+        const { taxpayerId, id, _key, created_at, ...cleanData } = data as any;
+
+        const updatedIva = await db.iVAReports.update({
+            where: { id: ivaId },
+            data: {
+                ...cleanData,
+                updated_at: new Date(),
+            },
+        });
+
+        return updatedIva;
+    } catch (error) {
+        throw new Error("Error actualizando el reporte de IVA");
+    }
+};
 
 /**
  * Updates a payment object.
