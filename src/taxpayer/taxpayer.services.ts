@@ -8,7 +8,7 @@ import {
     S3RequestPresigner,
 } from "@aws-sdk/s3-request-presigner";
 import { Decimal } from "@prisma/client/runtime/library";
-import { IVAReports } from "@prisma/client";
+import { ISLRReports, IVAReports } from "@prisma/client";
 
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -910,7 +910,11 @@ export const updateTaxpayer = async (taxpayerId: string, data: Partial<NewTaxpay
  * @returns The updated event object or an error if the operation fails.
  */
 export const updateEvent = async (eventId: string, data: Partial<NewEvent>): Promise<Event | Error> => {
+
+    // console.log("EVENT ID: " + eventId);
     try {
+        console.log("EVENT ID: " + eventId);
+        console.log("DATA: " + JSON.stringify(data));
         const updatedEvent = await db.event.update({
             where: {
                 id: eventId
@@ -921,6 +925,7 @@ export const updateEvent = async (eventId: string, data: Partial<NewEvent>): Pro
         });
         return updatedEvent;
     } catch (error) {
+        console.error(error);
         throw error;
     }
 }
@@ -992,6 +997,24 @@ export const updateObservation = async (id: string, newDescription: string) => {
     } catch (e) {
         console.error("Error updating observation:", e)
         throw new Error("Error updating observation")
+    }
+}
+
+export const updateIslr = async (id: string, input: Partial<ISLRReports>) => {
+
+
+    try {
+        const updatedIslr = db.iSLRReports.update({
+            where: {id: id},
+            data: input,
+        })
+
+        return updatedIslr;
+
+
+    } catch (e: any) {
+        console.error(e);
+        throw new Error("No se pudieron actualizar los datos del reporte de ISLR");
     }
 }
 

@@ -815,18 +815,21 @@ taxpayerRouter.put('/fine/:eventId',
     authenticateToken,
     body("date").isISO8601().toDate().optional({ checkFalsy: true }),
     body("amount").isDecimal().optional({ checkFalsy: true }),
+    body("description").isString().optional({ checkFalsy: true }),
+    body("type").isString().optional({ checkFalsy: true }),
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.array() });
         }
         try {
-            const eventId = (req.params.eventId);
+            const eventId = req.params.eventId;
             const input = { ...req.body };
             const fine = await TaxpayerServices.updateEvent(eventId, input);
             return res.status(200).json(fine);
         } catch (error: any) {
-            return res.status(500).json(error.message);
+            console.error(error);
+            return res.status(500).json({ error: error.message });
         }
     }
 );
@@ -876,7 +879,7 @@ taxpayerRouter.put('/update-culminated/:id',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL") return res.status(403).json("Forbidden")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
 
 
         try {
@@ -928,10 +931,37 @@ taxpayerRouter.put('/warning/:eventId',
     }
 );
 
+taxpayerRouter.put("/update-islr/:id",
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        try {
+
+            const { user } = req as AuthRequest
+
+            if (!user) return res.status(401).json("Unauthorized access")
+            if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
+
+
+            const id: string = req.params.id;
+            const input = req.body;
+
+            const updatedIslr = await TaxpayerServices.updateIslr(id, input)
+
+            return res.status(201).json(updatedIslr);
+
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json("Server error.")
+        }
+    }
+)
+
 taxpayerRouter.delete('/event/:id',
     authenticateToken,
     async (req: Request, res: Response) => {
-        
+
         try {
             const id: string = (req.params.id);
 
@@ -965,7 +995,7 @@ taxpayerRouter.delete("/delete-iva/:id",
     async (req: Request, res: Response) => {
 
         try {
-            const id:string = req.params.id;
+            const id: string = req.params.id;
 
             const ivaReport = await TaxpayerServices.deleteIva(id);
 
@@ -973,7 +1003,7 @@ taxpayerRouter.delete("/delete-iva/:id",
 
         } catch (e) {
             console.error(e);
-            return res.status(500).json({message: "Server error."})
+            return res.status(500).json({ message: "Server error." })
         }
     }
 );
