@@ -40,19 +40,18 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
         if (compareSync(password, user.password)) {
             const token = generateAcessToken(user);
             user.password = "";
-            if (user.role === "ADMIN") {
-                user.taxpayer = await db.taxpayer.findMany({
-                    where: { status: true },
-                    include: {
-                        user: {
-                            select: {
-                                name: true
-                            },
+            user.taxpayer = await db.taxpayer.findMany({
+                where: { status: true },
+                include: {
+                    user: {
+                        select: {
+                            name: true,
+                            group: { select: { coordinatorId: true } },
                         },
-                        IVAReports: true,
-                    }
-                });
-            }
+                    },
+                    IVAReports: true,
+                }
+            });
 
             return { user, token };
         } else {
@@ -153,7 +152,6 @@ export const getUser = async (id: string) => {
             where: { id: id },
             include: {
                 coordinatedGroup: true,
-                // only include taxpayer for ADMIN:
                 taxpayer: {
                     include: {
                         IVAReports: true,
@@ -166,20 +164,18 @@ export const getUser = async (id: string) => {
             return null;
         }
 
-        if (user.role == "ADMIN") {
-            user.taxpayer = await db.taxpayer.findMany(
-                {
-                    where: { status: true }, include: {
-                        IVAReports: true,
-                        user: {
-                            select: {
-                                name: true
-                            },
-                        },
-                    }
-                }
-            )
-        }
+        user.taxpayer = await db.taxpayer.findMany({
+            where: { status: true },
+            include: {
+                IVAReports: true,
+                user: {
+                    select: {
+                        name: true,
+                        group: { select: { coordinatorId: true } }
+                    },
+                },
+            }
+        });
 
         // 3) remove password before sending back
         (user as any).password = "";

@@ -1005,7 +1005,7 @@ export const updateIslr = async (id: string, input: Partial<ISLRReports>) => {
 
     try {
         const updatedIslr = db.iSLRReports.update({
-            where: {id: id},
+            where: { id: id },
             data: input,
         })
 
@@ -1302,7 +1302,8 @@ export async function getTaxpayerData(id: string) {
             include: {
                 RepairReports: true,
                 investigation_pdfs: true,
-            }
+                user: { select: { group: { select: { coordinatorId: true } } } },
+            },
         });
 
         return taxpayerData
