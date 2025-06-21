@@ -203,6 +203,37 @@ reportRouter.get('/fiscal-groups',
     }
 )
 
+reportRouter.get('/get-group-records',
+    authenticateToken,
+    async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden");
+
+        // Object for filtering based on the params
+        const { id, month, year } = req.query
+
+        const input: { id?: string; month?: number; year?: number; } = {}
+
+        if (id) input.id = id as string;
+        if (month) input.month = parseInt(month as string);
+        if (year) input.year = parseInt(year as string);
+
+        if (!id) return res.status(400).json("An id must be provided");
+
+        try {
+            const groupRecords = await ReportService.getGroupRecord(input);
+            return res.status(200).json(groupRecords);
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json("Server error.");
+        }
+
+    }
+)
+
 reportRouter.get('/global-performance',
     authenticateToken,
     async (req: Request, res: Response) => {

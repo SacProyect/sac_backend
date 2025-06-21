@@ -1,6 +1,6 @@
 import { event_type } from "@prisma/client"
 import { db } from "../utils/db.server"
-import { avgValue, getComplianceRate, getLatestEvents, getPunctuallityAnalysis, getTaxpayerComplianceRate, InputError, sumTransactions } from "./report.utils"
+import { avgValue, getComplianceRate, getLatestEvents, getPunctuallityAnalysis, getTaxpayerComplianceRate, InputError, InputGroupRecords, sumTransactions } from "./report.utils"
 import { Event, Payment } from "../taxpayer/taxpayer.utils"
 import { Decimal } from "@prisma/client/runtime/library"
 import dayjs from "dayjs";
@@ -15,6 +15,7 @@ interface InputFiscalGroups {
     endDate?: string,
     userId?: string,
 }
+
 
 
 
@@ -288,6 +289,121 @@ export const getPendingPayments = async (
 };
 
 
+export const getGroupRecord = async (data: InputGroupRecords) => {
+    try {
+
+        let group;
+
+        // Si viene año y mes, se retorna solo ese mes
+        if (data.month && data.year && data.id) {
+            group = await db.fiscalGroup.findFirst({
+                where: { id: data.id },
+                include: {
+                    GroupRecordMonth: {
+                        include: {
+                            records: {
+                                include: {
+                                    fiscal: { select: { name: true } }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            return {
+                groupName: group?.name,
+                records:
+                    group?.GroupRecordMonth.find(
+                        (rec) => rec.month === data.month && rec.year === data.year
+                    )?.records ?? []
+            };
+        }
+
+        // Si viene solo el año y el id, consolidamos todo el año
+        if (data.year && data.id) {
+            const fullGroup = await db.fiscalGroup.findFirst({
+                where: { id: data.id },
+                include: {
+                    GroupRecordMonth: {
+                        where: { year: data.year },
+                        include: {
+                            records: {
+                                include: {
+                                    fiscal: { select: { id: true, name: true } }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            const allRecords = fullGroup?.GroupRecordMonth.flatMap((month) => month.records) || [];
+
+            const aggregated: Record<string, any> = {};
+
+            for (const record of allRecords) {
+                const key = `${record.fiscalId}-${record.process}`;
+
+                const parseValue = (val: any) => {
+                    const raw = typeof val === 'string' ? val : String(val ?? '0');
+                    const clean = raw.replace(/[^0-9.]/g, '');
+                    const parts = clean.split('.');
+
+                    const valid = parts.length > 2 ? parts[0] : clean;
+                    const result = parseFloat(valid);
+                    const rounded = isNaN(result) ? 0 : parseFloat(result.toFixed(2));
+
+                    console.log(`DEBUG record fiscal: ${record.fiscal.name}, process: ${record.process}`);
+                    console.log(`   Raw value: ${val}, Cleaned: ${valid}, Parsed: ${rounded}`);
+
+                    return rounded;
+                };
+
+                if (!aggregated[key]) {
+                    aggregated[key] = {
+                        fiscalId: record.fiscalId,
+                        fiscal: { name: record.fiscal.name },
+                        process: record.process,
+                        collectedFines: parseValue(record.collectedFines),
+                        collectedIva: parseValue(record.collectedIVA),
+                        collectedIslr: parseValue(record.collectedISLR),
+                        totalWarnings: record.warnings || 0,
+                        totalFines: record.fines || 0,
+                        totalCompromises: record.compromises || 0,
+                        totalTaxpayers: record.taxpayers || 0,
+                    };
+                } else {
+                    aggregated[key].collectedFines += parseValue(record.collectedFines);
+                    aggregated[key].collectedIva += parseValue(record.collectedIVA);
+                    aggregated[key].collectedIslr += parseValue(record.collectedISLR);
+                    aggregated[key].totalWarnings += record.warnings || 0;
+                    aggregated[key].totalFines += record.fines || 0;
+                    aggregated[key].totalCompromises += record.compromises || 0;
+                }
+            }
+
+            return {
+                groupName: fullGroup?.name,
+                records: Object.values(aggregated).map((rec) => ({
+                    ...rec,
+                    collectedFines: parseFloat(rec.collectedFines.toFixed(2)),
+                    collectedIva: parseFloat(rec.collectedIva.toFixed(2)),
+                    collectedIslr: parseFloat(rec.collectedIslr.toFixed(2)),
+                })),
+            };
+        }
+
+        throw new Error("Faltan parámetros para obtener el reporte");
+
+    } catch (e) {
+        console.error("Error en getGroupRecord:", e);
+        throw new Error("No se pudo obtener el reporte de grupo.");
+    }
+};
+
+
+
 export const getFiscalGroups = async (data: InputFiscalGroups) => {
     const { id, role, startDate, endDate } = data;
 
@@ -364,6 +480,14 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                                         },
                                     },
                                 },
+                                ISLRReports: {
+                                    where: {
+                                        emition_date: {
+                                            gte: startDate ? new Date(startDate) : undefined,
+                                            lt: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : undefined,
+                                        }
+                                    }
+                                }
                             },
                         },
                     },
@@ -376,6 +500,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
             let groupCollected: Decimal = new Decimal(0);
             let fines: Decimal = new Decimal(0);
             let totalIva: Decimal = new Decimal(0);
+            let totalIslr: Decimal = new Decimal(0);
 
             group.members.forEach((member) => {
                 member.taxpayer.forEach((contributor) => {
@@ -392,6 +517,10 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                     contributor.IVAReports.forEach((report) => {
                         if (report.paid) totalIva = totalIva.plus(report.paid);
                     });
+
+                    contributor.ISLRReports.forEach((report) => {
+                        if (report.paid) totalIslr = totalIslr.plus(report.paid);
+                    })
                 });
             });
 
@@ -400,6 +529,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                 collected: groupCollected,
                 totalFines: fines,
                 totalIva: totalIva,
+                totalIslr: totalIslr,
             };
         });
 

@@ -22,6 +22,13 @@ interface InputPayment {
     amount: BigInt,
 }
 
+export interface InputGroupRecords {
+    id?: string,
+    month?: number,
+    year?: number,
+}
+
+
 
 
 export const sumTransactions = (transactionArray: Event[] | Payment[]): Decimal => {

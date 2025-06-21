@@ -23,16 +23,84 @@ model user {
     groupId String?
     group   FiscalGroup? @relation("GroupMembers", fields: [groupId], references: [id])
 
-    coordinatedGroup FiscalGroup? @relation("GroupCoordinator")
+    coordinatedGroup    FiscalGroup?          @relation("GroupCoordinator")
+    GroupFiscalStat     GroupFiscalStat[]
+    GroupFiscalYearStat GroupFiscalYearStat[]
 }
 
 model FiscalGroup {
-    id            String   @id @default(uuid())
-    name          String   @default("")
-    coordinatorId String   @unique
-    coordinator   user     @relation("GroupCoordinator", fields: [coordinatorId], references: [id])
-    members       user[]   @relation("GroupMembers")
-    created_at    DateTime @default(now())
+    id               String             @id @default(uuid())
+    name             String             @default("")
+    coordinatorId    String             @unique
+    coordinator      user               @relation("GroupCoordinator", fields: [coordinatorId], references: [id])
+    members          user[]             @relation("GroupMembers")
+    created_at       DateTime           @default(now())
+    GroupRecordMonth GroupRecordMonth[]
+    GroupRecordYear  GroupRecordYear[]
+}
+
+model GroupRecordMonth {
+    id         String            @id @default(uuid())
+    groupId    String
+    group      FiscalGroup       @relation(fields: [groupId], references: [id])
+    year       Int
+    month      Int
+    records    GroupFiscalStat[] @relation("MonthToStat")
+    created_at DateTime          @default(now())
+
+    @@index([groupId, year, month])
+}
+
+model GroupRecordYear {
+    id         String      @id @default(uuid())
+    groupId    String
+    group      FiscalGroup @relation(fields: [groupId], references: [id])
+    year       Int
+    created_at DateTime    @default(now())
+
+    records GroupFiscalYearStat[] @relation("YearToStat")
+}
+
+model GroupFiscalYearStat {
+    id                String          @id @default(uuid())
+    groupRecordYearId String
+    groupRecordYear   GroupRecordYear @relation("YearToStat", fields: [groupRecordYearId], references: [id], onDelete: Cascade)
+
+    fiscalId String
+    fiscal   user   @relation(fields: [fiscalId], references: [id])
+
+    process taxpayer_process
+
+    collectedFines Decimal @default(0)
+    collectedIVA   Decimal @default(0)
+    collectedISLR  Decimal @default(0)
+    warnings       Int     @default(0)
+    fines          Int     @default(0)
+    compromises    Int     @default(0)
+    taxpayers      Int     @default(0)
+
+    @@index([groupRecordYearId, fiscalId, process])
+}
+
+model GroupFiscalStat {
+    id                 String           @id @default(uuid())
+    groupRecordMonthId String
+    groupRecordMonth   GroupRecordMonth @relation("MonthToStat", fields: [groupRecordMonthId], references: [id], onDelete: Cascade)
+
+    fiscalId String
+    fiscal   user   @relation(fields: [fiscalId], references: [id])
+
+    process taxpayer_process
+
+    collectedFines Decimal @default(0)
+    collectedIVA   Decimal @default(0)
+    collectedISLR  Decimal @default(0)
+    warnings       Int     @default(0)
+    fines          Int     @default(0)
+    compromises    Int     @default(0)
+    taxpayers      Int     @default(0)
+
+    @@index([groupRecordMonthId, fiscalId, process])
 }
 
 model event {
@@ -82,7 +150,7 @@ model taxpayer {
     address            String                 @default("Caracas")
     process            taxpayer_process       @default(NA)
     name               String
-    rif                String                 
+    rif                String
     emition_date       DateTime               @default(now())
     contract_type      taxpayer_contract_type @default(ORDINARY)
     status             Boolean                @default(true)
