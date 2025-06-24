@@ -288,6 +288,7 @@ enum user_roles {
     FISCAL
     ADMIN
     COORDINATOR
+    SUPERVISOR
 }
 
 enum Taxpayer_Fases {

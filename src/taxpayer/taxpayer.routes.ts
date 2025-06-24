@@ -94,6 +94,8 @@ taxpayerRouter.post(
             return res.status(400).json({ errors: errors.array() });
         }
 
+
+
         try {
 
             const { user } = req as AuthRequest;
@@ -121,7 +123,7 @@ taxpayerRouter.post(
 
             const { providenceNum, process, name, rif, contract_type, officerId, address, emition_date } = req.body;
 
-
+            console.log("OFFICER ID: " + officerId);
 
             const newTaxpayer = await TaxpayerServices.createTaxpayer({
                 providenceNum: BigInt(providenceNum),
@@ -355,7 +357,7 @@ taxpayerRouter.put("/update-fase/:id",
         }
 
         if (!user) return res.status(401).json({ error: "Unauthorized" });
-        if (user.role !== "ADMIN" && user.role !== "COORDINATOR") return res.status(403).json({ error: "Forbidden" });
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "SUPERVISOR") return res.status(403).json({ error: "Forbidden" });
 
         const data = {
             id: id,
@@ -527,7 +529,7 @@ taxpayerRouter.get("/get-observations/:id",
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL") return res.status(403).json("Forbidden")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
 
         try {
 
@@ -551,7 +553,7 @@ taxpayerRouter.get('/get-islr/:id',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL") return res.status(403).json("Forbidden")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
 
         try {
 
@@ -575,7 +577,7 @@ taxpayerRouter.get("/getTaxSummary/:id",
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL") return res.status(403).json("Forbidden")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
 
         const id: string = (req.params.id);
 
