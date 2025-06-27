@@ -1303,6 +1303,12 @@ export async function getTaxpayerData(id: string) {
                 RepairReports: true,
                 investigation_pdfs: true,
                 user: { select: { group: { select: { coordinatorId: true } } } },
+                IVAReports: {
+                    take: 1,
+                    orderBy: {
+                        date: 'desc'
+                    }
+                }
             },
         });
 

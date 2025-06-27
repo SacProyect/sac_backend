@@ -540,6 +540,12 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
     }
 };
 
+const getMonthName = (key: string) => {
+    const [year, month] = key.split("-");
+    const date = new Date(Number(year), Number(month) - 1);
+    return date.toLocaleString("es-VE", { month: "long", year: "numeric" });
+};
+
 
 export const getGlobalPerformance = async () => {
     try {
@@ -559,7 +565,7 @@ export const getGlobalPerformance = async () => {
             const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
             ivaByMonth[key] = (ivaByMonth[key] || 0) + Number(report.iva);
         });
-        // console.log("IVA por mes:", ivaByMonth);
+        console.log("IVA por mes:", ivaByMonth);
 
         // ISLR anual prorrateado en 12 meses
         const islrByMonth: Record<string, number> = {};
@@ -574,7 +580,7 @@ export const getGlobalPerformance = async () => {
                 islrByMonth[key] = (islrByMonth[key] || 0) + monthlyAmount;
             }
         });
-        // console.log("ISLR por mes (prorrateado):", islrByMonth);
+        console.log("ISLR por mes (prorrateado):", islrByMonth);
 
         // Cumplimiento de multas
         const fineCountByMonth: Record<string, number> = {};
@@ -588,8 +594,8 @@ export const getGlobalPerformance = async () => {
                 paidFineCountByMonth[key] = (paidFineCountByMonth[key] || 0) + 1;
             }
         });
-        // console.log("Total multas por mes:", fineCountByMonth);
-        // console.log("Multas pagadas por mes:", paidFineCountByMonth);
+        console.log("Total multas por mes:", fineCountByMonth);
+        console.log("Multas pagadas por mes:", paidFineCountByMonth);
 
         const complianceByMonth: Record<string, number> = {};
         Object.keys(fineCountByMonth).forEach((key) => {
@@ -597,7 +603,7 @@ export const getGlobalPerformance = async () => {
             const paid = paidFineCountByMonth[key] || 0;
             complianceByMonth[key] = (paid / total) * 100;
         });
-        // console.log("Tasa de cumplimiento por mes:", complianceByMonth);
+        console.log("Tasa de cumplimiento por mes:", complianceByMonth);
 
         // Unificar todos los meses presentes
         const allMonthsSet = new Set([
@@ -622,17 +628,19 @@ export const getGlobalPerformance = async () => {
         const monthlyData: Record<string, Result> = {};
 
         allMonths.forEach((monthKey) => {
+            console.log(`\n📆 >>> Cálculo para el mes ${getMonthName(monthKey)} (${monthKey})`);
+
             const ivaAmount = ivaByMonth[monthKey] || 0;
             const islrAmount = islrByMonth[monthKey] || 0;
             const complianceRate = complianceByMonth[monthKey] || 0;
 
             const globalIndex = ivaAmount * 0.4 + islrAmount * 0.4 + complianceRate * 0.2;
 
-            // console.log(`\n>>> Cálculo para ${monthKey}`);
-            // console.log(`IVA: ${ivaAmount}`);
-            // console.log(`ISLR: ${islrAmount}`);
-            // console.log(`Tasa de cumplimiento: ${complianceRate}`);
-            // console.log(`Índice global: ${globalIndex}`);
+            console.log(`\n>>> Cálculo para ${monthKey}`);
+            console.log(`IVA: ${ivaAmount}`);
+            console.log(`ISLR: ${islrAmount}`);
+            console.log(`Tasa de cumplimiento: ${complianceRate}`);
+            console.log(`Índice global: ${globalIndex}`);
 
             monthlyData[monthKey] = {
                 month: monthKey,
@@ -657,10 +665,10 @@ export const getGlobalPerformance = async () => {
                 previous.globalIndex === 0
                     ? 0.1 // 100% de crecimiento respecto a 0
                     : ((current.globalIndex - previous.globalIndex) / previous.globalIndex) * 100;
-
-            // console.log(`\n>>> Comparación para ${monthKey} vs ${previousYear}`);
-            // console.log(`Actual: ${current.globalIndex}, Anterior: ${previous.globalIndex}`);
-            // console.log(`% Cambio: ${current.percentageChange}`);
+            console.log(`\n📊 >>> Comparación de ${getMonthName(monthKey)} con ${getMonthName(previousYear)}`);
+            console.log(`\n>>> Comparación para ${monthKey} vs ${previousYear}`);
+            console.log(`Actual: ${current.globalIndex}, Anterior: ${previous.globalIndex}`);
+            console.log(`% Cambio: ${current.percentageChange}`);
         });
 
         const result = Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month));
@@ -816,6 +824,7 @@ function calculateCreditSurplus(
 
     return totalAdded;
 }
+
 export async function getGlobalKPI() {
     try {
         // 1) Cargar todos los contribuyentes con sus reportes y eventos
