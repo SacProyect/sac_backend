@@ -5,6 +5,8 @@ import { Event, Payment } from "../taxpayer/taxpayer.utils"
 import { Decimal } from "@prisma/client/runtime/library"
 import dayjs from "dayjs";
 import isBetween from 'dayjs/plugin/isBetween';
+import { es } from 'date-fns/locale';
+import { formatInTimeZone } from 'date-fns-tz';
 
 dayjs.extend(isBetween);
 
@@ -936,7 +938,106 @@ export async function getGlobalKPI() {
 }
 
 
+export async function getIndividualIvaReport(id: string) {
+    try {
+        const ivaReports = await db.iVAReports.findMany({
+            where: { taxpayerId: id },
+            orderBy: { date: 'asc' },
+            include: { taxpayer: true }
+        });
 
+        const firstReportDateUTC = new Date(ivaReports[0].date.toISOString());
+        const lastReportDateUTC = new Date(ivaReports[ivaReports.length - 1].date.toISOString());
+
+        const expectedAmount = await db.indexIva.findMany({
+            where: {
+                created_at: { gte: firstReportDateUTC },
+                expires_at: { lte: lastReportDateUTC },
+                contract_type: ivaReports[0].taxpayer.contract_type
+            },
+            orderBy: { created_at: 'asc' }
+        });
+
+        const fallback = await db.indexIva.findFirst({
+            where: { contract_type: ivaReports[0].taxpayer.contract_type },
+            orderBy: { created_at: 'desc' }
+        });
+
+        const performanceByMonth: Record<string, {
+            performance: string;
+            variationFromPrevious?: string;
+        }> = {};
+
+        let lastPerformance: number | null = null;
+
+        for (const report of ivaReports) {
+            const reportDateUTC = report.date;
+            const month = formatInTimeZone(reportDateUTC, 'UTC', 'MMMM', { locale: es });
+
+            const applicable = expectedAmount.find(exp => {
+                const createdUTC = new Date(exp.created_at.toISOString());
+                const expiresUTC = exp.expires_at ? new Date(exp.expires_at.toISOString()) : null;
+
+                return (
+                    createdUTC <= reportDateUTC &&
+                    (!expiresUTC || expiresUTC > reportDateUTC)
+                );
+            }) || fallback;
+
+            if (!applicable) {
+                performanceByMonth[month] = { performance: 'N/A' };
+                continue;
+            }
+
+            const base = Number(applicable.base_amount);
+            const paid = Number(report.paid);
+            const performance = ((paid - base) / base) * 100;
+
+            const entry: typeof performanceByMonth[string] = {
+                performance: `${performance.toFixed(2)}%`
+            };
+
+            if (lastPerformance !== null && lastPerformance !== 0) {
+                const variation = ((performance - lastPerformance) / Math.abs(lastPerformance)) * 100;
+                entry.variationFromPrevious = `${variation.toFixed(2)}%`;
+            }
+
+            if (lastPerformance !== null && lastPerformance === 0) {
+                entry.variationFromPrevious = `${performance.toFixed(2)}%`
+            }
+
+            if (lastPerformance === null) {
+                entry.variationFromPrevious = `${performance.toFixed(2)}%`;
+            }
+
+            performanceByMonth[month] = entry;
+            lastPerformance = performance;
+        }
+
+        const completeMonths = [
+            "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+        ];
+
+        const actualMonths = Object.keys(performanceByMonth);
+
+        for (const month of completeMonths) {
+            if (!actualMonths.includes(month)) {
+                performanceByMonth[month] = {
+                    performance: "0.00%",
+                    variationFromPrevious: "0.00%"
+                };
+            }
+        }
+
+        return performanceByMonth;
+
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("Failed to fetch individual IVA report");
+    }
+}
 
 
 

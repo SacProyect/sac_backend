@@ -319,3 +319,26 @@ reportRouter.get("/global-kpi",
 
     }
 )
+
+reportRouter.get("/individual-iva-report/:id",
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
+        
+        const id: string = req.params.id;
+
+        try {
+            const response = await ReportService.getIndividualIvaReport(id);
+
+            return res.status(200).json(response);
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json("Ha ocurrido un error.")
+        }
+    }
+)
