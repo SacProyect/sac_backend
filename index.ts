@@ -4,6 +4,7 @@ import cors from "cors"
 import { userRouter } from "./src/users/user.routes"
 import { taxpayerRouter } from "./src/taxpayer/taxpayer.routes"
 import { reportRouter } from "./src/reports/reports.routes"
+import { censusRouter } from "./src/census/census.routes"
 import path from "path"
 dotenv.config()
 
@@ -52,6 +53,7 @@ app.get("/", (req, res) => {
 app.use("/user", userRouter)
 app.use("/taxpayer", taxpayerRouter)
 app.use("/reports", reportRouter)
+app.use("/census", censusRouter)
 app.use('/uploads', express.static(path.join(__dirname, './uploads')));
 
 

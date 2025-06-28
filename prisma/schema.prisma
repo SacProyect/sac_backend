@@ -26,6 +26,7 @@ model user {
     coordinatedGroup    FiscalGroup?          @relation("GroupCoordinator")
     GroupFiscalStat     GroupFiscalStat[]
     GroupFiscalYearStat GroupFiscalYearStat[]
+    Census              TaxpayerCensus[]
 }
 
 model FiscalGroup {
@@ -181,6 +182,19 @@ model IndexIva {
     created_at    DateTime               @default(now())
     expires_at    DateTime?
     updated_at    DateTime               @default(now()) @updatedAt
+}
+
+model TaxpayerCensus {
+    id           String                 @id @default(uuid())
+    number       Int
+    process      taxpayer_process       @default(FP)
+    name         String
+    rif          String
+    type         taxpayer_contract_type @default(ORDINARY)
+    address      String                 @default("Caracas")
+    emition_date DateTime               @default(now())
+    fiscal       user                   @relation(fields: [userId], references: [id])
+    userId       String
 }
 
 model RepairReport {

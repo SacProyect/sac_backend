@@ -13,6 +13,15 @@ export type Taxpayer = {
     events?: Event[]
 }
 
+export type TaxpayerCensus = {
+    providenceNum: bigint
+    id: string;
+    process: string
+    name: string
+    rif: string
+    contract_type: string
+}
+
 export type NewIslrReport = {
     incomes: Decimal;
     costs: Decimal;
@@ -47,6 +56,19 @@ export type NewTaxpayer = {
     officerId: string;
     address: string;
     pdfs?: InvestigationPdf[];
+    userId?: string;
+    role?: string;
+}
+
+export type NewTaxpayerCensus = {
+    providenceNum: bigint;
+    process: taxpayer_process;
+    name: string;
+    rif: string;
+    emition_date: Date;
+    contract_type: taxpayer_contract_type;
+    officerId: string;
+    address: string;
     userId?: string;
     role?: string;
 }
