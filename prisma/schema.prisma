@@ -167,6 +167,7 @@ model taxpayer {
     user               user?                  @relation(fields: [officerId], references: [id], map: "contribuyente_funcionarioId_fkey", onDelete: Cascade)
     created_at         DateTime               @default(now())
     updated_at         DateTime               @default(now()) @updatedAt
+    index_iva          Decimal?
     investigation_pdfs InvestigationPdf[]
     observations       Observations[]
     IVAReports         IVAReports[]
