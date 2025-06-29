@@ -10,6 +10,7 @@ import fs from 'fs'
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { createLocalUpload } from "../utils/multer.local";
 import { uploadMemory } from "../utils/multer.memory";
+import { Decimal } from "@prisma/client/runtime/library";
 // import { commonParams } from "@aws-sdk/client-s3/dist-types/endpoint/EndpointParameters";
 
 const s3 = new S3Client({ region: "us-east-2" }); // Replace "your-region" with your AWS region
@@ -610,11 +611,39 @@ taxpayerRouter.post('/fine',
             return res.status(400).json({ errors: errors.array() });
         }
         try {
-
-
             const input = { ...req.body, debt: req.body.amount, type: EventType.FINE }
             const fine = await TaxpayerServices.createEvent(input)
             return res.status(200).json(fine)
+        } catch (error: any) {
+            return res.status(500).json(error.message)
+        }
+    }
+)
+
+taxpayerRouter.post('/create-index-iva',
+    authenticateToken,
+    body("specialAmount").isDecimal(),
+    body("ordinaryAmount").isDecimal(),
+
+    async (req: Request, res: Response) => {
+
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            console.error(errors.array())
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden")
+
+        try {
+
+            const data = req.body;
+
+            const index = await TaxpayerServices.createIndexIva(data);
+            return res.status(200).json(index)
         } catch (error: any) {
             return res.status(500).json(error.message)
         }

@@ -1,5 +1,5 @@
 import { db } from "../utils/db.server";
-import { Event, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
+import { CreateIndexIva, Event, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 import { BadRequestError } from "../utils/errors/BadRequestError";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { Resend } from 'resend';
@@ -583,6 +583,63 @@ export const createPayment = async (input: NewPayment): Promise<Payment | Error>
         throw error;
     }
 }
+
+export async function createIndexIva(data: CreateIndexIva) {
+    try {
+        // Obtener los índices anteriores activos
+        const previousIndexIva = await db.indexIva.findMany({
+            where: {
+                expires_at: null,
+            },
+        });
+
+        // Actualizar expires_at a NOW
+        await db.indexIva.updateMany({
+            where: {
+                expires_at: null,
+            },
+            data: {
+                expires_at: new Date(),
+            },
+        });
+
+        // Crear nuevos índices
+        const [indexIvaSpecial, indexIvaOrdinary] = await Promise.all([
+            db.indexIva.create({
+                data: {
+                    contract_type: "SPECIAL",
+                    base_amount: data.specialAmount,
+                },
+            }),
+            db.indexIva.create({
+                data: {
+                    contract_type: "ORDINARY",
+                    base_amount: data.ordinaryAmount,
+                },
+            }),
+        ]);
+
+        // Recorre los índices anteriores y actualiza taxpayers
+        for (const oldIndex of previousIndexIva) {
+            await db.taxpayer.updateMany({
+                where: {
+                    index_iva: oldIndex.base_amount,
+                    contract_type: oldIndex.contract_type,
+                },
+                data: {
+                    index_iva: oldIndex.contract_type === "SPECIAL" ? data.specialAmount : data.ordinaryAmount,
+                },
+            });
+        }
+
+        return { indexIvaSpecial, indexIvaOrdinary };
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo cambiar el índice de IVA");
+    }
+}
+
 
 /**
  * Gets all events for a given taxpayer.

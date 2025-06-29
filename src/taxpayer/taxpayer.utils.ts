@@ -13,6 +13,11 @@ export type Taxpayer = {
     events?: Event[]
 }
 
+export type CreateIndexIva = {
+    specialAmount: Decimal;
+    ordinaryAmount: Decimal;
+}
+
 export type TaxpayerCensus = {
     providenceNum: bigint
     id: string;
