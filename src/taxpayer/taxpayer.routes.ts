@@ -650,6 +650,40 @@ taxpayerRouter.post('/create-index-iva',
     }
 )
 
+taxpayerRouter.put('/modify-individual-index-iva/:id',
+    authenticateToken,
+    body("newIndexIva"),
+
+    async (req: Request, res: Response) => {
+
+        // const errors = validationResult(req);
+        // if (!errors.isEmpty()) {
+        //     console.error(errors.array())
+        //     return res.status(400).json({ errors: errors.array() });
+        // }
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "COORDINATOR" && user.role !== "ADMIN") return res.status(403).json("Forbidden")
+
+        try {
+
+            const { newIndexIva } = req.body;
+            const taxpayerId: string = req.params.id;
+
+            console.log(newIndexIva);
+            console.log(taxpayerId);
+
+            const index = await TaxpayerServices.modifyIndexIva(new Decimal(newIndexIva), taxpayerId);
+            return res.status(200).json(index)
+        } catch (error: any) {
+            console.error(error);
+            return res.status(500).json(error.message)
+        }
+    }
+)
+
 
 
 taxpayerRouter.post('/createIVA',

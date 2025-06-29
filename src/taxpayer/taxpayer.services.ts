@@ -584,6 +584,28 @@ export const createPayment = async (input: NewPayment): Promise<Payment | Error>
     }
 }
 
+export async function modifyIndexIva(newIndexIva: Decimal, taxpayerId: string) {
+
+    try {
+
+        const taxpayer = db.taxpayer.update({
+            where: {
+                id: taxpayerId,
+            },
+            data: {
+                index_iva: newIndexIva,
+            }
+        });
+
+        return taxpayer;
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo modificar el indice de IVA individual.");
+    }
+
+}
+
 export async function createIndexIva(data: CreateIndexIva) {
     try {
         // Obtener los índices anteriores activos

@@ -1062,22 +1062,41 @@ export async function getIndividualIvaReport(id: string) {
             include: { taxpayer: true }
         });
 
-        const firstReportDateUTC = new Date(ivaReports[0].date.toISOString());
-        const lastReportDateUTC = new Date(ivaReports[ivaReports.length - 1].date.toISOString());
+        if (ivaReports.length === 0) {
+            return {
+                enero: { performance: "0.00%", variationFromPrevious: "0.00%" },
+                febrero: { performance: "0.00%", variationFromPrevious: "0.00%" },
+                marzo: { performance: "0.00%", variationFromPrevious: "0.00%" },
+                abril: { performance: "0.00%", variationFromPrevious: "0.00%" },
+                mayo: { performance: "0.00%", variationFromPrevious: "0.00%" },
+                junio: { performance: "0.00%", variationFromPrevious: "0.00%" },
+                julio: { performance: "0.00%", variationFromPrevious: "0.00%" },
+                agosto: { performance: "0.00%", variationFromPrevious: "0.00%" },
+                septiembre: { performance: "0.00%", variationFromPrevious: "0.00%" },
+                octubre: { performance: "0.00%", variationFromPrevious: "0.00%" },
+                noviembre: { performance: "0.00%", variationFromPrevious: "0.00%" },
+                diciembre: { performance: "0.00%", variationFromPrevious: "0.00%" },
+            };
+        }
 
-        const expectedAmount = await db.indexIva.findMany({
+        const taxpayer = ivaReports[0].taxpayer;
+
+        if (taxpayer.index_iva === null) {
+            throw new Error("No se encontró un índice IVA aplicable para este contribuyente.");
+        }
+
+        const applicableIndex = await db.indexIva.findFirst({
             where: {
-                created_at: { gte: firstReportDateUTC },
-                expires_at: { lte: lastReportDateUTC },
-                contract_type: ivaReports[0].taxpayer.contract_type
-            },
-            orderBy: { created_at: 'asc' }
+                base_amount: taxpayer.index_iva,
+                contract_type: taxpayer.contract_type
+            }
         });
 
-        const fallback = await db.indexIva.findFirst({
-            where: { contract_type: ivaReports[0].taxpayer.contract_type },
-            orderBy: { created_at: 'desc' }
-        });
+        if (!applicableIndex) {
+            throw new Error("No se encontró un índice IVA aplicable para este contribuyente.");
+        }
+
+        const base = Number(applicableIndex.base_amount);
 
         const performanceByMonth: Record<string, {
             performance: string;
@@ -1090,22 +1109,6 @@ export async function getIndividualIvaReport(id: string) {
             const reportDateUTC = report.date;
             const month = formatInTimeZone(reportDateUTC, 'UTC', 'MMMM', { locale: es });
 
-            const applicable = expectedAmount.find(exp => {
-                const createdUTC = new Date(exp.created_at.toISOString());
-                const expiresUTC = exp.expires_at ? new Date(exp.expires_at.toISOString()) : null;
-
-                return (
-                    createdUTC <= reportDateUTC &&
-                    (!expiresUTC || expiresUTC > reportDateUTC)
-                );
-            }) || fallback;
-
-            if (!applicable) {
-                performanceByMonth[month] = { performance: 'N/A' };
-                continue;
-            }
-
-            const base = Number(applicable.base_amount);
             const paid = Number(report.paid);
             const performance = ((paid - base) / base) * 100;
 
@@ -1119,7 +1122,7 @@ export async function getIndividualIvaReport(id: string) {
             }
 
             if (lastPerformance !== null && lastPerformance === 0) {
-                entry.variationFromPrevious = `${performance.toFixed(2)}%`
+                entry.variationFromPrevious = `${performance.toFixed(2)}%`;
             }
 
             if (lastPerformance === null) {
@@ -1147,7 +1150,6 @@ export async function getIndividualIvaReport(id: string) {
         }
 
         return performanceByMonth;
-
 
     } catch (e) {
         console.error(e);
