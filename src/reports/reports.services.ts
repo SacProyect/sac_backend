@@ -16,6 +16,7 @@ interface InputFiscalGroups {
     startDate?: string,
     endDate?: string,
     userId?: string,
+    supervisorId?: string;
 }
 
 
@@ -407,44 +408,118 @@ export const getGroupRecord = async (data: InputGroupRecords) => {
 
 
 export const getFiscalGroups = async (data: InputFiscalGroups) => {
-    const { id, role, startDate, endDate } = data;
-
+    const { id, role, startDate, endDate, supervisorId } = data;
     const filters: any = {};
+
+    const toUTC = (str?: string): Date | undefined => {
+        if (!str) return undefined;
+        const [y, m, d] = str.split('-').map(Number);
+        return new Date(Date.UTC(y, m - 1, d));
+    };
+
+    const start = toUTC(startDate);
+    const end = toUTC(endDate);
 
     if (role !== "ADMIN" && role !== "COORDINATOR" && role !== "SUPERVISOR") {
         throw new Error("Unauthorized");
     }
 
     try {
-        // Si es COORDINATOR y no se especifica un ID, usar su grupo coordinado
         if (role === "COORDINATOR") {
             const coordinatorGroup = await db.fiscalGroup.findUnique({
-                where: {
-                    coordinatorId: data.userId,
+                where: { coordinatorId: data.userId },
+            });
+
+            if (!coordinatorGroup) throw new Error("Este usuario no coordina ningún grupo.");
+
+            if (id && id !== coordinatorGroup.id) {
+                throw new Error("Acceso no autorizado: este grupo no pertenece al coordinador.");
+            }
+
+            filters.id = id || coordinatorGroup.id;
+        }
+
+        if (id) filters.id = id;
+
+        if (supervisorId) {
+            const supervisor = await db.user.findUnique({
+                where: { id: supervisorId },
+                include: {
+                    group: { select: { coordinator: { select: { name: true } } } },
+                    supervised_members: {
+                        include: {
+                            taxpayer: {
+                                where: {
+                                    emition_date: {
+                                        gte: start,
+                                        lte: end,
+                                    },
+                                },
+                                include: {
+                                    event: {
+                                        where: { date: { gte: start, lt: end } },
+                                    },
+                                    IVAReports: {
+                                        where: { date: { gte: start, lt: end } },
+                                    },
+                                    ISLRReports: {
+                                        where: { emition_date: { gte: start, lt: end } },
+                                    },
+                                },
+                            },
+                        },
+                    },
                 },
             });
 
-            if (!coordinatorGroup) {
-                throw new Error("Este usuario no coordina ningún grupo.");
-            }
+            if (!supervisor) throw new Error("Supervisor no encontrado");
 
-            if (id) {
-                if (id !== coordinatorGroup.id) {
-                    throw new Error("Acceso no autorizado: este grupo no pertenece al coordinador.");
-                }
-                filters.id = id;
-            } else {
-                filters.id = coordinatorGroup.id;
-            }
+            let groupCollected = new Decimal(0);
+            let totalFines = new Decimal(0);
+            let collectedFines = new Decimal(0);
+            let totalIva = new Decimal(0);
+            let totalIslr = new Decimal(0);
+
+            supervisor.supervised_members.forEach((member) => {
+                member.taxpayer.forEach((taxpayer) => {
+                    taxpayer.event?.forEach((e) => {
+                        if (e.type === "FINE") {
+                            totalFines = totalFines.plus(1);
+                            collectedFines = collectedFines.plus(e.amount);
+                            groupCollected = groupCollected.plus(e.amount);
+                        }
+                    });
+
+                    taxpayer.IVAReports?.forEach((rep) => {
+                        if (rep.paid) {
+                            totalIva = totalIva.plus(rep.paid);
+                            groupCollected = groupCollected.plus(rep.paid);
+                        }
+                    });
+
+                    taxpayer.ISLRReports?.forEach((rep) => {
+                        if (rep.paid) {
+                            totalIslr = totalIslr.plus(rep.paid);
+                            groupCollected = groupCollected.plus(rep.paid);
+                        }
+                    });
+                });
+            });
+
+            return [{
+                id: supervisorId,
+                name: `Supervisión de ${supervisor.name}`,
+                members: supervisor.supervised_members,
+                totalFines,
+                collectedFines,
+                totalIva,
+                totalIslr,
+                collected: groupCollected,
+                supervisorsStats: [],
+                coordinatorName: supervisor.group?.coordinator.name,
+            }];
         }
 
-        if (id) {
-            filters.id = id;
-        }
-
-
-
-        // Ahora usamos filters como siempre
         const groups = await db.fiscalGroup.findMany({
             where: filters,
             include: {
@@ -453,85 +528,192 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                         taxpayer: {
                             where: {
                                 emition_date: {
-                                    gte: startDate ? new Date(startDate) : undefined,
-                                    lte: endDate ? new Date(endDate) : undefined,
+                                    gte: start,
+                                    lte: end,
                                 },
                             },
                             include: {
                                 event: {
                                     where: {
                                         date: {
-                                            gte: startDate ? new Date(startDate) : undefined,
-                                            lt: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : undefined,
-                                        },
-                                    },
-                                },
-                                payment: {
-                                    where: {
-                                        date: {
-                                            gte: startDate ? new Date(startDate) : undefined,
-                                            lt: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : undefined,
+                                            gte: start,
+                                            lt: end,
                                         },
                                     },
                                 },
                                 IVAReports: {
                                     where: {
                                         date: {
-                                            gte: startDate ? new Date(startDate) : undefined,
-                                            lt: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : undefined,
+                                            gte: start,
+                                            lt: end,
                                         },
                                     },
                                 },
                                 ISLRReports: {
                                     where: {
                                         emition_date: {
-                                            gte: startDate ? new Date(startDate) : undefined,
-                                            lt: endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : undefined,
+                                            gte: start,
+                                            lt: end,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        supervised_members: {
+                            include: {
+                                taxpayer: {
+                                    include: {
+                                        ISLRReports: {
+                                            where: {
+                                                emition_date: {
+                                                    gte: start,
+                                                    lte: end,
+                                                }
+                                            }
+                                        },
+                                        IVAReports: {
+                                            where: {
+                                                date: {
+                                                    gte: start,
+                                                    lte: end,
+                                                }
+                                            }
+                                        },
+                                        event: {
+                                            where: {
+                                                date: {
+                                                    gte: start,
+                                                    lte: end,
+                                                }
+                                            }
                                         }
                                     }
                                 }
-                            },
-                        },
+                            }
+                        }
                     },
                 },
             },
         });
 
-        // Procesar resultados
         const updatedGroups = groups.map((group) => {
-            let groupCollected: Decimal = new Decimal(0);
-            let fines: Decimal = new Decimal(0);
-            let totalIva: Decimal = new Decimal(0);
-            let totalIslr: Decimal = new Decimal(0);
+            let groupCollected = new Decimal(0);
+            let totalFines = new Decimal(0); // número de multas
+            let collectedFines = new Decimal(0); // monto recaudado por multas
+            let totalIva = new Decimal(0);
+            let totalIslr = new Decimal(0);
 
+            const supervisorStats: {
+                supervisorId: string;
+                collectedIva: Decimal;
+                collectedISLR: Decimal;
+                collectedFines: Decimal;
+                totalFines: Decimal;
+                totalCollected: Decimal;
+            }[] = [];
+
+            const supervisors = group.members.filter((m) => m.role === "SUPERVISOR");
+
+            if (supervisors.length === 0) {
+                supervisorStats.push({
+                    supervisorId: "SUPERVISOR_1",
+                    collectedIva: new Decimal(0),
+                    collectedISLR: new Decimal(0),
+                    collectedFines: new Decimal(0),
+                    totalFines: new Decimal(0),
+                    totalCollected: new Decimal(0),
+                });
+                supervisorStats.push({
+                    supervisorId: "SUPERVISOR_2",
+                    collectedIva: new Decimal(0),
+                    collectedISLR: new Decimal(0),
+                    collectedFines: new Decimal(0),
+                    totalFines: new Decimal(0),
+                    totalCollected: new Decimal(0),
+                });
+            } else {
+                for (const supervisor of supervisors) {
+                    let collectedIva = new Decimal(0);
+                    let collectedISLR = new Decimal(0);
+                    let collectedFinesSup = new Decimal(0);
+                    let totalFinesSup = new Decimal(0);
+                    let totalCollected = new Decimal(0);
+
+                    const supervised_members = supervisor.supervised_members
+
+                    for (const member of supervised_members) {
+
+                        for (const taxp of member.taxpayer) {
+                            taxp.ISLRReports.forEach((rep) => {
+                                if (rep.paid) {
+                                    collectedISLR = collectedISLR.plus(rep.paid);
+                                    totalCollected = totalCollected.plus(rep.paid);
+                                }
+                            });
+
+                            taxp.IVAReports.forEach((rep) => {
+                                if (rep.paid) {
+                                    collectedIva = collectedIva.plus(rep.paid);
+                                    totalCollected = totalCollected.plus(rep.paid);
+                                }
+                            });
+
+                            taxp.event.forEach((ev) => {
+                                if (ev.type === "FINE") {
+                                    collectedFinesSup = collectedFinesSup.plus(ev.amount);
+                                    totalFinesSup = totalFinesSup.plus(1);
+                                    totalCollected = totalCollected.plus(ev.amount);
+                                }
+                            });
+                        }
+                    }
+
+                    supervisorStats.push({
+                        supervisorId: supervisor.id,
+                        collectedIva,
+                        collectedISLR,
+                        collectedFines: collectedFinesSup,
+                        totalFines: totalFinesSup,
+                        totalCollected,
+                    });
+                }
+            }
+
+            // Estadísticas del grupo
             group.members.forEach((member) => {
                 member.taxpayer.forEach((contributor) => {
                     contributor.event.forEach((e) => {
                         if (e.type === "FINE") {
-                            fines = fines.plus(1);
+                            totalFines = totalFines.plus(1);
+                            collectedFines = collectedFines.plus(e.amount);
+                            groupCollected = groupCollected.plus(e.amount);
                         }
                     });
 
-                    contributor.payment.forEach((pay) => {
-                        groupCollected = groupCollected.plus(pay.amount);
-                    });
-
                     contributor.IVAReports.forEach((report) => {
-                        if (report.paid) totalIva = totalIva.plus(report.paid);
+                        if (report.paid) {
+                            totalIva = totalIva.plus(report.paid);
+                            groupCollected = groupCollected.plus(report.paid);
+                        }
                     });
 
                     contributor.ISLRReports.forEach((report) => {
-                        if (report.paid) totalIslr = totalIslr.plus(report.paid);
-                    })
+                        if (report.paid) {
+                            totalIslr = totalIslr.plus(report.paid);
+                            groupCollected = groupCollected.plus(report.paid);
+                        }
+                    });
                 });
             });
 
             return {
                 ...group,
+                totalFines,
+                collectedFines,
+                totalIva,
+                totalIslr,
                 collected: groupCollected,
-                totalFines: fines,
-                totalIva: totalIva,
-                totalIslr: totalIslr,
+                supervisorsStats: supervisorStats,
             };
         });
 
@@ -1289,6 +1471,7 @@ export async function getMonthlyGrowth() {
 
         const groups = await db.fiscalGroup.findMany({
             include: {
+                coordinator: { select: { name: true } },
                 members: {
                     include: {
                         taxpayer: {
@@ -1336,9 +1519,9 @@ export async function getMonthlyGrowth() {
             let previousTotal = new Decimal(0);
             let currentTotal = new Decimal(0);
 
-            const coordinator = group.members.find(member => member.role === "COORDINATOR");
+            const coordinator = group.coordinator.name
 
-            const coordinatorName = coordinator?.name || "Sin coordinador";
+            const coordinatorName = coordinator || "Sin coordinador";
 
             const fiscals = group.members.filter(m => m.role === "FISCAL");
 
@@ -1386,7 +1569,7 @@ export async function getMonthlyGrowth() {
 
             growthResults.push({
                 groupName: group.name,
-                coordinatorName,
+                coordinatorName: coordinatorName,
                 previousMonth: previousTotal,
                 currentMonth: currentTotal,
                 growthPercentage: Math.round(growthPercentage * 100) / 100,
