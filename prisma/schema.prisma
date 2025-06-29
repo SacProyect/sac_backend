@@ -27,6 +27,9 @@ model user {
     GroupFiscalStat     GroupFiscalStat[]
     GroupFiscalYearStat GroupFiscalYearStat[]
     Census              TaxpayerCensus[]
+    supervisorId        String?               @map("supervisor_id")
+    supervisor          user?                 @relation("UserSupervisor", fields: [supervisorId], references: [id])
+    supervised_members  user[]                @relation("UserSupervisor") 
 }
 
 model FiscalGroup {

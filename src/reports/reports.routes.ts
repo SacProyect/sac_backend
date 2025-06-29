@@ -9,6 +9,7 @@ import path from "path";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { createLocalUpload } from "../utils/multer.local";
 import fs from 'fs';
+import { report } from "process";
 
 
 const s3 = new S3Client({ region: "us-east-2" }); // Sustituye "your-region" con la región de tu bucket S3
@@ -329,11 +330,143 @@ reportRouter.get("/individual-iva-report/:id",
 
         if (!user) return res.status(401).json("Unauthorized access")
         if (user.role !== "ADMIN" && user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
-        
+
         const id: string = req.params.id;
 
         try {
             const response = await ReportService.getIndividualIvaReport(id);
+
+            return res.status(200).json(response);
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json("Ha ocurrido un error.")
+        }
+    }
+)
+
+reportRouter.get('/get-best-supervisor-by-group',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+
+
+        try {
+            const response = await ReportService.getBestSupervisorByGroups();
+
+            return res.status(200).json(response);
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json("Ha ocurrido un error.")
+        }
+    }
+)
+
+reportRouter.get('/get-top-fiscals',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+
+
+        try {
+            const response = await ReportService.getTopFiscals();
+
+            return res.status(200).json(response);
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json("Ha ocurrido un error.")
+        }
+    }
+)
+
+reportRouter.get('/get-top-five-by-group',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+
+
+        try {
+            const response = await ReportService.getTopFiveByGroup();
+
+            return res.status(200).json(response);
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json("Ha ocurrido un error.")
+        }
+    }
+)
+
+reportRouter.get('/get-monthly-growth',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+
+
+        try {
+            const response = await ReportService.getMonthlyGrowth();
+
+            return res.status(200).json(response);
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json("Ha ocurrido un error.")
+        }
+    }
+)
+
+reportRouter.get('/get-taxpayers-compliance',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+
+
+        try {
+            const response = await ReportService.getTaxpayerCompliance();
+
+            return res.status(200).json(response);
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json("Ha ocurrido un error.")
+        }
+    }
+)
+
+reportRouter.get('/get-expected-amount',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+
+
+        try {
+            const response = await ReportService.getExpectedAmount();
 
             return res.status(200).json(response);
         } catch (e) {

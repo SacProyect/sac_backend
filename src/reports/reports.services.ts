@@ -551,130 +551,64 @@ const getMonthName = (key: string) => {
 
 export const getGlobalPerformance = async () => {
     try {
-        // Obtener todos los datos relevantes
-        const ivaReports = await db.iVAReports.findMany();
-        const islrReports = await db.iSLRReports.findMany();
-        const fines = await db.event.findMany({
+        const now = new Date();
+        const currentYear = now.getUTCFullYear();
+        const startDate = new Date(Date.UTC(currentYear - 1, 11, 1)); // 1 Dic del año anterior
+        const endDate = new Date(Date.UTC(currentYear + 1, 0, 1));    // 1 Ene del próximo año
+
+        // Obtener reportes de IVA desde diciembre del año pasado hasta diciembre actual
+        const ivaReports = await db.iVAReports.findMany({
             where: {
-                type: "FINE",
+                date: {
+                    gte: startDate,
+                    lt: endDate,
+                },
             },
         });
 
-        // Agrupar IVA por mes
+        // Agrupar IVA por mes (en UTC)
         const ivaByMonth: Record<string, number> = {};
         ivaReports.forEach((report) => {
             const date = new Date(report.date);
-            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-            ivaByMonth[key] = (ivaByMonth[key] || 0) + Number(report.iva);
+            const year = date.getUTCFullYear();
+            const month = date.getUTCMonth() + 1;
+            const key = `${year}-${String(month).padStart(2, "0")}`;
+            ivaByMonth[key] = (ivaByMonth[key] || 0) + Number(report.paid);
         });
-        console.log("IVA por mes:", ivaByMonth);
 
-        // ISLR anual prorrateado en 12 meses
-        const islrByMonth: Record<string, number> = {};
-        islrReports.forEach((report) => {
-            const date = new Date(report.emition_date);
-            const year = date.getFullYear();
-            const monthlyAmount =
-                (report.incomes.toNumber() - report.expent.toNumber() - report.costs.toNumber()) / 12;
-
-            for (let month = 1; month <= 12; month++) {
-                const key = `${year}-${String(month).padStart(2, "0")}`;
-                islrByMonth[key] = (islrByMonth[key] || 0) + monthlyAmount;
-            }
-        });
-        console.log("ISLR por mes (prorrateado):", islrByMonth);
-
-        // Cumplimiento de multas
-        const fineCountByMonth: Record<string, number> = {};
-        const paidFineCountByMonth: Record<string, number> = {};
-
-        fines.forEach((fine) => {
-            const date = new Date(fine.date);
-            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-            fineCountByMonth[key] = (fineCountByMonth[key] || 0) + 1;
-            if (fine.debt.equals(0)) {
-                paidFineCountByMonth[key] = (paidFineCountByMonth[key] || 0) + 1;
-            }
-        });
-        console.log("Total multas por mes:", fineCountByMonth);
-        console.log("Multas pagadas por mes:", paidFineCountByMonth);
-
-        const complianceByMonth: Record<string, number> = {};
-        Object.keys(fineCountByMonth).forEach((key) => {
-            const total = fineCountByMonth[key];
-            const paid = paidFineCountByMonth[key] || 0;
-            complianceByMonth[key] = (paid / total) * 100;
-        });
-        console.log("Tasa de cumplimiento por mes:", complianceByMonth);
-
-        // Unificar todos los meses presentes
-        const allMonthsSet = new Set([
-            ...Object.keys(ivaByMonth),
-            ...Object.keys(islrByMonth),
-            ...Object.keys(complianceByMonth),
-        ]);
-        const allMonths = Array.from(allMonthsSet).sort();
-        // console.log("Meses analizados:", allMonths);
-
-        // Calcular índice global mensual
         type Result = {
             month: string;
             ivaAmount: number;
-            islrAmount: number;
-            complianceRate: number;
-            globalIndex: number;
-            previousIndex?: number;
-            percentageChange?: number | null;
+            previousIva: number;
+            percentageChange: number;
         };
 
-        const monthlyData: Record<string, Result> = {};
+        const results: Result[] = [];
 
-        allMonths.forEach((monthKey) => {
-            console.log(`\n📆 >>> Cálculo para el mes ${getMonthName(monthKey)} (${monthKey})`);
+        let previousMonthKey = `${currentYear - 1}-12`;
+        let previousIva = ivaByMonth[previousMonthKey] || 0;
 
-            const ivaAmount = ivaByMonth[monthKey] || 0;
-            const islrAmount = islrByMonth[monthKey] || 0;
-            const complianceRate = complianceByMonth[monthKey] || 0;
+        for (let month = 1; month <= 12; month++) {
+            const currentMonthKey = `${currentYear}-${String(month).padStart(2, "0")}`;
+            const currentIva = ivaByMonth[currentMonthKey] || 0;
 
-            const globalIndex = ivaAmount * 0.4 + islrAmount * 0.4 + complianceRate * 0.2;
+            let percentageChange = 0;
+            if (currentIva !== 0 && previousIva !== 0) {
+                percentageChange = ((currentIva - previousIva) / previousIva) * 100;
+            }
 
-            console.log(`\n>>> Cálculo para ${monthKey}`);
-            console.log(`IVA: ${ivaAmount}`);
-            console.log(`ISLR: ${islrAmount}`);
-            console.log(`Tasa de cumplimiento: ${complianceRate}`);
-            console.log(`Índice global: ${globalIndex}`);
+            results.push({
+                month: currentMonthKey,
+                ivaAmount: parseFloat(currentIva.toFixed(2)),
+                previousIva: parseFloat(previousIva.toFixed(2)),
+                percentageChange: parseFloat(percentageChange.toFixed(2)),
+            });
 
-            monthlyData[monthKey] = {
-                month: monthKey,
-                ivaAmount,
-                islrAmount,
-                complianceRate,
-                globalIndex,
-            };
-        });
+            previousIva = currentIva;
+            previousMonthKey = currentMonthKey;
+        }
 
-        // Comparar con el mismo mes del año anterior
-        Object.keys(monthlyData).forEach((monthKey) => {
-            const [year, month] = monthKey.split("-");
-            const previousYear = `${Number(year) - 1}-${month}`;
-            const current = monthlyData[monthKey];
-            const previous = monthlyData[previousYear] || {
-                globalIndex: 0,
-            };
-
-            current.previousIndex = previous.globalIndex;
-            current.percentageChange =
-                previous.globalIndex === 0
-                    ? 0.1 // 100% de crecimiento respecto a 0
-                    : ((current.globalIndex - previous.globalIndex) / previous.globalIndex) * 100;
-            console.log(`\n📊 >>> Comparación de ${getMonthName(monthKey)} con ${getMonthName(previousYear)}`);
-            console.log(`\n>>> Comparación para ${monthKey} vs ${previousYear}`);
-            console.log(`Actual: ${current.globalIndex}, Anterior: ${previous.globalIndex}`);
-            console.log(`% Cambio: ${current.percentageChange}`);
-        });
-
-        const result = Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month));
-        return result;
+        return results;
     } catch (error) {
         console.error("Error in getGlobalPerformance:", error);
         throw new Error("Can't get the global performance");
@@ -1039,6 +973,622 @@ export async function getIndividualIvaReport(id: string) {
     }
 }
 
+export async function getBestSupervisorByGroups() {
 
 
+    try {
 
+        const startOfYear = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+        const endOfYear = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+
+
+        const groups = await db.fiscalGroup.findMany({
+            include: {
+                members: {
+                    include: {
+                        supervised_members: {
+                            include: {
+                                taxpayer: {
+                                    include: {
+                                        IVAReports: {
+                                            where: {
+                                                date: {
+                                                    gte: startOfYear,
+                                                    lte: endOfYear
+                                                }
+                                            }
+                                        },
+                                        ISLRReports: {
+                                            where: {
+                                                emition_date: {
+                                                    gte: startOfYear,
+                                                    lte: endOfYear
+                                                }
+                                            }
+                                        },
+                                        event: {
+                                            where: {
+                                                date: {
+                                                    gte: startOfYear,
+                                                    lte: endOfYear
+                                                }
+                                            }
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        const result: Record<string, {
+            best: string;
+            worse: string;
+            supervisors: {
+                name: string;
+                collectedIva: Decimal;
+                collectedIslr: Decimal;
+                collectedFines: Decimal;
+                total: Decimal;
+            }[];
+        }> = {};
+
+        // 👇 Procesar cada grupo en paralelo
+        await Promise.all(groups.map(async (group) => {
+            const supervisors = group.members.filter((m) => m.role === "SUPERVISOR");
+
+            // 👇 Procesar cada supervisor en paralelo
+            const supervisorScores = await Promise.all(
+                supervisors.map(async (supervisor) => {
+                    // Inicializar montos
+                    let collectedIVA = new Decimal(0);
+                    let collectedISLR = new Decimal(0);
+                    let collectedFines = new Decimal(0);
+                    let totalCollected = new Decimal(0);
+
+                    // Reducir anidamiento: combinar todos los taxpayers del supervisor
+                    const allTaxpayers = supervisor.supervised_members.flatMap(f => f.taxpayer);
+
+                    for (const taxp of allTaxpayers) {
+                        for (const rep of taxp.IVAReports) {
+                            collectedIVA = collectedIVA.plus(rep.paid);
+                            totalCollected = totalCollected.plus(rep.paid);
+                        }
+
+                        for (const rep of taxp.ISLRReports) {
+                            collectedISLR = collectedISLR.plus(rep.paid);
+                            totalCollected = totalCollected.plus(rep.paid);
+                        }
+
+                        for (const ev of taxp.event) {
+                            if (ev.type === "FINE") {
+                                collectedFines = collectedFines.plus(ev.amount);
+                                totalCollected = totalCollected.plus(ev.amount);
+                            }
+                        }
+                    }
+
+                    return {
+                        name: supervisor.name,
+                        collectedIva: collectedIVA,
+                        collectedIslr: collectedISLR,
+                        collectedFines: collectedFines,
+                        total: totalCollected,
+                    };
+                })
+            );
+
+            // Ordenar supervisores por recaudación total
+            const sorted = supervisorScores.sort((a, b) => Number(b.total) - Number(a.total));
+
+            result[group.name] = {
+                best: sorted[0]?.name ?? "N/A",
+                worse: sorted.at(-1)?.name ?? "N/A",
+                supervisors: sorted,
+            };
+        }));
+
+        return result;
+    } catch (e) {
+        console.error(e);
+        throw new Error("Error al obtener el mejor supervisor de cada grupo.");
+    }
+}
+
+
+export async function getTopFiscals() {
+
+    try {
+        const startOfYear = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+        const endOfYear = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+
+        const fiscals = await db.user.findMany({
+            where: {
+                role: "FISCAL",
+            },
+            include: {
+                taxpayer: {
+                    include: {
+                        ISLRReports: {
+                            where: {
+                                emition_date: {
+                                    gte: startOfYear,
+                                    lte: endOfYear,
+                                }
+                            }
+                        },
+                        IVAReports: {
+                            where: {
+                                date: {
+                                    gte: startOfYear,
+                                    lte: endOfYear
+                                }
+                            }
+                        },
+                        event: {
+                            where: {
+                                date: {
+                                    gte: startOfYear,
+                                    lte: endOfYear,
+                                }
+                            }
+                        },
+                    }
+                }
+            }
+        });
+
+
+        const fiscalStats: {
+            name: string;
+            collectedIva: Decimal;
+            collectedIslr: Decimal;
+            collectedFines: Decimal;
+            total: Decimal;
+        }[] = [];
+
+        for (const fiscal of fiscals) {
+            let collectedFines = new Decimal(0);
+            let collectedIVA = new Decimal(0);
+            let collectedISLR = new Decimal(0);
+            let totalCollected = new Decimal(0);
+
+            for (const taxp of fiscal.taxpayer) {
+
+                taxp.ISLRReports.forEach((rep) => {
+                    collectedISLR = collectedISLR.plus(rep.paid);
+                    totalCollected = totalCollected.plus(rep.paid)
+                });
+
+                taxp.IVAReports.forEach((rep) => {
+                    collectedIVA = collectedIVA.plus(rep.paid);
+                    totalCollected = totalCollected.plus(rep.paid)
+                });
+
+                taxp.event.forEach((ev) => {
+                    if (ev.type === "FINE") {
+                        collectedFines = collectedFines.plus(ev.amount);
+                        totalCollected = totalCollected.plus(ev.amount);
+                    }
+                })
+            }
+
+            fiscalStats.push({
+                name: fiscal.name,
+                collectedIva: collectedIVA,
+                collectedIslr: collectedISLR,
+                collectedFines: collectedFines,
+                total: totalCollected,
+            });
+        };
+
+        // Ordenar por total recaudado (de mayor a menor)
+        const sorted = fiscalStats.sort((a, b) => Number(b.total.minus(a.total)));
+
+        return sorted;
+    } catch (e) {
+
+        throw new Error("No se pudo obtener el top fiscales.")
+    }
+}
+
+export async function getTopFiveByGroup() {
+    try {
+        const startOfYear = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+        const endOfYear = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+
+        const groups = await db.fiscalGroup.findMany({
+            include: {
+                members: {
+                    where: { role: "FISCAL" },
+                    include: {
+                        taxpayer: {
+                            include: {
+                                ISLRReports: {
+                                    where: {
+                                        emition_date: {
+                                            gte: startOfYear,
+                                            lt: endOfYear
+                                        }
+                                    }
+                                },
+                                IVAReports: {
+                                    where: {
+                                        date: {
+                                            gte: startOfYear,
+                                            lt: endOfYear
+                                        }
+                                    }
+                                },
+                                event: {
+                                    where: {
+                                        date: {
+                                            gte: startOfYear,
+                                            lt: endOfYear
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        const result: Record<string, { name: string; totalCollected: Decimal }[]> = {};
+
+        for (const group of groups) {
+            const fiscalScores = group.members.map((fiscal) => {
+                let totalCollected = new Decimal(0);
+
+                for (const taxp of fiscal.taxpayer) {
+                    for (const rep of taxp.ISLRReports) {
+                        totalCollected = totalCollected.plus(rep.paid);
+                    }
+
+                    for (const rep of taxp.IVAReports) {
+                        totalCollected = totalCollected.plus(rep.paid);
+                    }
+
+                    for (const ev of taxp.event) {
+                        if (ev.type === "FINE") {
+                            totalCollected = totalCollected.plus(ev.amount);
+                        }
+                    }
+                }
+
+                return {
+                    name: fiscal.name,
+                    totalCollected
+                };
+            });
+
+            // Ordenar y tomar los 5 con mayor recaudación
+            const topFive = fiscalScores
+                .sort((a, b) => Number(b.totalCollected) - Number(a.totalCollected))
+                .slice(0, 5);
+
+            result[group.name] = topFive;
+        }
+
+        return result;
+    } catch (e) {
+        console.error(e);
+        throw new Error("Error al obtener los top fiscales por grupo");
+    }
+}
+
+export async function getMonthlyGrowth() {
+    try {
+        const now = new Date();
+        const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        const nextMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+        const prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+
+        const groups = await db.fiscalGroup.findMany({
+            include: {
+                members: {
+                    include: {
+                        taxpayer: {
+                            include: {
+                                ISLRReports: {
+                                    where: {
+                                        emition_date: {
+                                            gte: prevMonthStart,
+                                            lt: nextMonthStart
+                                        }
+                                    }
+                                },
+                                IVAReports: {
+                                    where: {
+                                        date: {
+                                            gte: prevMonthStart,
+                                            lt: nextMonthStart
+                                        }
+                                    }
+                                },
+                                event: {
+                                    where: {
+                                        date: {
+                                            gte: prevMonthStart,
+                                            lt: nextMonthStart
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        const growthResults: {
+            groupName: string;
+            coordinatorName: string;
+            previousMonth: Decimal;
+            currentMonth: Decimal;
+            growthPercentage: number;
+        }[] = [];
+
+        for (const group of groups) {
+            let previousTotal = new Decimal(0);
+            let currentTotal = new Decimal(0);
+
+            const coordinator = group.members.find(member => member.role === "COORDINATOR");
+
+            const coordinatorName = coordinator?.name || "Sin coordinador";
+
+            const fiscals = group.members.filter(m => m.role === "FISCAL");
+
+            for (const fiscal of fiscals) {
+                for (const taxp of fiscal.taxpayer) {
+                    for (const rep of taxp.ISLRReports) {
+                        const date = new Date(rep.emition_date);
+                        const amount = new Decimal(rep.paid);
+
+                        if (date >= currentMonthStart && date < nextMonthStart) {
+                            currentTotal = currentTotal.plus(amount);
+                        } else if (date >= prevMonthStart && date < currentMonthStart) {
+                            previousTotal = previousTotal.plus(amount);
+                        }
+                    }
+
+                    for (const rep of taxp.IVAReports) {
+                        const date = new Date(rep.date);
+                        const amount = new Decimal(rep.paid);
+
+                        if (date >= currentMonthStart && date < nextMonthStart) {
+                            currentTotal = currentTotal.plus(amount);
+                        } else if (date >= prevMonthStart && date < currentMonthStart) {
+                            previousTotal = previousTotal.plus(amount);
+                        }
+                    }
+
+                    for (const ev of taxp.event) {
+                        if (ev.type !== "FINE") continue;
+                        const date = new Date(ev.date);
+                        const amount = new Decimal(ev.amount);
+
+                        if (date >= currentMonthStart && date < nextMonthStart) {
+                            currentTotal = currentTotal.plus(amount);
+                        } else if (date >= prevMonthStart && date < currentMonthStart) {
+                            previousTotal = previousTotal.plus(amount);
+                        }
+                    }
+                }
+            }
+
+            const growthPercentage = previousTotal.equals(0)
+                ? currentTotal.greaterThan(0) ? 100 : 0
+                : Number(currentTotal.minus(previousTotal).dividedBy(previousTotal).times(100));
+
+            growthResults.push({
+                groupName: group.name,
+                coordinatorName,
+                previousMonth: previousTotal,
+                currentMonth: currentTotal,
+                growthPercentage: Math.round(growthPercentage * 100) / 100,
+            });
+        }
+
+        growthResults.sort((a, b) => b.growthPercentage - a.growthPercentage);
+
+        return growthResults;
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo calcular el crecimiento mensual.");
+    }
+}
+
+
+export async function getTaxpayerCompliance() {
+    try {
+        const startOfYear = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+        const endOfYear = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+
+        const taxpayers = await db.taxpayer.findMany({
+            where: {
+                IVAReports: {
+                    some: {
+                        date: {
+                            gte: startOfYear,
+                            lt: endOfYear,
+                        },
+                    },
+                },
+            },
+            include: {
+                IVAReports: {
+                    where: {
+                        date: {
+                            gte: startOfYear,
+                            lt: endOfYear,
+                        },
+                    },
+                },
+                ISLRReports: {
+                    where: {
+                        emition_date: {
+                            gte: startOfYear,
+                            lt: endOfYear,
+                        },
+                    },
+                },
+                event: {
+                    where: {
+                        date: {
+                            gte: startOfYear,
+                            lt: endOfYear,
+                        },
+                    },
+                },
+            },
+        });
+
+        const indexIva = await db.indexIva.findMany();
+
+        const high: any[] = [];
+        const medium: any[] = [];
+        const low: any[] = [];
+
+        for (const taxpayer of taxpayers) {
+            const contractType = taxpayer.contract_type;
+            const ivaReports = taxpayer.IVAReports;
+
+            let monthsWithCompliance = 0;
+            let totalIVA = new Decimal(0);
+            let totalISLR = new Decimal(0);
+            let totalFines = new Decimal(0);
+            let totalCollected = new Decimal(0);
+
+            // console.log(`📄 Evaluando taxpayer: ${taxpayer.name} (${taxpayer.rif}) - Tipo de contrato: ${contractType}`);
+
+            for (const report of ivaReports) {
+                const index = indexIva.find(i =>
+                    i.contract_type === contractType &&
+                    report.date >= i.created_at &&
+                    (i.expires_at === null || report.date < i.expires_at)
+                );
+
+                totalIVA = totalIVA.plus(report.paid);
+                totalCollected = totalCollected.plus(report.paid);
+
+                // console.log(`  📆 Fecha Reporte IVA: ${report.date.toISOString()}`);
+                if (index) {
+                    // console.log(`  🔍 Índice encontrado: base_amount=${index.base_amount.toString()}, desde=${index.created_at.toISOString()} hasta=${index.expires_at?.toISOString() ?? "∞"}`);
+                    // console.log(`  💰 Pago IVA del mes: ${report.paid.toString()}`);
+                    if (new Decimal(report.paid).gte(index.base_amount)) {
+                        monthsWithCompliance += 1;
+                        // console.log("  ✅ Cumple con el monto mínimo del índice.");
+                    } else {
+                        // console.log("  ❌ No cumple con el monto mínimo del índice.");
+                    }
+                } else {
+                    // console.log("  ⚠️ No se encontró índice válido para este reporte.");
+                }
+            }
+
+            for (const rep of taxpayer.ISLRReports) {
+                totalISLR = totalISLR.plus(rep.paid);
+                totalCollected = totalCollected.plus(rep.paid);
+            }
+
+            for (const ev of taxpayer.event) {
+                if (ev.type === "FINE") {
+                    totalFines = totalFines.plus(ev.amount);
+                    totalCollected = totalCollected.plus(ev.amount);
+                }
+            }
+
+            const monthsReported = ivaReports.length;
+            const compliance = monthsReported > 0
+                ? Math.round((monthsWithCompliance / monthsReported) * 100)
+                : 0;
+
+            // console.log(`📊 Cumplimiento final de ${taxpayer.name}: ${compliance}% (${monthsWithCompliance}/${monthsReported})\n`);
+
+            const taxpayerResult = {
+                name: taxpayer.name,
+                rif: taxpayer.rif,
+                compliance,
+                totalIVA,
+                totalISLR,
+                totalFines,
+                totalCollected,
+            };
+
+            if (compliance >= 67) high.push(taxpayerResult);
+            else if (compliance >= 34) medium.push(taxpayerResult);
+            else low.push(taxpayerResult);
+        }
+
+        high.sort((a, b) => b.compliance - a.compliance);
+        medium.sort((a, b) => b.compliance - a.compliance);
+        low.sort((a, b) => b.compliance - a.compliance);
+
+        return { high, medium, low };
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("Error al calcular el cumplimiento de IVA.");
+    }
+}
+
+
+export async function getExpectedAmount() {
+    try {
+        // Obtener todos los IVAReports con taxpayer asociado
+        const ivaReports = await db.iVAReports.findMany({
+            include: {
+                taxpayer: true,
+            },
+        });
+
+        // Obtener los índices de IVA más recientes por tipo de contrato
+        const indexIva = await db.indexIva.findMany();
+
+        let totalExpected = new Decimal(0);
+        let totalPaid = new Decimal(0);
+        let reportCount = 0;
+
+        for (const report of ivaReports) {
+            const taxpayer = report.taxpayer;
+            if (!taxpayer) continue;
+
+            const contractType = taxpayer.contract_type;
+
+            // Buscar el índice correspondiente a la fecha del reporte
+            const index = indexIva.find(i =>
+                i.contract_type === contractType &&
+                report.date >= i.created_at &&
+                (i.expires_at === null || report.date < i.expires_at)
+            );
+
+            if (!index) continue;
+
+            totalExpected = totalExpected.plus(index.base_amount);
+            totalPaid = totalPaid.plus(report.paid);
+            reportCount++;
+        }
+
+        const difference = totalPaid.minus(totalExpected);
+        const percentageDifference = totalExpected.gt(0)
+            ? difference.dividedBy(totalExpected).times(100).toDecimalPlaces(2)
+            : new Decimal(0);
+
+        return {
+            totalReports: reportCount,
+            totalExpected: totalExpected.toNumber(),
+            totalPaid: totalPaid.toNumber(),
+            difference: difference.toNumber(),
+            percentage: percentageDifference.toNumber(), // positivo: superávit, negativo: déficit
+            status: percentageDifference.gte(0) ? "superávit" : "déficit",
+        };
+
+    } catch (e) {
+        console.error("Error al calcular la recaudación esperada:", e);
+        throw new Error("Error al calcular la recaudación esperada.");
+    }
+}
