@@ -1836,3 +1836,388 @@ export async function getFiscalInfo(fiscalId: string) {
         throw new Error("No se pudo obtener la informacion del fiscal.")
     }
 }
+
+export async function getFiscalTaxpayers(fiscalId: string) {
+
+    try {
+
+        const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+        const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+
+        const taxpayers = await db.taxpayer.findMany({
+            where: {
+                officerId: fiscalId,
+                emition_date: {
+                    gte: start,
+                    lte: end,
+                }
+            },
+            include: {
+                IVAReports: true,
+                ISLRReports: true,
+                event: true,
+            }
+        });
+
+
+        if (!taxpayers || taxpayers.length === 0)
+            throw new Error("El fiscal no tiene contribuyentes.");
+
+
+
+        const result = taxpayers.map(taxpayer => {
+            const collectedIva = taxpayer.IVAReports.reduce((acc, rep) => acc.plus(rep.paid), new Decimal(0));
+            const collectedIslr = taxpayer.ISLRReports.reduce((acc, rep) => acc.plus(rep.paid), new Decimal(0));
+            const collectedFines = taxpayer.event.filter((ev) => ev.type === "FINE").reduce((acc: Decimal, ev) => acc.plus(ev.amount), new Decimal(0));
+            const totalCollected = collectedIva.plus(collectedIslr).plus(collectedFines);
+
+            return {
+                id: taxpayer.id,
+                name: taxpayer.name,
+                rif: taxpayer.rif,
+                collectedIva,
+                collectedIslr,
+                collectedFines,
+                totalCollected
+            };
+        });
+
+        return result;
+
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo obtener la lista de contribuyentes asignados.")
+    }
+}
+
+export async function getMonthyCollect(fiscalId: string) {
+    const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+    const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+
+    try {
+        const fiscal = await db.user.findFirst({
+            where: { id: fiscalId },
+            include: {
+                taxpayer: {
+                    where: {
+                        emition_date: {
+                            gte: start,
+                            lte: end,
+                        }
+                    },
+                    include: {
+                        IVAReports: true,
+                        ISLRReports: true,
+                        event: true,
+                    },
+                },
+            },
+        });
+
+        if (!fiscal || fiscal.taxpayer.length < 1) {
+            throw new Error("Este fiscal no tiene contribuyentes.");
+        }
+
+        const months = [
+            "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+        ];
+
+        const monthlyStats: Record<string, {
+            iva: number;
+            islr: number;
+            fines: number;
+            total: number;
+        }> = Object.fromEntries(
+            months.map(m => [m, { iva: 0, islr: 0, fines: 0, total: 0 }])
+        );
+
+        for (const taxpayer of fiscal.taxpayer) {
+            for (const report of taxpayer.IVAReports) {
+                const month = formatInTimeZone(report.date, 'UTC', 'MMMM', { locale: es });
+                const value = new Decimal(report.paid).toNumber();
+                monthlyStats[month].iva += value;
+                monthlyStats[month].total += value;
+            }
+
+            for (const report of taxpayer.ISLRReports) {
+                const month = formatInTimeZone(report.emition_date, 'UTC', 'MMMM', { locale: es });
+                const value = new Decimal(report.paid).toNumber();
+                monthlyStats[month].islr += value;
+                monthlyStats[month].total += value;
+            }
+
+            for (const event of taxpayer.event.filter(e => e.type === 'FINE' && e.date)) {
+                const month = formatInTimeZone(event.date, 'UTC', 'MMMM', { locale: es });
+                const value = new Decimal(event.amount).toNumber();
+                monthlyStats[month].fines += value;
+                monthlyStats[month].total += value;
+            }
+        }
+
+        // Retornar el objeto en el orden correcto de meses
+        const orderedMonthlyStats: typeof monthlyStats = {};
+        for (const month of months) {
+            orderedMonthlyStats[month] = monthlyStats[month];
+        }
+
+        return orderedMonthlyStats;
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo obtener la recaudación mensual.");
+    }
+}
+
+export async function getMontlyPerformance(fiscalId: string) {
+    const currentYear = new Date().getUTCFullYear();
+    const start = new Date(Date.UTC(currentYear - 1, 11, 1)); // Diciembre año anterior
+    const end = new Date(Date.UTC(currentYear + 1, 0, 1)); // Enero año siguiente
+
+    try {
+        const fiscal = await db.user.findFirst({
+            where: { id: fiscalId },
+            include: {
+                taxpayer: {
+                    where: {
+                        emition_date: {
+                            gte: start,
+                            lte: end,
+                        },
+                    },
+                    include: {
+                        IVAReports: true,
+                        ISLRReports: true,
+                        event: true,
+                    },
+                },
+            },
+        });
+
+        if (!fiscal || fiscal.taxpayer.length < 1) {
+            throw new Error("Este fiscal no tiene contribuyentes.");
+        }
+
+        const months = [
+            "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+        ];
+
+        const monthlyTotals: Record<string, number> = {};
+        const referenceTotals: Record<string, number> = {}; // para guardar diciembre del año anterior y luego cada mes anterior
+
+        for (const taxpayer of fiscal.taxpayer) {
+            for (const report of taxpayer.IVAReports) {
+                const date = new Date(report.date);
+                const month = formatInTimeZone(date, 'UTC', 'MMMM', { locale: es });
+                const year = date.getUTCFullYear();
+                const amount = new Decimal(report.paid).toNumber();
+
+                if (!monthlyTotals[`${month}-${year}`]) monthlyTotals[`${month}-${year}`] = 0;
+                monthlyTotals[`${month}-${year}`] += amount;
+            }
+
+            for (const report of taxpayer.ISLRReports) {
+                const date = new Date(report.emition_date);
+                const month = formatInTimeZone(date, 'UTC', 'MMMM', { locale: es });
+                const year = date.getUTCFullYear();
+                const amount = new Decimal(report.paid).toNumber();
+
+                if (!monthlyTotals[`${month}-${year}`]) monthlyTotals[`${month}-${year}`] = 0;
+                monthlyTotals[`${month}-${year}`] += amount;
+            }
+
+            for (const e of taxpayer.event.filter(e => e.type === 'FINE' && e.date)) {
+                const date = new Date(e.date);
+                const month = formatInTimeZone(date, 'UTC', 'MMMM', { locale: es });
+                const year = date.getUTCFullYear();
+                const amount = new Decimal(e.amount).toNumber();
+
+                if (!monthlyTotals[`${month}-${year}`]) monthlyTotals[`${month}-${year}`] = 0;
+                monthlyTotals[`${month}-${year}`] += amount;
+            }
+        }
+
+        // Generar datos de comparación para enero a diciembre actual
+        const result = [];
+
+        for (let i = 0; i < months.length; i++) {
+            const currentMonth = months[i];
+            const currentKey = `${currentMonth}-${currentYear}`;
+            const prevKey =
+                i === 0
+                    ? `diciembre-${currentYear - 1}`
+                    : `${months[i - 1]}-${currentYear}`;
+
+            const currentTotal = monthlyTotals[currentKey] || 0;
+            const prevTotal = monthlyTotals[prevKey] || 0;
+
+            const variation = prevTotal === 0
+                ? (currentTotal > 0 ? 100 : 0)
+                : ((currentTotal - prevTotal) / prevTotal) * 100;
+
+            result.push({
+                month: currentMonth,
+                currentCollected: parseFloat(currentTotal.toFixed(2)),
+                previousCollected: parseFloat(prevTotal.toFixed(2)),
+                variation: parseFloat(variation.toFixed(2)),
+            });
+        }
+
+        // Ordenar por variación descendente
+        result.sort((a, b) => b.variation - a.variation);
+
+        return result;
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo calcular el desempeño mensual.");
+    }
+}
+
+export async function getComplianceByProcess(fiscalId: string) {
+    const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+    const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+
+    try {
+        const taxpayers = await db.taxpayer.findMany({
+            where: {
+                officerId: fiscalId,
+            },
+            include: {
+                IVAReports: {
+                    where: {
+                        date: {
+                            gte: start,
+                            lte: end,
+                        },
+                    },
+                },
+                ISLRReports: {
+                    where: {
+                        emition_date: {
+                            gte: start,
+                            lte: end,
+                        },
+                    },
+                },
+                event: {
+                    where: {
+                        date: {
+                            gte: start,
+                            lte: end,
+                        },
+                    },
+                },
+            },
+        });
+
+        const indexIva = await db.indexIva.findMany();
+
+
+        const fp = taxpayers.filter((t) => t.process === "FP");
+        const af = taxpayers.filter((t) => t.process === "AF");
+        const vdf = taxpayers.filter((t) => t.process === "VDF");
+
+        let expectedFP = new Decimal(0);
+        let collectedFP = new Decimal(0);
+
+        let expectedAF = new Decimal(0);
+        let collectedAF = new Decimal(0);
+
+        let expectedVDF = new Decimal(0);
+        let collectedVDF = new Decimal(0);
+
+        for (const taxpayer of fp) {
+            for (const iva of taxpayer.IVAReports) {
+                const applicableIndex = indexIva.find((index) => index.contract_type === taxpayer.contract_type &&
+                    new Date(index.created_at) <= new Date(iva.date) &&
+                    (!index.expires_at || new Date(index.expires_at) > new Date(iva.date))
+                );
+
+                const indexForIva = applicableIndex ? applicableIndex?.base_amount : new Decimal(0);
+                expectedFP = expectedFP.plus(indexForIva);
+                collectedFP = collectedFP.plus(iva.paid);
+            };
+
+            const collectedIslr = taxpayer.ISLRReports.reduce((acc, rep) => acc.plus(rep.paid), new Decimal(0));
+            const collectedFines = taxpayer.event.filter((ev) => ev.type === "FINE").reduce((acc, ev) => acc.plus(ev.amount), new Decimal(0));
+
+            collectedFP = collectedFP.plus(collectedIslr);
+            collectedFP = collectedFP.plus(collectedFines);
+        }
+
+        for (const taxpayer of af) {
+            for (const iva of taxpayer.IVAReports) {
+                const applicableIndex = indexIva.find((index) => index.contract_type === taxpayer.contract_type &&
+                    new Date(index.created_at) <= new Date(iva.date) &&
+                    (!index.expires_at || new Date(index.expires_at) > new Date(iva.date))
+                );
+
+                const indexForIva = applicableIndex ? applicableIndex?.base_amount : new Decimal(0);
+                expectedAF = expectedAF.plus(indexForIva);
+                collectedAF = collectedAF.plus(iva.paid);
+            };
+
+            const collectedIslr = taxpayer.ISLRReports.reduce((acc, rep) => acc.plus(rep.paid), new Decimal(0));
+            const collectedFines = taxpayer.event.filter((ev) => ev.type === "FINE").reduce((acc, ev) => acc.plus(ev.amount), new Decimal(0));
+
+            collectedAF = collectedAF.plus(collectedIslr);
+            collectedAF = collectedAF.plus(collectedFines);
+        }
+
+        for (const taxpayer of vdf) {
+
+            for (const iva of taxpayer.IVAReports) {
+                const applicableIndex = indexIva.find((index) => index.contract_type === taxpayer.contract_type &&
+                    new Date(index.created_at) <= new Date(iva.date) &&
+                    (!index.expires_at || new Date(index.expires_at) > new Date(iva.date))
+                );
+
+                const indexForIva = applicableIndex ? applicableIndex?.base_amount : new Decimal(0);
+                expectedVDF = expectedVDF.plus(indexForIva);
+                collectedVDF = collectedVDF.plus(iva.paid);
+            };
+
+            const collectedIslr = taxpayer.ISLRReports.reduce((acc, rep) => acc.plus(rep.paid), new Decimal(0));
+            const collectedFines = taxpayer.event.filter((ev) => ev.type === "FINE").reduce((acc, ev) => acc.plus(ev.amount), new Decimal(0));
+
+            collectedVDF = collectedVDF.plus(collectedIslr);
+            collectedVDF = collectedVDF.plus(collectedFines);
+        }
+
+        const differenceVDF = expectedVDF.equals(0)
+            ? new Decimal(0)
+            : collectedVDF.minus(expectedVDF).dividedBy(expectedVDF).times(100);
+
+        const differenceAF = expectedAF.equals(0)
+            ? new Decimal(0)
+            : collectedAF.minus(expectedAF).dividedBy(expectedAF).times(100);
+
+        const differenceFP = expectedFP.equals(0)
+            ? new Decimal(0)
+            : collectedFP.minus(expectedFP).dividedBy(expectedFP).times(100);
+
+
+
+
+        const result = {
+            expectedAF: expectedAF,
+            collectedAF: collectedAF,
+            differenceAF: differenceAF,
+            expectedFP: expectedFP,
+            collectedFP: collectedFP,
+            differenceFP: differenceFP,
+            expectedVDF: expectedVDF,
+            collectedVDF: collectedVDF,
+            differenceVDF: differenceVDF,
+        }
+
+        return result;
+
+    } catch (e) {
+        throw new Error("No se pudo obtener el cumplimiento por procedimiento.")
+    }
+
+}
+

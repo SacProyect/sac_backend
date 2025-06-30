@@ -512,7 +512,7 @@ reportRouter.get('/get-fiscal-taxpayers/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const response = await ReportService;
+            const response = await ReportService.getFiscalTaxpayers(id);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -535,7 +535,7 @@ reportRouter.get('/get-fiscal-monthly-collect/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const response = await ReportService;
+            const response = await ReportService.getMonthyCollect(id);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -558,7 +558,7 @@ reportRouter.get('/get-fiscal-monthly-performance/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const response = await ReportService;
+            const response = await ReportService.getMontlyPerformance(id);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -581,7 +581,7 @@ reportRouter.get('/get-fiscal-compliance-by-process/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const response = await ReportService;
+            const response = await ReportService.getComplianceByProcess(id);
 
             return res.status(200).json(response);
         } catch (e) {
