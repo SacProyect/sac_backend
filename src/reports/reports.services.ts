@@ -1777,3 +1777,62 @@ export async function getExpectedAmount() {
         throw new Error("Error al calcular la recaudación esperada.");
     }
 }
+
+export async function getFiscalInfo(fiscalId: string) {
+
+    try {
+        const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+        const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+
+        const fiscal = await db.user.findFirst({
+            where: {
+                id: fiscalId,
+            },
+            include: {
+                taxpayer: {
+                    where: {
+                        emition_date: {
+                            gte: start,
+                            lte: end,
+                        }
+                    }
+                },
+            }
+        })
+
+        if (!fiscal) throw new Error("No se encontró ningun fiscal con el id especificado.");
+
+        let totalTaxpayers = 0;
+        let totalProcess = 0;
+        let totalCompleted = 0;
+        let totalNotified = 0;
+
+        for (const taxpayer of fiscal.taxpayer) {
+            totalTaxpayers += 1;
+
+            if (taxpayer.culminated === true) {
+                totalCompleted += 1;
+            } else {
+                totalProcess += 1;
+            }
+
+            if (taxpayer.notified === true) {
+                totalNotified += 1;
+            }
+
+        }
+
+        return {
+            fiscalName: fiscal.name,
+            fiscalId: fiscal.id,
+            totalTaxpayers,
+            totalProcess,
+            totalCompleted,
+            totalNotified,
+        }
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo obtener la informacion del fiscal.")
+    }
+}
