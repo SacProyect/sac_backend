@@ -1878,6 +1878,7 @@ export async function getFiscalTaxpayers(fiscalId: string) {
                 emition_date: taxpayer.emition_date,
                 rif: taxpayer.rif,
                 fase: taxpayer.fase,
+                culminated: taxpayer.culminated,
                 collectedIva,
                 collectedIslr,
                 collectedFines,
