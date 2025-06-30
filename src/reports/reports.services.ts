@@ -2243,6 +2243,22 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
                         },
                     },
                 },
+                ISLRReports: {
+                    where: {
+                        emition_date: {
+                            gte: start,
+                            lte: end,
+                        },
+                    },
+                },
+                event: {
+                    where: {
+                        date: {
+                            gte: start,
+                            lte: end,
+                        },
+                    },
+                },
             },
         });
 
@@ -2255,7 +2271,10 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
         for (const taxpayer of taxpayers) {
             let reportsCompliant = 0;
             let totalReports = taxpayer.IVAReports.length;
-            let totalCollected = new Decimal(0);
+
+            let totalIva = new Decimal(0);
+            let totalIslr = new Decimal(0);
+            let totalFines = new Decimal(0);
 
             for (const report of taxpayer.IVAReports) {
                 const reportDate = new Date(report.date.toISOString());
@@ -2266,17 +2285,28 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
                     (!index.expires_at || new Date(index.expires_at.toISOString()) >= reportDate)
                 );
 
-                if (!applicableIndex) continue;
-
-                const expectedAmount = new Decimal(applicableIndex.base_amount);
                 const paid = new Decimal(report.paid);
+                totalIva = totalIva.plus(paid);
 
-                totalCollected = totalCollected.plus(paid);
-
-                if (paid.greaterThanOrEqualTo(expectedAmount)) {
-                    reportsCompliant++;
+                if (applicableIndex) {
+                    const expectedAmount = new Decimal(applicableIndex.base_amount);
+                    if (paid.greaterThanOrEqualTo(expectedAmount)) {
+                        reportsCompliant++;
+                    }
                 }
             }
+
+            for (const islr of taxpayer.ISLRReports) {
+                totalIslr = totalIslr.plus(islr.paid || 0);
+            }
+
+            for (const ev of taxpayer.event) {
+                if (ev.type === "FINE") {
+                    totalFines = totalFines.plus(ev.amount || 0);
+                }
+            }
+
+            const totalCollected = totalIva.plus(totalIslr).plus(totalFines);
 
             if (totalReports === 0) continue;
 
@@ -2285,8 +2315,11 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
             const taxpayerSummary = {
                 name: taxpayer.name,
                 rif: taxpayer.rif,
-                totalCollected: Number(totalCollected.toFixed(2)),
                 complianceRate: Number(complianceRate.toFixed(2)),
+                totalCollected: Number(totalCollected.toFixed(2)),
+                totalIva: Number(totalIva.toFixed(2)),
+                totalIslr: Number(totalIslr.toFixed(2)),
+                totalFines: Number(totalFines.toFixed(2)),
             };
 
             if (complianceRate >= 67) {
