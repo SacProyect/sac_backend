@@ -2218,6 +2218,89 @@ export async function getComplianceByProcess(fiscalId: string) {
     } catch (e) {
         throw new Error("No se pudo obtener el cumplimiento por procedimiento.")
     }
-
 }
 
+export async function getFiscalTaxpayerCompliance(fiscalId: string) {
+    const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+    const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+
+    try {
+        const taxpayers = await db.taxpayer.findMany({
+            where: {
+                officerId: fiscalId,
+            },
+            include: {
+                IVAReports: {
+                    where: {
+                        date: {
+                            gte: start,
+                            lte: end,
+                        },
+                    },
+                },
+            },
+        });
+
+        const indexIva = await db.indexIva.findMany();
+
+        const high: any[] = [];
+        const medium: any[] = [];
+        const low: any[] = [];
+
+        for (const taxpayer of taxpayers) {
+            let reportsCompliant = 0;
+            let totalReports = taxpayer.IVAReports.length;
+            let totalCollected = new Decimal(0);
+
+            for (const report of taxpayer.IVAReports) {
+                const reportDate = new Date(report.date.toISOString());
+
+                const applicableIndex = indexIva.find(index =>
+                    index.contract_type === taxpayer.contract_type &&
+                    new Date(index.created_at.toISOString()) <= reportDate &&
+                    (!index.expires_at || new Date(index.expires_at.toISOString()) >= reportDate)
+                );
+
+                if (!applicableIndex) continue;
+
+                const expectedAmount = new Decimal(applicableIndex.base_amount);
+                const paid = new Decimal(report.paid);
+
+                totalCollected = totalCollected.plus(paid);
+
+                if (paid.greaterThanOrEqualTo(expectedAmount)) {
+                    reportsCompliant++;
+                }
+            }
+
+            if (totalReports === 0) continue;
+
+            const complianceRate = (reportsCompliant / totalReports) * 100;
+
+            const taxpayerSummary = {
+                name: taxpayer.name,
+                rif: taxpayer.rif,
+                totalCollected: Number(totalCollected.toFixed(2)),
+                complianceRate: Number(complianceRate.toFixed(2)),
+            };
+
+            if (complianceRate >= 67) {
+                high.push(taxpayerSummary);
+            } else if (complianceRate >= 34) {
+                medium.push(taxpayerSummary);
+            } else {
+                low.push(taxpayerSummary);
+            }
+        }
+
+        return {
+            high,
+            medium,
+            low,
+        };
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo obtener el cumplimiento de los contribuyentes.");
+    }
+}

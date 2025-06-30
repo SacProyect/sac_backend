@@ -604,7 +604,7 @@ reportRouter.get('/get-fiscal-compliance/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const response = await ReportService;
+            const response = await ReportService.getFiscalTaxpayerCompliance(id);
 
             return res.status(200).json(response);
         } catch (e) {
