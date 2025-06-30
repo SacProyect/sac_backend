@@ -1874,7 +1874,10 @@ export async function getFiscalTaxpayers(fiscalId: string) {
             return {
                 id: taxpayer.id,
                 name: taxpayer.name,
+                address: taxpayer.address,
+                emition_date: taxpayer.emition_date,
                 rif: taxpayer.rif,
+                fase: taxpayer.fase,
                 collectedIva,
                 collectedIslr,
                 collectedFines,
