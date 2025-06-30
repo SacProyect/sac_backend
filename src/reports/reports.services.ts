@@ -2305,15 +2305,95 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
     }
 }
 
+
 export async function getFiscalCollectAnalisis(fiscalId: string) {
+    const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+    const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
 
     try {
+        const taxpayers = await db.taxpayer.findMany({
+            where: { officerId: fiscalId },
+            include: {
+                IVAReports: {
+                    where: { date: { gte: start, lte: end } },
+                },
+                ISLRReports: {
+                    where: { emition_date: { gte: start, lte: end } },
+                },
+                event: {
+                    where: { date: { gte: start, lte: end }, type: "FINE" },
+                },
+            },
+        });
 
-        
+        let totalCollected = new Decimal(0);
+        let totalIva = new Decimal(0);
+        let totalIslr = new Decimal(0);
+        let totalFines = new Decimal(0);
 
+        let taxpayerWithMostCollected = null;
+        let maxCollected = new Decimal(0);
+
+        let taxpayersWithFines = 0;
+
+        for (const taxpayer of taxpayers) {
+            const iva = taxpayer.IVAReports.reduce(
+                (acc, rep) => acc.plus(new Decimal(rep.paid)),
+                new Decimal(0)
+            );
+            const islr = taxpayer.ISLRReports.reduce(
+                (acc, rep) => acc.plus(new Decimal(rep.paid)),
+                new Decimal(0)
+            );
+            const fines = taxpayer.event.reduce(
+                (acc, ev) => acc.plus(new Decimal(ev.amount)),
+                new Decimal(0)
+            );
+
+            const collected = iva.plus(islr).plus(fines);
+
+            if (collected.greaterThan(maxCollected)) {
+                maxCollected = collected;
+                taxpayerWithMostCollected = {
+                    name: taxpayer.name,
+                    rif: taxpayer.rif,
+                    totalCollected: Number(collected.toFixed(2)),
+                    iva: Number(iva.toFixed(2)),
+                    islr: Number(islr.toFixed(2)),
+                    fines: Number(fines.toFixed(2)),
+                };
+            }
+
+            if (fines.greaterThan(0)) {
+                taxpayersWithFines++;
+            }
+
+            totalIva = totalIva.plus(iva);
+            totalIslr = totalIslr.plus(islr);
+            totalFines = totalFines.plus(fines);
+            totalCollected = totalCollected.plus(collected);
+        }
+
+        const totalTaxpayers = taxpayers.length || 1;
+
+        const avgIva = totalIva.dividedBy(totalTaxpayers);
+        const avgIslr = totalIslr.dividedBy(totalTaxpayers);
+        const avgFines = totalFines.dividedBy(totalTaxpayers);
+
+        return {
+            taxpayerWithMostCollected,
+            totalCollected: Number(totalCollected.toFixed(2)),
+            totalIva: Number(totalIva.toFixed(2)),
+            totalIslr: Number(totalIslr.toFixed(2)),
+            totalFines: Number(totalFines.toFixed(2)),
+            avgIva: Number(avgIva.toFixed(2)),
+            avgIslr: Number(avgIslr.toFixed(2)),
+            avgFines: Number(avgFines.toFixed(2)),
+            taxpayersWithFines,
+        };
 
     } catch (e) {
-        throw new Error("Error al obtener el análisis de recaudación.")
+        console.error(e);
+        throw new Error("Error al obtener el análisis de recaudación.");
     }
-
 }
