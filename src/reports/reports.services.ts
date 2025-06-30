@@ -2304,3 +2304,16 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
         throw new Error("No se pudo obtener el cumplimiento de los contribuyentes.");
     }
 }
+
+export async function getFiscalCollectAnalisis(fiscalId: string) {
+
+    try {
+
+        
+
+
+    } catch (e) {
+        throw new Error("Error al obtener el análisis de recaudación.")
+    }
+
+}
