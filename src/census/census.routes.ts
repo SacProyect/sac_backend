@@ -86,4 +86,27 @@ censusRouter.get('/getCensus',
     }
 )
 
+censusRouter.delete('/delete-census/:id',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest;
+
+        if (!user) return res.status(401).json({ error: "Unauthorized access" });
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden.")
+
+        const id: string = req.params.id;
+
+        try {
+            const taxpayer = await CensusServices.deleteTaxpayerCensus(id);
+
+            return res.status(201).json(taxpayer)
+        } catch (error: any) {
+            return res.status(500).json(error.message);
+        }
+
+    }
+)
+
 

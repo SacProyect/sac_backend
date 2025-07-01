@@ -516,7 +516,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                 totalIslr,
                 collected: groupCollected,
                 supervisorsStats: [],
-                coordinatorName: supervisor.group?.coordinator.name,
+                coordinatorName: supervisor.group?.coordinator?.name,
             }];
         }
 
@@ -1521,7 +1521,7 @@ export async function getMonthlyGrowth() {
             let previousTotal = new Decimal(0);
             let currentTotal = new Decimal(0);
 
-            const coordinator = group.coordinator.name
+            const coordinator = group.coordinator?.name
 
             const coordinatorName = coordinator || "Sin coordinador";
 
@@ -1660,10 +1660,10 @@ export async function getTaxpayerCompliance() {
                 totalIVA = totalIVA.plus(report.paid);
                 totalCollected = totalCollected.plus(report.paid);
 
-                // console.log(`  📆 Fecha Reporte IVA: ${report.date.toISOString()}`);
+                console.log(`  📆 Fecha Reporte IVA: ${report.date.toISOString()}`);
                 if (index) {
-                    // console.log(`  🔍 Índice encontrado: base_amount=${index.base_amount.toString()}, desde=${index.created_at.toISOString()} hasta=${index.expires_at?.toISOString() ?? "∞"}`);
-                    // console.log(`  💰 Pago IVA del mes: ${report.paid.toString()}`);
+                    console.log(`  🔍 Índice encontrado: base_amount=${index.base_amount.toString()}, desde=${index.created_at.toISOString()} hasta=${index.expires_at?.toISOString() ?? "∞"}`);
+                    console.log(`  💰 Pago IVA del mes: ${report.paid.toString()}`);
                     if (new Decimal(report.paid).gte(index.base_amount)) {
                         monthsWithCompliance += 1;
                         // console.log("  ✅ Cumple con el monto mínimo del índice.");
@@ -1692,7 +1692,7 @@ export async function getTaxpayerCompliance() {
                 ? Math.round((monthsWithCompliance / monthsReported) * 100)
                 : 0;
 
-            // console.log(`📊 Cumplimiento final de ${taxpayer.name}: ${compliance}% (${monthsWithCompliance}/${monthsReported})\n`);
+            console.log(`📊 Cumplimiento final de ${taxpayer.name}: ${compliance}% (${monthsWithCompliance}/${monthsReported})\n`);
 
             const taxpayerResult = {
                 name: taxpayer.name,

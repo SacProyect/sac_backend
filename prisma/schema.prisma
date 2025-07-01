@@ -35,8 +35,8 @@ model user {
 model FiscalGroup {
     id               String             @id @default(uuid())
     name             String             @default("")
-    coordinatorId    String             @unique
-    coordinator      user               @relation("GroupCoordinator", fields: [coordinatorId], references: [id])
+    coordinatorId    String?             @unique
+    coordinator      user ?              @relation("GroupCoordinator", fields: [coordinatorId], references: [id])
     members          user[]             @relation("GroupMembers")
     created_at       DateTime           @default(now())
     GroupRecordMonth GroupRecordMonth[]
@@ -197,7 +197,7 @@ model TaxpayerCensus {
     type         taxpayer_contract_type @default(ORDINARY)
     address      String                 @default("Caracas")
     emition_date DateTime               @default(now())
-    fiscal       user                   @relation(fields: [userId], references: [id])
+    fiscal       user                   @relation(fields: [userId], references: [id], onDelete: Cascade)
     userId       String
 }
 

@@ -44,6 +44,23 @@ export const getTaxpayerCensus = async () => {
     } catch (e) {
         throw new Error("Error al intentar obtener los contribuyentes pertenecientes a censo")
     }
+}
+
+export const deleteTaxpayerCensus = async (id: string) => {
 
 
+    try {
+
+        const deletedTaxpayer = await db.taxpayerCensus.delete({
+            where: {
+                id: id,
+            }
+        })
+
+        return deletedTaxpayer;
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo eliminar el contribuyente de censo.")
+    }
 }
