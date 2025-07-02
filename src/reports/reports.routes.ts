@@ -329,7 +329,9 @@ reportRouter.get("/individual-iva-report/:id",
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN" && user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
+        if (!["ADMIN", "COORDINATOR", "FISCAL", "SUPERVISOR"].includes(user.role)) {
+            return res.status(403).json({ error: "Forbidden role" });
+        }
 
         const id: string = req.params.id;
 

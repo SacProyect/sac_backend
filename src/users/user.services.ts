@@ -1,6 +1,7 @@
 import { compareSync } from "bcrypt";
 import { db } from "../utils/db.server";
 import { generateAcessToken, NewUserInput, passwordHashing, UpdateUserByNameInput, User } from "./user.utils";
+import bcrypt from 'bcryptjs';
 
 /**
  * Logs in a user.
@@ -189,6 +190,27 @@ export const getUser = async (id: string) => {
     } catch (e) {
         console.error(e);
         throw new Error("Error getting the updated user with the new token.")
+    }
+}
+
+export async function updatePassword(userId: string, password: string) {
+    try {
+        
+        if (typeof password !== 'string') {
+            throw new Error("El password debe ser un string.");
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const updatedUser = await db.user.update({
+            where: { id: userId },
+            data: { password: hashedPassword },
+        });
+
+        return updatedUser;
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo actualizar el password.");
     }
 }
 

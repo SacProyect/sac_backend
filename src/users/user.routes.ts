@@ -99,6 +99,10 @@ userRouter.put('/update-by-name/:name',
     body("email").optional(),
 
     async (req: Request, res: Response) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
 
         const { user } = req as AuthRequest
 
@@ -109,7 +113,7 @@ userRouter.put('/update-by-name/:name',
             const name: string = req.params.name;
 
             const data = req.body;
-            
+
             const response = await UserService.updateUserByName(name, data);
 
             return res.status(200).json(response);
@@ -119,5 +123,39 @@ userRouter.put('/update-by-name/:name',
             return res.status(500).json(e);
         }
 
+    }
+)
+
+userRouter.patch('/update-password/:id',
+    authenticateToken,
+    body("password").notEmpty(),
+
+    async (req: Request, res: Response) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json({ error: "Unauthorized access" });
+        if (!["ADMIN", "COORDINATOR", "FISCAL", "SUPERVISOR"].includes(user.role)) {
+            return res.status(403).json({ error: "Forbidden role" });
+        }
+
+        try {
+            // const userId: string = user.id;
+            const userId: string = req.params.id;
+            const {password} = req.body;
+
+
+            const response = await UserService.updatePassword(userId, password);
+
+            return res.status(200).json(response);
+
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json(e);
+        }
     }
 )
