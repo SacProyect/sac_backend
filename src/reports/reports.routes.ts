@@ -486,7 +486,7 @@ reportRouter.get('/get-fiscal-info/:id',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
+        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden access")
 
         const id: string = (req.params.id) as string;
 
@@ -509,7 +509,7 @@ reportRouter.get('/get-fiscal-taxpayers/:id',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
+        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden access")
 
         const id: string = (req.params.id) as string;
 
@@ -532,7 +532,7 @@ reportRouter.get('/get-fiscal-monthly-collect/:id',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
+        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden access")
 
         const id: string = (req.params.id) as string;
 
@@ -555,7 +555,7 @@ reportRouter.get('/get-fiscal-monthly-performance/:id',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
+        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden access")
 
         const id: string = (req.params.id) as string;
 
@@ -578,7 +578,7 @@ reportRouter.get('/get-fiscal-compliance-by-process/:id',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
+        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden access")
 
         const id: string = (req.params.id) as string;
 
@@ -602,7 +602,7 @@ reportRouter.get('/get-fiscal-compliance/:id',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
+        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden access")
 
         const id: string = (req.params.id) as string;
 
@@ -625,7 +625,7 @@ reportRouter.get('/get-fiscal-collect-analisis/:id',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
+        if (user.role !== "FISCAL" && user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden access")
 
         const id: string = (req.params.id) as string;
 

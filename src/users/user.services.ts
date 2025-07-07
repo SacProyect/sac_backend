@@ -152,7 +152,23 @@ export const getUser = async (id: string) => {
         const user = await db.user.findUnique({
             where: { id: id },
             include: {
-                coordinatedGroup: true,
+                coordinatedGroup: {
+                    include: {
+                        members: {
+                            include: {
+                                taxpayer: {
+                                    include: {
+                                        user: {
+                                            select: {
+                                                name: true,
+                                            }
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
                 taxpayer: {
                     include: {
                         IVAReports: true,
