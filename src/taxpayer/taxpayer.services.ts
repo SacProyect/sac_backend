@@ -1381,7 +1381,7 @@ export async function getTaxpayerData(id: string) {
             include: {
                 RepairReports: true,
                 investigation_pdfs: true,
-                user: { select: { group: { select: { coordinatorId: true } } } },
+                user: { select: { group: { select: { coordinatorId: true } }, supervisorId: true,} },
                 IVAReports: {
                     take: 1,
                     orderBy: {

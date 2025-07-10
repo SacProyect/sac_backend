@@ -17,7 +17,17 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
                 taxpayer: {
                     include: {
                         IVAReports: true,
-                    }
+                        user: {
+                            select: {
+                                name: true,
+                                supervisor: {
+                                    select: {
+                                        id: true,
+                                    },
+                                },
+                            },
+                        }
+                    },
                 },
                 coordinatedGroup: {
                     include: {
@@ -47,7 +57,16 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
                     user: {
                         select: {
                             name: true,
-                            group: { select: { coordinatorId: true } },
+                            group: {
+                                select: {
+                                    coordinatorId: true,
+                                },
+                            },
+                            supervisor: {
+                                select: {
+                                    id: true,
+                                },
+                            },
                         },
                     },
                     IVAReports: true,
@@ -172,7 +191,19 @@ export const getUser = async (id: string) => {
                 taxpayer: {
                     include: {
                         IVAReports: true,
-                    }
+                        user: {
+                            select: {
+                                name: true,
+                            },
+                            include: {
+                                supervisor: {
+                                    select: {
+                                        id: true,
+                                    }
+                                }
+                            }
+                        },
+                    },
                 },
             },
         });
@@ -189,6 +220,13 @@ export const getUser = async (id: string) => {
                     select: {
                         name: true,
                         group: { select: { coordinatorId: true } }
+                    },
+                    include: {
+                        supervisor: {
+                            select: {
+                                id: true,
+                            }
+                        }
                     },
                 },
             }
@@ -211,7 +249,7 @@ export const getUser = async (id: string) => {
 
 export async function updatePassword(userId: string, password: string) {
     try {
-        
+
         if (typeof password !== 'string') {
             throw new Error("El password debe ser un string.");
         }
