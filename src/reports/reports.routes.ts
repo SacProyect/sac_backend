@@ -639,3 +639,38 @@ reportRouter.get('/get-fiscal-collect-analisis/:id',
         }
     }
 );
+
+reportRouter.get('/get-complete-report',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest;
+
+        if (!user) return res.status(401).json("Unauthorized access");
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access");
+
+        // Obtener los query params
+        const {
+            groupId,
+            startDate,
+            endDate,
+            process
+        } = req.query;
+
+        try {
+            // Aquí puedes pasarlos al servicio
+            const response = await ReportService.getCompleteReport({
+                groupId: groupId?.toString(),
+                startDate: startDate?.toString(),
+                endDate: endDate?.toString(),
+                process: process?.toString() as "AF" | "VDF" | "FP" | undefined
+            });
+
+            return res.status(200).json(response);
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json("Ha ocurrido un error.");
+        }
+    }
+
+)

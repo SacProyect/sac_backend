@@ -1,6 +1,6 @@
 import { event_type } from "@prisma/client"
 import { db } from "../utils/db.server"
-import { avgValue, getComplianceRate, getLatestEvents, getPunctuallityAnalysis, getTaxpayerComplianceRate, InputError, InputGroupRecords, sumTransactions } from "./report.utils"
+import { avgValue, CompleteReportInput, getComplianceRate, getLatestEvents, getPunctuallityAnalysis, getTaxpayerComplianceRate, InputError, InputGroupRecords, sumTransactions } from "./report.utils"
 import { Event, Payment } from "../taxpayer/taxpayer.utils"
 import { Decimal } from "@prisma/client/runtime/library"
 import dayjs from "dayjs";
@@ -1775,6 +1775,139 @@ export async function getExpectedAmount() {
     } catch (e) {
         console.error("Error al calcular la recaudación esperada:", e);
         throw new Error("Error al calcular la recaudación esperada.");
+    }
+}
+
+
+function toUTCString(dateStr?: string, endOfDay = false): string | undefined {
+    if (!dateStr) return undefined;
+    const date = new Date(dateStr);
+
+    if (isNaN(date.getTime())) {
+        console.error("Fecha inválida recibida:", dateStr);
+        return undefined;
+    }
+
+    // Si es endDate y queremos que sea el final del día
+    if (endOfDay) {
+        date.setUTCHours(23, 59, 59, 999);
+    } else {
+        date.setUTCHours(0, 0, 0, 0);
+    }
+
+    return date.toISOString();
+}
+
+export async function getCompleteReport(data?: CompleteReportInput) {
+
+    // Date to filter the reports (optional)
+    const start = toUTCString(data?.startDate);
+    const end = toUTCString(data?.endDate, true);
+
+    console.log("Start UTC:", start);
+    console.log("End UTC:", end);
+
+    const currentYear = new Date().getUTCFullYear();
+
+    // Date to filter taxpayer (always the current year)
+    const startTaxpayer = new Date(Date.UTC(currentYear, 0, 1, 0, 0, 0, 0)); // 1 de enero, 00:00:00 UTC
+    const endTaxpayer = new Date(Date.UTC(currentYear, 11, 31, 23, 59, 59, 999)); // 31 de diciembre, 23:59:59.999 UTC
+
+
+    try {
+
+        const groups = await db.fiscalGroup.findMany({
+            where: data?.groupId ? { id: data.groupId } : undefined,
+            include: {
+                members: {
+                    include: {
+                        taxpayer: {
+                            where: {
+                                emition_date: {
+                                    gte: startTaxpayer,
+                                    lte: endTaxpayer,
+                                },
+                                ...(data?.process ? { process: data.process } : {}),
+                            },
+                            include: {
+                                ISLRReports: {
+                                    where: {
+                                        emition_date: {
+                                            gte: start,
+                                            lte: end,
+                                        },
+                                    },
+                                },
+                                IVAReports: {
+                                    where: {
+                                        date: {
+                                            gte: start,
+                                            lte: end,
+                                        },
+                                    }
+                                },
+                                event: {
+                                    where: {
+                                        date: {
+                                            gte: start,
+                                            lte: end,
+                                        },
+                                    },
+                                },
+                                user: {
+                                    select: {
+                                        name: true,
+                                    },
+                                },
+                                RepairReports: true,
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        const result = groups.map(group => ({
+            id: group.id,
+            name: group.name,
+            fiscales: group.members.map(member => ({
+                id: member.id,
+                name: member.name,
+                taxpayers: member.taxpayer.map(t => {
+                    const totalIva = t.IVAReports.reduce((acc, r) => acc.plus(r.paid), new Decimal(0));
+                    const totalIslr = t.ISLRReports.reduce((acc, r) => acc.plus(r.paid), new Decimal(0));
+                    const totalFines = t.event
+                        .filter(e => e.type === "FINE" && e.debt.equals(0))
+                        .reduce((acc, e) => acc.plus(e.amount), new Decimal(0));
+                    const finesCount = t.event.filter(e => e.type === "FINE").length;
+
+                    return {
+                        id: t.id,
+                        name: t.name,
+                        rif: t.rif,
+                        address: t.address,
+                        createdAt: t.created_at,
+                        emissionDate: t.emition_date,
+                        process: t.process,
+                        fase: t.fase,
+                        culminated: t.culminated,
+                        notified: t.notified,
+                        hasRepairAct: t.RepairReports.length > 0,
+                        totalIva,
+                        totalIslr,
+                        totalFines,
+                        finesCount,
+                        totalCollected: totalIva.plus(totalIslr).plus(totalFines),
+                    };
+                })
+            }))
+        }));
+
+        return result;
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo obtener el reporte completo.")
     }
 }
 

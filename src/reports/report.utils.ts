@@ -28,6 +28,12 @@ export interface InputGroupRecords {
     year?: number,
 }
 
+export type CompleteReportInput = {
+    groupId: string | undefined;
+    startDate: string | undefined;
+    endDate: string | undefined;
+    process: "AF" | "VDF" | "FP" | undefined;
+}
 
 
 
