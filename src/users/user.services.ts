@@ -157,7 +157,7 @@ export const getUser = async (id: string) => {
                         members: {
                             include: {
                                 taxpayer: {
-                                    include: {
+                                    select: {
                                         user: {
                                             select: {
                                                 name: true,
