@@ -10,77 +10,60 @@ import bcrypt from 'bcryptjs';
  * @param {string} password - The user's password.
  * @returns {Promise<{ user: User | Error, token: string }>} A Promise resolving to an object containing the user or an error, and a token.
  */
-export const logIn = async (personId: number, password: string): Promise<{ user: User | Error, token: string }> => {
-    try {
-        const user = await db.user.findUniqueOrThrow({
-            include: {
-                taxpayer: {
-                    include: {
-                        IVAReports: true,
-                        user: {
-                            select: {
-                                name: true,
-                                supervisor: {
-                                    select: {
-                                        id: true,
-                                    },
-                                },
-                            },
-                        }
-                    },
-                },
-                coordinatedGroup: {
-                    include: {
-                        members: {
-                            include: {
-                                taxpayer: true,
-                            }
-                        },
-                    }
-                },
-            },
-            where: {
-                personId: personId,
-                status: true
-            }
-        });
-
-        if (!user) {
-            throw new Error('Usuario no encontrado');
-        }
-        if (compareSync(password, user.password)) {
-            const token = generateAcessToken(user);
-            user.password = "";
-            user.taxpayer = await db.taxpayer.findMany({
-                where: { status: true },
+export const logIn = async (personId: number, password: string): Promise<{ user: User; token: string }> => {
+    const user = await db.user.findUnique({
+        where: {
+            personId,
+            status: true,
+        },
+        include: {
+            taxpayer: {
                 include: {
+                    IVAReports: true,
                     user: {
                         select: {
                             name: true,
-                            group: {
-                                select: {
-                                    coordinatorId: true,
-                                },
-                            },
                             supervisor: {
-                                select: {
-                                    id: true,
-                                },
+                                select: { id: true },
                             },
-                        },
-                    },
-                    IVAReports: true,
+                            group: {
+                                select: { coordinatorId: true },
+                            }
+                        }
+                    }
                 }
-            });
-
-            return { user, token };
-        } else {
-            throw new Error('Las credenciales no son correctas.');
+            },
+            coordinatedGroup: {
+                include: {
+                    members: {
+                        include: {
+                            taxpayer: {
+                                include: {
+                                    IVAReports: true,
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
-    } catch (error) {
-        throw error;
+    });
+
+    if (!user) {
+        throw new Error('Usuario no encontrado');
     }
+
+    const isPasswordCorrect = compareSync(password, user.password);
+    if (!isPasswordCorrect) {
+        throw new Error('Las credenciales no son correctas.');
+    }
+
+    const token = generateAcessToken(user);
+    user.password = "";
+
+    return { user, token };
 };
+
 
 /**
  * Creates a new user.
@@ -165,8 +148,6 @@ export const getAllUsers = async (user: { id: string, role: string }): Promise<U
 }
 
 export const getUser = async (id: string) => {
-
-
     try {
         const user = await db.user.findUnique({
             where: { id: id },
@@ -194,15 +175,13 @@ export const getUser = async (id: string) => {
                         user: {
                             select: {
                                 name: true,
-                            },
-                            include: {
                                 supervisor: {
                                     select: {
                                         id: true,
-                                    }
-                                }
-                            }
-                        },
+                                    },
+                                },
+                            },
+                        }
                     },
                 },
             },
@@ -219,15 +198,14 @@ export const getUser = async (id: string) => {
                 user: {
                     select: {
                         name: true,
-                        group: { select: { coordinatorId: true } }
-                    },
-                    include: {
+                        group: { select: { coordinatorId: true } },
                         supervisor: {
                             select: {
                                 id: true,
                             }
                         }
                     },
+
                 },
             }
         });

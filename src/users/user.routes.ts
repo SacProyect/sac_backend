@@ -29,22 +29,30 @@ userRouter.post('/',
     body("personId").isNumeric(),
     body("password").isString(),
     async (req: Request, res: Response) => {
-
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
+            return res.status(400).json({
+                error: 'Validación fallida',
+                details: errors.array()
+            });
         }
 
         try {
-
             const { personId, password } = req.body;
-
             const data = await UserService.logIn(personId, password);
-
-            return res.status(200).json(data)
+            return res.status(200).json(data);
         } catch (error: any) {
-            console.error(error)
-            return res.status(500).json(error.message)
+            console.error(error);
+
+            if (error.message === 'Usuario no encontrado' || error.message === 'Las credenciales no son correctas.') {
+                return res.status(401).json({ error: error.message });
+            }
+
+            if (error.name === 'NotFoundError') {
+                return res.status(404).json({ error: 'Usuario no encontrado en base de datos' });
+            }
+
+            return res.status(500).json({ error: 'Error interno del servidor' });
         }
     }
 );
@@ -146,7 +154,7 @@ userRouter.patch('/update-password/:id',
         try {
             // const userId: string = user.id;
             const userId: string = req.params.id;
-            const {password} = req.body;
+            const { password } = req.body;
 
 
             const response = await UserService.updatePassword(userId, password);
