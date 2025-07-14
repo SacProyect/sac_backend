@@ -14,7 +14,6 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
     const user = await db.user.findUnique({
         where: {
             personId,
-            status: true,
         },
         include: {
             taxpayer: {
