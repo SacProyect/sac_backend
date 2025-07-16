@@ -116,36 +116,15 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
             for (const entry of matches) {
                 const normalized = entry.name.replace(/\s+/g, "").toLowerCase();
                 const sameName = normalized === normalizedName;
-                const sameProvidence = entry.providenceNum === input.providenceNum;
                 const prevDate = new Date(entry.emition_date);
                 const prevYear = prevDate.getFullYear();
-                const diffMonths = (emitionDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24 * 30);
 
-                if (sameProvidence) {
-                    const combo = [entry.process, input.process].sort().join('|');
-
-                    if (entry.process === input.process && diffMonths < 14) {
-                        throw new Error(`Ya existe un ${entry.process} con el mismo número de ${entry.process === "VDF" ? "providencia" : "orden"} hace menos de 14 meses.`);
-                    }
-
-                    if (combo === 'AF|VDF' && diffMonths < (entry.process === 'AF' ? 15 : 14)) {
-                        throw new Error(`No se puede registrar un ${input.process} con el mismo número de providencia hasta que pasen ${entry.process === 'AF' ? 15 : 14} meses del ${entry.process} anterior.`);
-                    }
-                } else if (sameName) {
-                    if (entry.process === input.process && inputYear === prevYear) {
-                        throw new Error(`No se pueden registrar dos ${input.process} en el mismo año para el mismo contribuyente.`);
-                    }
-
+                if (sameName) {
                     const afFpCombo = (entry.process === "AF" && input.process === "FP") ||
                         (entry.process === "FP" && input.process === "AF");
 
                     if (afFpCombo && inputYear === prevYear) {
                         throw new Error(`No se pueden registrar AF y FP en el mismo año para el mismo contribuyente.`);
-                    }
-
-                    const nameCombo = [entry.process, input.process].sort().join('|');
-                    if (["AF|FP", "FP|VDF", "AF|VDF"].includes(nameCombo) && inputYear === prevYear) {
-                        throw new Error(`No se pueden registrar ${entry.process} y ${input.process} en el mismo año para el mismo contribuyente.`);
                     }
                 }
             }
@@ -1381,7 +1360,7 @@ export async function getTaxpayerData(id: string) {
             include: {
                 RepairReports: true,
                 investigation_pdfs: true,
-                user: { select: { group: { select: { coordinatorId: true } }, supervisorId: true,} },
+                user: { select: { group: { select: { coordinatorId: true } }, supervisorId: true, } },
                 IVAReports: {
                     take: 1,
                     orderBy: {
