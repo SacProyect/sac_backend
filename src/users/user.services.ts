@@ -157,6 +157,22 @@ export const getUser = async (id: string) => {
                             include: {
                                 taxpayer: {
                                     select: {
+                                        address: true,
+                                        contract_type: true,
+                                        created_at: true,
+                                        culminated: true,
+                                        emition_date: true,
+                                        event: true,
+                                        fase: true,
+                                        index_iva: true,
+                                        id: true,
+                                        name: true,
+                                        notified: true,
+                                        process: true,
+                                        rif: true,
+                                        status: true,
+                                        updated_at: true,
+                                        providenceNum: true,
                                         user: {
                                             select: {
                                                 name: true,
