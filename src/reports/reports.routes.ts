@@ -241,7 +241,7 @@ reportRouter.get('/global-performance',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+        if (user.role !== "ADMIN" &&  user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
 
         try {
             const globalPerformance = await ReportService.getGlobalPerformance();
@@ -279,7 +279,7 @@ reportRouter.get("/group-performance",
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+        if (user.role !== "ADMIN" &&  user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
 
 
         try {
@@ -304,7 +304,7 @@ reportRouter.get("/global-kpi",
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+        if (user.role !== "ADMIN" &&  user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
 
 
         try {
@@ -354,7 +354,7 @@ reportRouter.get('/get-best-supervisor-by-group',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+        if (user.role !== "ADMIN" &&  user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
 
 
         try {
@@ -376,7 +376,7 @@ reportRouter.get('/get-top-fiscals',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+        if (user.role !== "ADMIN" &&  user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
 
 
         try {
@@ -398,7 +398,7 @@ reportRouter.get('/get-top-five-by-group',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+        if (user.role !== "ADMIN" &&  user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
 
 
         try {
@@ -420,7 +420,7 @@ reportRouter.get('/get-monthly-growth',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+        if (user.role !== "ADMIN" &&  user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
 
 
         try {
@@ -442,7 +442,7 @@ reportRouter.get('/get-taxpayers-compliance',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+        if (user.role !== "ADMIN" &&  user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
 
 
         try {
@@ -464,7 +464,7 @@ reportRouter.get('/get-expected-amount',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access")
+        if (user.role !== "ADMIN" &&  user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
 
 
         try {
