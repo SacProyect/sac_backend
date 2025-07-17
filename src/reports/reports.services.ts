@@ -681,6 +681,10 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
 
             // Estadísticas del grupo
             group.members.forEach((member) => {
+
+                // console.log(`📊 [${group.name}] Miembro: ${member.name}`);
+                let memberIslrTotal = new Decimal(0);
+
                 member.taxpayer.forEach((contributor) => {
                     contributor.event.forEach((e) => {
                         if (e.type === "FINE") {
@@ -697,13 +701,21 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                         }
                     });
 
+                    // console.log("Member:", member.name);
+                    // console.log("ISLRReports count:", member.taxpayer.flatMap(t => t.ISLRReports).length);
+
                     contributor.ISLRReports.forEach((report) => {
+                        // console.log(`— ISLR pagado por ${contributor.name || contributor.rif}: ${report.paid}`);
                         if (report.paid) {
                             totalIslr = totalIslr.plus(report.paid);
                             groupCollected = groupCollected.plus(report.paid);
+                            memberIslrTotal = memberIslrTotal.plus(report.paid); // ← FALTABA ESTA LÍNEA
                         }
                     });
                 });
+
+                // console.log(`✅ Total ISLR de ${member.name}: ${totalIslr.toFixed(2)}\n`)
+                // console.log(`✅ Total IVA de ${member.name}: ${totalIva.toFixed(2)}\n`)
             });
 
             return {
