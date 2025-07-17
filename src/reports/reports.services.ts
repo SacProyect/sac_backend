@@ -736,19 +736,12 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
     }
 };
 
-const getMonthName = (key: string) => {
-    const [year, month] = key.split("-");
-    const date = new Date(Number(year), Number(month) - 1);
-    return date.toLocaleString("es-VE", { month: "long", year: "numeric" });
-};
-
-
 export const getGlobalPerformance = async () => {
     try {
         const now = new Date();
         const currentYear = now.getUTCFullYear();
-        const startDate = new Date(Date.UTC(currentYear - 1, 11, 1)); // 1 Dic del año anterior
-        const endDate = new Date(Date.UTC(currentYear + 1, 0, 1));    // 1 Ene del próximo año
+        const startDate = new Date(Date.UTC(currentYear, 0, 1)); // First of January this year
+        const endDate = new Date(Date.UTC(currentYear, 11, 31));  // Last day of December this year
 
         // Obtener reportes de IVA desde diciembre del año pasado hasta diciembre actual
         const ivaReports = await db.iVAReports.findMany({
@@ -758,51 +751,77 @@ export const getGlobalPerformance = async () => {
                     lt: endDate,
                 },
             },
+            include: {
+                taxpayer: {
+                    select: {
+                        contract_type: true,
+                    },
+                },
+            },
         });
 
-        // Agrupar IVA por mes (en UTC)
-        const ivaByMonth: Record<string, number> = {};
-        ivaReports.forEach((report) => {
-            const date = new Date(report.date);
-            const year = date.getUTCFullYear();
-            const month = date.getUTCMonth() + 1;
-            const key = `${year}-${String(month).padStart(2, "0")}`;
-            ivaByMonth[key] = (ivaByMonth[key] || 0) + Number(report.paid);
-        });
+        const indexIva = await db.indexIva.findMany();
 
-        type Result = {
-            month: string;
-            ivaAmount: number;
-            previousIva: number;
-            percentageChange: number;
-        };
 
-        const results: Result[] = [];
+        // 2. Crear un arreglo con los 12 meses
+        const monthlyData = Array.from({ length: new Date().getMonth() + 1 }, (_, index) => {
+            // console.log("Iterando mes: " + index)
+            const start = new Date(Date.UTC(currentYear, index, 1));
+            const end = new Date(Date.UTC(currentYear, index + 1, 1));
 
-        let previousMonthKey = `${currentYear - 1}-12`;
-        let previousIva = ivaByMonth[previousMonthKey] || 0;
+            // Filtrar reportes del mes actual
+            const reportsThisMonth = ivaReports.filter((report) =>
+                new Date(report.date) >= start && new Date(report.date) < end
+            );
 
-        for (let month = 1; month <= 12; month++) {
-            const currentMonthKey = `${currentYear}-${String(month).padStart(2, "0")}`;
-            const currentIva = ivaByMonth[currentMonthKey] || 0;
+            // Sumar el monto pagado real
+            const realAmount = reportsThisMonth.reduce((acc, curr) => acc + Number(curr.paid || 0), 0);
 
-            let percentageChange = 0;
-            if (currentIva !== 0 && previousIva !== 0) {
-                percentageChange = ((currentIva - previousIva) / previousIva) * 100;
-            }
+            let expectedAmount = new Decimal(0);
 
-            results.push({
-                month: currentMonthKey,
-                ivaAmount: parseFloat(currentIva.toFixed(2)),
-                previousIva: parseFloat(previousIva.toFixed(2)),
-                percentageChange: parseFloat(percentageChange.toFixed(2)),
+            // Puedes definir expectedAmount como promedio, valor fijo, o fórmula
+            reportsThisMonth.forEach((rep) => {
+                const reportDate = new Date(rep.date);
+
+                // 1. Buscar un indexIva cuyo rango (created_at, expires_at) incluya el report.date
+                const validIndex = indexIva.find((idx) => {
+                    const createdAt = new Date(idx.created_at);
+                    const expiresAt = idx.expires_at ? new Date(idx.expires_at) : null;
+
+                    return (
+                        idx.contract_type === rep.taxpayer.contract_type &&
+                        reportDate >= createdAt &&
+                        expiresAt !== null &&
+                        reportDate < expiresAt
+                    );
+                });
+
+                
+
+                // 2. Si no se encuentra, usar el que tiene expires_at === null
+                const fallbackIndex = indexIva.find((idx) =>
+                    idx.contract_type === rep.taxpayer.contract_type && idx.expires_at === null
+                );
+
+                const indexAmount = validIndex || fallbackIndex;
+
+                // console.log("CONTRACT TYPE: " + rep.taxpayer.contract_type);
+                // console.log("INDEX BASE AMOUNT: " +  indexAmount?.base_amount);
+
+                if (indexAmount) {
+                    // console.log("SUMANDO: " + Number(indexAmount.base_amount).toLocaleString() + " Al monto: " + Number(expectedAmount).toLocaleString());
+                    expectedAmount = expectedAmount.plus(indexAmount.base_amount);
+                }
             });
 
-            previousIva = currentIva;
-            previousMonthKey = currentMonthKey;
-        }
+            return {
+                month: `${currentYear}-${String(index + 1).padStart(2, "0")}`, // "2025-01"
+                expectedAmount: Number(expectedAmount),
+                realAmount,
+            };
+        });
 
-        return results;
+        return monthlyData;
     } catch (error) {
         console.error("Error in getGlobalPerformance:", error);
         throw new Error("Can't get the global performance");
