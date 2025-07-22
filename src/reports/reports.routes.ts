@@ -185,11 +185,14 @@ reportRouter.get('/fiscal-groups',
         // Object for filtering based on the params
         const { id, startDate, endDate } = req.query
 
-        const filterParams: { id?: string; startDate?: string; endDate?: string; } = {}
+        const filterParams: { id?: string; startDate?: string; endDate?: string; supervisorId?: string } = {}
 
         if (id) filterParams.id = id as string;
         if (startDate) filterParams.startDate = startDate as string;
         if (endDate) filterParams.endDate = endDate as string;
+        if (role === "SUPERVISOR") {
+            filterParams.supervisorId = user.id as string;
+        }
 
         try {
 
@@ -652,7 +655,7 @@ reportRouter.get('/get-complete-report',
         const { user } = req as AuthRequest;
 
         if (!user) return res.status(401).json("Unauthorized access");
-        if (user.role !== "ADMIN") return res.status(403).json("Forbidden access");
+        if (user.role !== "ADMIN" && user.role !== "SUPERVISOR" && user.role !== "COORDINATOR") return res.status(403).json("Forbidden access");
 
         // Obtener los query params
         const {
@@ -662,13 +665,25 @@ reportRouter.get('/get-complete-report',
             process
         } = req.query;
 
+        let userId = undefined;
+        let userRole = undefined;
+
+        if (user.role !== "ADMIN") {
+            userId = user.id;
+            userRole = user.role;
+        }
+
+        console.log(userId);
+
         try {
-            // Aquí puedes pasarlos al servicio
+            // Pass to the service 
             const response = await ReportService.getCompleteReport({
                 groupId: groupId?.toString(),
                 startDate: startDate?.toString(),
                 endDate: endDate?.toString(),
-                process: process?.toString() as "AF" | "VDF" | "FP" | undefined
+                process: process?.toString() as "AF" | "VDF" | "FP" | undefined,
+                userId: userId,
+                userRole: userRole
             });
 
             return res.status(200).json(response);

@@ -33,6 +33,8 @@ export type CompleteReportInput = {
     startDate: string | undefined;
     endDate: string | undefined;
     process: "AF" | "VDF" | "FP" | undefined;
+    userId?: string;
+    userRole?: string;
 }
 
 

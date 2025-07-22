@@ -5,7 +5,7 @@ import { Event, Payment } from "../taxpayer/taxpayer.utils"
 import { Decimal } from "@prisma/client/runtime/library"
 import dayjs from "dayjs";
 import isBetween from 'dayjs/plugin/isBetween';
-import { es } from 'date-fns/locale';
+import { es, id } from 'date-fns/locale';
 import { formatInTimeZone } from 'date-fns-tz';
 
 dayjs.extend(isBetween);
@@ -437,7 +437,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
             }
 
             filters.id = id || coordinatorGroup.id;
-        }
+        } 
 
         if (id) filters.id = id;
 
@@ -445,7 +445,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
             const supervisor = await db.user.findUnique({
                 where: { id: supervisorId },
                 include: {
-                    group: { select: { coordinator: { select: { name: true } } } },
+                    group: { select: { coordinator: { select: { name: true } }, name: true, } },
                     supervised_members: {
                         include: {
                             taxpayer: {
@@ -507,8 +507,8 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
             });
 
             return [{
-                id: supervisorId,
-                name: `Supervisión de ${supervisor.name}`,
+                id: supervisor.groupId,
+                name: supervisor.group?.name,
                 members: supervisor.supervised_members,
                 totalFines,
                 collectedFines,
@@ -796,7 +796,7 @@ export const getGlobalPerformance = async () => {
                     );
                 });
 
-                
+
 
                 // 2. Si no se encuentra, usar el que tiene expires_at === null
                 const fallbackIndex = indexIva.find((idx) =>
@@ -1846,6 +1846,52 @@ export async function getCompleteReport(data?: CompleteReportInput) {
 
 
     try {
+
+        if (data?.userId !== undefined && data.userRole !== "COORDINATOR") {
+            const user = await db.user.findUnique({
+                where: {
+                    id: data.userId,
+                },
+            });
+
+            console.log(user);
+
+            if (!user) {
+                throw new Error("User not found");
+            }
+
+            if (!user.groupId) {
+                throw new Error("Group not found");
+            }
+
+            data.groupId = user.groupId;
+        } else if (data?.userId !== undefined && data.userRole === "COORDINATOR") {
+            const user = await db.user.findUnique({
+                where: {
+                    id: data.userId,
+                },
+                select: {
+                    coordinatedGroup: {
+                        select: {
+                            id: true,
+                        }
+                    }
+                }
+            });
+
+            console.log(user);
+
+            if (!user) {
+                throw new Error("User not found");
+            }
+
+            if (!user.coordinatedGroup?.id) {
+                throw new Error("CoordinatedGroup not found");
+            }
+
+            data.groupId = user.coordinatedGroup.id;
+        }
+
 
         const groups = await db.fiscalGroup.findMany({
             where: data?.groupId ? { id: data.groupId } : undefined,
