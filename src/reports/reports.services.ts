@@ -437,7 +437,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
             }
 
             filters.id = id || coordinatorGroup.id;
-        } 
+        }
 
         if (id) filters.id = id;
 
@@ -1947,7 +1947,7 @@ export async function getCompleteReport(data?: CompleteReportInput) {
         const result = groups.map(group => ({
             id: group.id,
             name: group.name,
-            fiscales: group.members.map(member => ({
+            fiscales: data?.userRole !== "SUPERVISOR" ? (group.members.map(member => ({
                 id: member.id,
                 name: member.name,
                 taxpayers: member.taxpayer.map(t => {
@@ -1977,8 +1977,42 @@ export async function getCompleteReport(data?: CompleteReportInput) {
                         totalCollected: totalIva.plus(totalIslr).plus(totalFines),
                     };
                 })
-            }))
-        }));
+            }))) : (
+                group.members.filter((member) => member.supervisorId === data.userId).map(member => ({
+                    id: member.id,
+                    name: member.name,
+                    taxpayers: member.taxpayer.map(t => {
+                        const totalIva = t.IVAReports.reduce((acc, r) => acc.plus(r.paid), new Decimal(0));
+                        const totalIslr = t.ISLRReports.reduce((acc, r) => acc.plus(r.paid), new Decimal(0));
+                        const totalFines = t.event
+                            .filter(e => e.type === "FINE" && e.debt.equals(0))
+                            .reduce((acc, e) => acc.plus(e.amount), new Decimal(0));
+                        const finesCount = t.event.filter(e => e.type === "FINE").length;
+
+                        return {
+                            id: t.id,
+                            name: t.name,
+                            rif: t.rif,
+                            address: t.address,
+                            createdAt: t.created_at,
+                            emissionDate: t.emition_date,
+                            process: t.process,
+                            fase: t.fase,
+                            culminated: t.culminated,
+                            notified: t.notified,
+                            hasRepairAct: t.RepairReports.length > 0,
+                            totalIva,
+                            totalIslr,
+                            totalFines,
+                            finesCount,
+                            totalCollected: totalIva.plus(totalIslr).plus(totalFines),
+                        };
+                    })
+                })
+                )
+
+            )
+        }))
 
         return result;
 
