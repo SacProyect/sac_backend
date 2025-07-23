@@ -21,6 +21,7 @@ export type User = {
     personId: number;
     name: string;
     role: string;
+    supervised_members?: User[],
     taxpayer?: Taxpayer[];
     // fase?: Taxpayer_Fases;
 };

@@ -138,9 +138,22 @@ export const getAllUsers = async (user: { id: string, role: string }): Promise<U
             if (coordinator?.coordinatedGroup?.members) {
                 users = coordinator.coordinatedGroup.members;
             }
+        } else if (user.role === "SUPERVISOR") {
+            const supervisor = await db.user.findUnique({
+                where: {
+                    id: user.id,
+                },
+                include: {
+                    supervised_members: true,
+                },
+            });
+
+            if (supervisor?.supervised_members) {
+                users = [supervisor, ...supervisor.supervised_members];
+            }
         }
 
-        return users
+        return users.filter((u) => (u.role !== "ADMIN") && (u.role !== "COORDINATOR"));
     } catch (error) {
         throw error;
     }
