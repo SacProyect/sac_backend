@@ -411,20 +411,28 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
     const { id, role, startDate, endDate, supervisorId } = data;
     const filters: any = {};
 
+    const currentYear = new Date().getUTCFullYear();
+
+    // 👉 Convert provided dates to UTC; fallback to full current year range if none provided
     const toUTC = (str?: string): Date | undefined => {
         if (!str) return undefined;
         const [y, m, d] = str.split('-').map(Number);
         return new Date(Date.UTC(y, m - 1, d));
     };
 
-    const start = toUTC(startDate);
-    const end = toUTC(endDate);
+    const start = startDate ? toUTC(startDate) : new Date(Date.UTC(currentYear, 0, 1));
+    const end = endDate ? toUTC(endDate) : new Date(Date.UTC(currentYear + 1, 0, 1)); // exclusivo
 
+    console.log(toUTC(startDate));
+    console.log(toUTC(endDate));
+
+    // 👉 Restrict access to authorized roles only
     if (role !== "ADMIN" && role !== "COORDINATOR" && role !== "SUPERVISOR") {
         throw new Error("Unauthorized");
     }
 
     try {
+        // 🔒 Coordinators can only access their own group
         if (role === "COORDINATOR") {
             const coordinatorGroup = await db.fiscalGroup.findUnique({
                 where: { coordinatorId: data.userId },
@@ -439,8 +447,10 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
             filters.id = id || coordinatorGroup.id;
         }
 
+        // If an explicit group ID is provided, use it as filter
         if (id) filters.id = id;
 
+        // 🔍 Supervisor-specific report: stats for the group supervised by `supervisorId`
         if (supervisorId) {
             const supervisor = await db.user.findUnique({
                 where: { id: supervisorId },
@@ -474,16 +484,18 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
 
             if (!supervisor) throw new Error("Supervisor no encontrado");
 
+            // 🧮 Aggregated stats for this supervisor's group
             let groupCollected = new Decimal(0);
             let totalFines = new Decimal(0);
             let collectedFines = new Decimal(0);
             let totalIva = new Decimal(0);
             let totalIslr = new Decimal(0);
 
+            // 🔄 Loop over supervised taxpayers
             supervisor.supervised_members.forEach((member) => {
                 member.taxpayer.forEach((taxpayer) => {
                     taxpayer.event?.forEach((e) => {
-                        if (e.type === "FINE") {
+                        if (e.type === "FINE" && e.debt.equals(0)) {
                             totalFines = totalFines.plus(1);
                             collectedFines = collectedFines.plus(e.amount);
                             groupCollected = groupCollected.plus(e.amount);
@@ -506,6 +518,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                 });
             });
 
+            // ✅ Return only this supervisor’s group performance
             return [{
                 id: supervisor.groupId,
                 name: supervisor.group?.name,
@@ -520,18 +533,19 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
             }];
         }
 
+        // 🔍 Admins and coordinators: fetch all matching groups
         const groups = await db.fiscalGroup.findMany({
             where: filters,
             include: {
                 members: {
                     include: {
                         taxpayer: {
-                            where: {
-                                emition_date: {
-                                    gte: start,
-                                    lte: end,
-                                },
-                            },
+                            // where: {
+                            //     emition_date: {
+                            //         gte: start,
+                            //         lte: end,
+                            //     },
+                            // },
                             include: {
                                 event: {
                                     where: {
@@ -596,6 +610,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
             },
         });
 
+        // 🔄 For each group, calculate collection and breakdown per supervisor
         const updatedGroups = groups.map((group) => {
             let groupCollected = new Decimal(0);
             let totalFines = new Decimal(0); // número de multas
@@ -605,6 +620,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
 
             const supervisorStats: {
                 supervisorId: string;
+                supervisorName: string;
                 collectedIva: Decimal;
                 collectedISLR: Decimal;
                 collectedFines: Decimal;
@@ -617,6 +633,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
             if (supervisors.length === 0) {
                 supervisorStats.push({
                     supervisorId: "SUPERVISOR_1",
+                    supervisorName: "NO ENCONTRADO",
                     collectedIva: new Decimal(0),
                     collectedISLR: new Decimal(0),
                     collectedFines: new Decimal(0),
@@ -625,6 +642,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                 });
                 supervisorStats.push({
                     supervisorId: "SUPERVISOR_2",
+                    supervisorName: "NO ENCONTRADO",
                     collectedIva: new Decimal(0),
                     collectedISLR: new Decimal(0),
                     collectedFines: new Decimal(0),
@@ -659,7 +677,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                             });
 
                             taxp.event.forEach((ev) => {
-                                if (ev.type === "FINE") {
+                                if (ev.type === "FINE" && ev.debt.equals(0)) {
                                     collectedFinesSup = collectedFinesSup.plus(ev.amount);
                                     totalFinesSup = totalFinesSup.plus(1);
                                     totalCollected = totalCollected.plus(ev.amount);
@@ -670,6 +688,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
 
                     supervisorStats.push({
                         supervisorId: supervisor.id,
+                        supervisorName: supervisor.name,
                         collectedIva,
                         collectedISLR,
                         collectedFines: collectedFinesSup,
@@ -687,7 +706,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
 
                 member.taxpayer.forEach((contributor) => {
                     contributor.event.forEach((e) => {
-                        if (e.type === "FINE") {
+                        if (e.type === "FINE" && e.debt.equals(0)) {
                             totalFines = totalFines.plus(1);
                             collectedFines = collectedFines.plus(e.amount);
                             groupCollected = groupCollected.plus(e.amount);
@@ -728,6 +747,9 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                 supervisorsStats: supervisorStats,
             };
         });
+
+
+
 
         return updatedGroups;
     } catch (e) {
@@ -831,34 +853,58 @@ export const getGlobalPerformance = async () => {
 
 
 export async function getGlobalTaxpayersPerformance() {
-    let ivaCollected = 0;
-    let islrCollected = 0;
-    let finesCollected = 0;
+    let ivaCollected = new Decimal(0);
+    let islrCollected = new Decimal(0);
+    let finesCollected = new Decimal(0);
+
+    const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+    const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
 
     try {
-        const events = await db.event.findMany();
-
-        events.forEach((event) => {
-            if (event.type === "FINE") {
-                finesCollected += Number(event.amount);
+        const events = await db.event.findMany({
+            where: {
+                date: {
+                    gte: start,
+                    lte: end,
+                }
             }
         });
 
-        const iva = await db.iVAReports.findMany();
+        events.forEach((event) => {
+            if (event.type === "FINE" && event.debt.equals(0)) {
+                finesCollected = finesCollected.plus(event.amount);
+            }
+        });
+
+        const iva = await db.iVAReports.findMany({
+            where: {
+                date: {
+                    gte: start,
+                    lte: end,
+                }
+            }
+        });
 
         iva.forEach((rep) => {
-            ivaCollected += Number(rep.paid);
+            ivaCollected = ivaCollected.plus(rep.paid);
         })
 
-        const islr = await db.iSLRReports.findMany();
+        const islr = await db.iSLRReports.findMany({
+            where: {
+                emition_date: {
+                    gte: start,
+                    lte: end,
+                }
+            }
+        });
 
         islr.forEach((rep) => {
-            islrCollected += Number(rep.paid);
+            islrCollected = islrCollected.plus(rep.paid);
         })
 
 
 
-        const totalCollected = ivaCollected + islrCollected + finesCollected;
+        const totalCollected = ivaCollected.plus(islrCollected).plus(finesCollected);
 
 
         return {
@@ -871,6 +917,55 @@ export async function getGlobalTaxpayersPerformance() {
     } catch (e) {
         console.log(e);
         throw new Error("Error obteniendo el rendimiento de los contribuyentes");
+    }
+}
+
+export async function debugQuery() {
+    // Get the full date range for year 2025
+    const startOf2025 = new Date(Date.UTC(2025, 0, 1));
+    const endOf2025 = new Date(Date.UTC(2026, 0, 1));
+    const cutoffDate = new Date(Date.UTC(2025, 0, 1)); // beginning of 2025
+
+    try {
+        // Get all IVA reports from 2025
+        const ivaReports2025 = await db.iVAReports.findMany({
+            where: {
+                date: {
+                    gte: startOf2025,
+                    lt: endOf2025,
+                },
+            },
+            include: {
+                taxpayer: {
+                    include: {
+                        user: true,
+                    },
+                },
+            },
+        });
+
+        // Filter reports where taxpayer was created before 2025
+        const mismatched = ivaReports2025.filter(
+            (iva) => iva.taxpayer.emition_date < cutoffDate
+        );
+
+        console.log(`📊 Total IVA reports in 2025: ${ivaReports2025.length}`);
+        console.log(`🚨 IVA reports in 2025 from taxpayers created before 2025: ${mismatched.length}`);
+
+        if (mismatched.length > 0) {
+            console.log("🧾 Taxpayers with mismatched dates:");
+            mismatched.forEach((item, index) => {
+                console.log(
+                    `#${index + 1} - RIF: ${item.taxpayer.rif} | Emitted: ${item.taxpayer.emition_date.toISOString()} | IVA Date: ${item.date.toISOString()}`
+                );
+            });
+        }
+
+        return mismatched;
+
+    } catch (e) {
+        console.error("❌ Error during debugQuery:", e);
+        return [];
     }
 }
 
@@ -1072,6 +1167,7 @@ export async function getGlobalKPI() {
             : 0;
 
         return {
+            totalTaxpayers: totalTaxpayers,
             totalTaxCollection: Number(totalTaxCollection).toFixed(2),     // Bs.
             averageCreditSurplus: Number(averageCreditSurplus).toFixed(2),   // Bs.
             finePercentage: Number(finePercentage).toFixed(2),         // %
@@ -1900,10 +1996,10 @@ export async function getCompleteReport(data?: CompleteReportInput) {
                     include: {
                         taxpayer: {
                             where: {
-                                emition_date: {
-                                    gte: startTaxpayer,
-                                    lte: endTaxpayer,
-                                },
+                                // emition_date: {
+                                //     gte: startTaxpayer,
+                                //     lte: endTaxpayer,
+                                // },
                                 ...(data?.process ? { process: data.process } : {}),
                             },
                             include: {

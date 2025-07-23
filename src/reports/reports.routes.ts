@@ -266,9 +266,42 @@ reportRouter.get('/global-performance',
 reportRouter.get("/global-taxpayer-performance",
     authenticateToken,
     async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest
+
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        console.log("user role: " + user.role)
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR") {
+            return res.status(403).json("Forbidden access")
+        }
 
         try {
             const response = await ReportService.getGlobalTaxpayersPerformance()
+
+            return res.status(200).json(response)
+
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json({ message: "Internal server error" });
+        }
+
+    }
+)
+
+reportRouter.get("/debug-query",
+    authenticateToken,
+    async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest
+
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        console.log("user role: " + user.role)
+        if (user.role !== "ADMIN") {
+            return res.status(403).json("Forbidden access")
+        }
+
+        try {
+            const response = await ReportService.debugQuery();
 
             return res.status(200).json(response)
 
