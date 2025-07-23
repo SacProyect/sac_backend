@@ -15,38 +15,38 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
         where: {
             personId,
         },
-        include: {
-            taxpayer: {
-                include: {
-                    IVAReports: true,
-                    user: {
-                        select: {
-                            name: true,
-                            supervisor: {
-                                select: { id: true },
-                            },
-                            group: {
-                                select: { coordinatorId: true },
-                            }
-                        }
-                    }
-                }
-            },
-            coordinatedGroup: {
-                include: {
-                    members: {
-                        include: {
-                            taxpayer: {
-                                include: {
-                                    IVAReports: true,
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            supervised_members: true,
-        }
+        // include: {
+        //     taxpayer: {
+        //         include: {
+        //             IVAReports: true,
+        //             user: {
+        //                 select: {
+        //                     name: true,
+        //                     supervisor: {
+        //                         select: { id: true },
+        //                     },
+        //                     group: {
+        //                         select: { coordinatorId: true },
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     },
+        //     coordinatedGroup: {
+        //         include: {
+        //             members: {
+        //                 include: {
+        //                     taxpayer: {
+        //                         include: {
+        //                             IVAReports: true,
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     },
+        //     supervised_members: true,
+        // }
     });
 
     if (!user) {
@@ -164,57 +164,57 @@ export const getUser = async (id: string) => {
     try {
         const user = await db.user.findUnique({
             where: { id: id },
-            include: {
-                supervised_members: true,
-                coordinatedGroup: {
-                    include: {
-                        members: {
-                            include: {
-                                taxpayer: {
-                                    select: {
-                                        address: true,
-                                        contract_type: true,
-                                        created_at: true,
-                                        culminated: true,
-                                        emition_date: true,
-                                        event: true,
-                                        fase: true,
-                                        index_iva: true,
-                                        id: true,
-                                        name: true,
-                                        notified: true,
-                                        process: true,
-                                        rif: true,
-                                        status: true,
-                                        updated_at: true,
-                                        providenceNum: true,
-                                        user: {
-                                            select: {
-                                                name: true,
-                                            }
-                                        }
-                                    }
-                                },
-                            }
-                        }
-                    }
-                },
-                taxpayer: {
-                    include: {
-                        IVAReports: true,
-                        user: {
-                            select: {
-                                name: true,
-                                supervisor: {
-                                    select: {
-                                        id: true,
-                                    },
-                                },
-                            },
-                        }
-                    },
-                },
-            },
+            // include: {
+            //     supervised_members: true,
+            //     coordinatedGroup: {
+            //         include: {
+            //             members: {
+            //                 include: {
+            //                     taxpayer: {
+            //                         select: {
+            //                             address: true,
+            //                             contract_type: true,
+            //                             created_at: true,
+            //                             culminated: true,
+            //                             emition_date: true,
+            //                             event: true,
+            //                             fase: true,
+            //                             index_iva: true,
+            //                             id: true,
+            //                             name: true,
+            //                             notified: true,
+            //                             process: true,
+            //                             rif: true,
+            //                             status: true,
+            //                             updated_at: true,
+            //                             providenceNum: true,
+            //                             user: {
+            //                                 select: {
+            //                                     name: true,
+            //                                 }
+            //                             }
+            //                         }
+            //                     },
+            //                 }
+            //             }
+            //         }
+            //     },
+            //     taxpayer: {
+            //         include: {
+            //             IVAReports: true,
+            //             user: {
+            //                 select: {
+            //                     name: true,
+            //                     supervisor: {
+            //                         select: {
+            //                             id: true,
+            //                         },
+            //                     },
+            //                 },
+            //             }
+            //         },
+            //     },
+            // },
             
         });
 
@@ -222,24 +222,24 @@ export const getUser = async (id: string) => {
             return null;
         }
 
-        user.taxpayer = await db.taxpayer.findMany({
-            where: { status: true },
-            include: {
-                IVAReports: true,
-                user: {
-                    select: {
-                        name: true,
-                        group: { select: { coordinatorId: true } },
-                        supervisor: {
-                            select: {
-                                id: true,
-                            }
-                        }
-                    },
+        // user.taxpayer = await db.taxpayer.findMany({
+        //     where: { status: true },
+        //     include: {
+        //         IVAReports: true,
+        //         user: {
+        //             select: {
+        //                 name: true,
+        //                 group: { select: { coordinatorId: true } },
+        //                 supervisor: {
+        //                     select: {
+        //                         id: true,
+        //                     }
+        //                 }
+        //             },
 
-                },
-            }
-        });
+        //         },
+        //     }
+        // });
 
         // 3) remove password before sending back
         (user as any).password = "";
