@@ -675,6 +675,7 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
                     description: true,
                     taxpayer: {
                         select: {
+                            officerId: true,
                             name: true,
                             rif: true,
                         }
@@ -693,6 +694,7 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
                     taxpayerId: true,
                     taxpayer: {
                         select: {
+                            officerId: true,
                             name: true,
                             rif: true,
                         }
@@ -713,6 +715,7 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
                     debt: true,
                     taxpayer: {
                         select: {
+                            officerId: true,
                             name: true,
                             rif: true,
                         }
@@ -751,6 +754,7 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
                 debt: event.debt,
                 description: event.description,
                 taxpayerId: event.taxpayerId,
+                officerId: event.taxpayer.officerId,
                 taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`
             }
         })

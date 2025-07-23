@@ -44,7 +44,8 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
                         }
                     }
                 }
-            }
+            },
+            supervised_members: true,
         }
     });
 
@@ -164,6 +165,7 @@ export const getUser = async (id: string) => {
         const user = await db.user.findUnique({
             where: { id: id },
             include: {
+                supervised_members: true,
                 coordinatedGroup: {
                     include: {
                         members: {
@@ -213,6 +215,7 @@ export const getUser = async (id: string) => {
                     },
                 },
             },
+            
         });
 
         if (!user) {
