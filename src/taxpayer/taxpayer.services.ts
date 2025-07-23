@@ -1,8 +1,9 @@
 import { db } from "../utils/db.server";
-import { CreateIndexIva, Event, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
+import { CreateIndexIva, Event, FiscalTaxpayerStat, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 import { BadRequestError } from "../utils/errors/BadRequestError";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { Resend } from 'resend';
+import { differenceInDays } from "date-fns"
 import {
     getSignedUrl,
     S3RequestPresigner,
@@ -789,6 +790,86 @@ export const getTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Er
         throw error;
     }
 }
+
+export const getFiscalTaxpayersForStats = async (userId: string) => {
+    try {
+        const user = await db.user.findUnique({
+            where: { id: userId },
+            include: {
+                taxpayer: {
+                    include: {
+                        IVAReports: true,
+                        ISLRReports: true,
+                        event: true,
+                    },
+                },
+            },
+        });
+
+        if (!user) throw new Error("Usuario no encontrado");
+
+        const today = new Date();
+
+        const stats: {
+            vdfOnTime: FiscalTaxpayerStat[];
+            vdfLate: Array<FiscalTaxpayerStat & { delayDays: number }>;
+            afOnTime: FiscalTaxpayerStat[];
+            afLate: Array<FiscalTaxpayerStat & { delayDays: number }>;
+        } = {
+            vdfOnTime: [],
+            vdfLate: [],
+            afOnTime: [],
+            afLate: [],
+        };
+
+        user.taxpayer.forEach((tp) => {
+            const daysElapsed = tp.created_at ? differenceInDays(today, new Date(tp.created_at)) : null;
+            const isCulminated = tp.culminated;
+
+            const totalIva = tp.IVAReports.reduce((sum, r) => sum + Number(r.paid || 0), 0);
+            const totalIslr = tp.ISLRReports.reduce((sum, r) => sum + Number(r.paid || 0), 0);
+            const totalFines = tp.event
+                .filter((e) => e.type === "FINE" && e.debt.equals(0))
+                .reduce((sum) => sum + 1, 0);
+
+            const totalCollected = totalIva + totalIslr + totalFines;
+
+            const taxpayerData: FiscalTaxpayerStat = {
+                id: tp.id,
+                name: tp.name,
+                rif: tp.rif,
+                address: tp.address,
+                date: tp.created_at ?? null,
+                emition_date: tp.emition_date,
+                fase: tp.fase,
+                process: tp.process,
+                culminated: isCulminated,
+                collectedIva: totalIva.toString(),
+                collectedIslr: totalIslr.toString(),
+                collectedFines: totalFines.toString(),
+                totalCollected: totalCollected.toString(),
+                deadline: isCulminated ? "Completado" : daysElapsed,
+            };
+
+            if (tp.process === "VDF") {
+                if (!isCulminated && daysElapsed !== null) {
+                    if (daysElapsed <= 10) stats.vdfOnTime.push(taxpayerData);
+                    else stats.vdfLate.push({ ...taxpayerData, delayDays: daysElapsed - 10 });
+                }
+            } else if (tp.process === "AF") {
+                if (!isCulminated && daysElapsed !== null) {
+                    if (daysElapsed <= 120) stats.afOnTime.push(taxpayerData);
+                    else stats.afLate.push({ ...taxpayerData, delayDays: daysElapsed - 120 });
+                }
+            }
+        });
+
+        return stats;
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudieron obtener los contribuyentes.");
+    }
+};
 
 export const getTaxpayersForEvents = async (userId: string, userRole: string) => {
 

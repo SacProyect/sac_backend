@@ -43,6 +43,27 @@ taxpayerRouter.get('/get-taxpayers-for-events',
     }
 )
 
+taxpayerRouter.get('/get-fiscal-taxpayers-for-stats/:id',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+
+        const userId = req.params.id;
+
+        try {
+            const taxpayer = await TaxpayerServices.getFiscalTaxpayersForStats(userId);
+            return res.status(200).json(taxpayer)
+        } catch (error: any) {
+            console.error(error);
+            return res.status(500).json(error)
+        }
+    }
+
+)
+
 taxpayerRouter.get('/get-taxpayers',
     authenticateToken,
 

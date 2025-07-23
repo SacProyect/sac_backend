@@ -105,6 +105,36 @@ export type InvestigationPdf = {
     taxpayerId?: string,
 }
 
+export type FiscalTaxpayerStat = {
+    id: string;
+    name: string;
+    rif: string;
+    address: string;
+    date: Date | null;
+    emition_date: Date;
+    fase: string;
+    process: string;
+    culminated: boolean;
+    collectedIva: string;
+    collectedIslr: string;
+    collectedFines: string;
+    totalCollected: string;
+    deadline: number | string | null;
+    delayDays?: number;
+};
+
+const stats: {
+    vdfOnTime: FiscalTaxpayerStat[];
+    vdfLate: FiscalTaxpayerStat[];
+    afOnTime: FiscalTaxpayerStat[];
+    afLate: FiscalTaxpayerStat[];
+} = {
+    vdfOnTime: [],
+    vdfLate: [],
+    afOnTime: [],
+    afLate: [],
+};
+
 export type Event = {
     id: string;
     date: Date
