@@ -998,6 +998,9 @@ export async function getGroupPerformance() {
                 member.taxpayer.forEach((taxp) => {
                     // Multas pagadas
                     taxp.event.forEach((ev) => {
+                        if (ev.type === "FINE" && ev.debt.greaterThan(0)) {
+                            totalPaidFines++;
+                        }
                         if (ev.type === "FINE" && ev.debt.equals(0)) {
                             totalPaidFines++;
                             totalPaidAmount += ev.amount.toNumber();
