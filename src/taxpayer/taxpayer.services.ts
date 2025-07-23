@@ -8,7 +8,7 @@ import {
     S3RequestPresigner,
 } from "@aws-sdk/s3-request-presigner";
 import { Decimal } from "@prisma/client/runtime/library";
-import { ISLRReports, IVAReports } from "@prisma/client";
+import { ISLRReports, IVAReports, taxpayer } from "@prisma/client";
 
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -788,6 +788,96 @@ export const getTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Er
     } catch (error) {
         throw error;
     }
+}
+
+export const getTaxpayersForEvents = async (userId: string, userRole: string) => {
+
+    try {
+
+        let taxpayers: taxpayer[] = [];
+
+        if (userRole === "ADMIN") {
+            taxpayers = await db.taxpayer.findMany({
+                include: {
+                    event: true,
+                    IVAReports: true,
+                    ISLRReports: true,
+                }
+            });
+        } else if (userRole === "COORDINATOR") {
+            const group = await db.fiscalGroup.findUnique({
+                where: {
+                    coordinatorId: userId
+                },
+
+                include: {
+                    members: {
+                        include: {
+                            taxpayer: {
+                                include: {
+                                    event: true,
+                                    IVAReports: true,
+                                    ISLRReports: true,
+                                }
+                            },
+                        },
+                    },
+                },
+            })
+            if (!group) throw new Error("Grupo no encontrado para el coordinador");
+
+            // Aplanamos los taxpayers de todos los miembros
+            taxpayers = group.members.flatMap((member) => member.taxpayer);
+        } else if (userRole === "SUPERVISOR") {
+            const user = await db.user.findUnique({
+                where: {
+                    id: userId,
+                },
+                include: {
+                    supervised_members: {
+                        include: {
+                            taxpayer: {
+                                include: {
+                                    event: true,
+                                    IVAReports: true,
+                                    ISLRReports: true,
+                                }
+                            },
+                        },
+                    },
+                },
+            });
+
+            if (!user) throw new Error("Usuario no encontrado.");
+
+            taxpayers = user?.supervised_members.flatMap((member) => member.taxpayer);
+        } else if (userRole === "FISCAL") {
+            const fiscal = await db.user.findUnique({
+                where: {
+                    id: userId,
+                },
+                include: {
+                    taxpayer: {
+                        include: {
+                            event: true,
+                            IVAReports: true,
+                            ISLRReports: true,
+                        }
+                    },
+                }
+            });
+            if (!fiscal) throw new Error("Usuario no encontrado.");
+
+            taxpayers = fiscal?.taxpayer;
+        }
+
+        return taxpayers;
+
+    } catch (e: any) {
+        console.error(e);
+        throw new Error(e.message || "Error al obtener contribuyentes");
+    }
+
 }
 
 export const getTaxpayers = async () => {

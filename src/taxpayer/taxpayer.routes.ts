@@ -23,7 +23,25 @@ const uploadLocal = createLocalUpload([
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
 ]);
 
+taxpayerRouter.get('/get-taxpayers-for-events',
+    authenticateToken,
+    async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest
 
+        if (!user) return res.status(401).json("Unauthorized access")
+
+        const userId = user.id;
+        const userRole = user.role;
+
+        try {
+            const taxpayer = await TaxpayerServices.getTaxpayersForEvents(userId, userRole);
+            return res.status(200).json(taxpayer)
+        } catch (error: any) {
+            console.error(error);
+            return res.status(500).json(error)
+        }
+    }
+)
 
 taxpayerRouter.get('/get-taxpayers',
     authenticateToken,
