@@ -776,20 +776,47 @@ export const getTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Er
 
 
     try {
-        const taxpayer = await db.taxpayer.findUniqueOrThrow({
-            where: {
-                id: taxpayerId,
-                status: true
-            }
+        const taxpayer = await db.taxpayer.findUnique({
+            where: { id: taxpayerId }
         });
 
-        if (!taxpayer) {
+        if (!taxpayer || !taxpayer.status) {
             throw new Error(`No active taxpayer found with ID ${taxpayerId}`);
         }
 
         return taxpayer
     } catch (error) {
         throw error;
+    }
+}
+
+export const getTaxpayers = async () => {
+    try {
+
+        const taxpayers = await db.taxpayer.findMany({
+            select: {
+                id: true,
+                name: true,
+                rif: true,
+                address: true,
+                process: true,
+                providenceNum: true,
+                contract_type: true,
+                emition_date: true,
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                    }
+                }
+            }
+        });
+
+        return taxpayers;
+
+    } catch (e) {
+        console.error(e);
+        throw new Error("No se pudo obtener la lista de contribuyentes.")
     }
 }
 
@@ -813,6 +840,8 @@ export const getTaxpayersByUser = async (userId: string): Promise<Taxpayer[] | E
         throw error
     }
 }
+
+
 
 /**
  * Deletes a taxpayer by changing their status to false.

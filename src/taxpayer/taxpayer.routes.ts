@@ -24,6 +24,24 @@ const uploadLocal = createLocalUpload([
 ]);
 
 
+
+taxpayerRouter.get('/get-taxpayers',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        try {
+            const taxpayer = await TaxpayerServices.getTaxpayers();
+            return res.status(200).json(taxpayer)
+        } catch (error: any) {
+            console.error(error);
+            return res.status(500).json(error)
+        }
+    }
+)
+
 taxpayerRouter.get('/download-repair-report/:key',
     authenticateToken,
 
@@ -263,6 +281,7 @@ taxpayerRouter.get('/:id',
         }
     }
 )
+
 
 
 taxpayerRouter.get('/all/:id',
@@ -507,6 +526,8 @@ taxpayerRouter.get('/data/:id',
         }
     }
 )
+
+
 
 taxpayerRouter.get('/event/all',
     authenticateToken,
