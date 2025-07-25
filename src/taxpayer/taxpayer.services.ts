@@ -883,6 +883,11 @@ export const getTaxpayersForEvents = async (userId: string, userRole: string) =>
                     event: true,
                     IVAReports: true,
                     ISLRReports: true,
+                    user: {
+                        select: {
+                            name: true,
+                        },
+                    },
                 }
             });
         } else if (userRole === "COORDINATOR") {
@@ -899,6 +904,11 @@ export const getTaxpayersForEvents = async (userId: string, userRole: string) =>
                                     event: true,
                                     IVAReports: true,
                                     ISLRReports: true,
+                                    user: {
+                                        select: {
+                                            name: true,
+                                        },
+                                    },
                                 }
                             },
                         },
@@ -922,6 +932,11 @@ export const getTaxpayersForEvents = async (userId: string, userRole: string) =>
                                     event: true,
                                     IVAReports: true,
                                     ISLRReports: true,
+                                    user: {
+                                        select: {
+                                            name: true,
+                                        },
+                                    },
                                 }
                             },
                         },
@@ -943,7 +958,12 @@ export const getTaxpayersForEvents = async (userId: string, userRole: string) =>
                             event: true,
                             IVAReports: true,
                             ISLRReports: true,
-                        }
+                            user: {
+                                select: {
+                                    name: true,
+                                },
+                            },
+                        },
                     },
                 }
             });
