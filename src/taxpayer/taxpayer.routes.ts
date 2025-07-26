@@ -75,7 +75,7 @@ taxpayerRouter.get('/get-taxpayers',
             const taxpayer = await TaxpayerServices.getTaxpayers();
             return res.status(200).json(taxpayer)
         } catch (error: any) {
-            console.error(error);
+            console.error("No se pudieron obtener los taxpayers: ", error);
             return res.status(500).json(error)
         }
     }
