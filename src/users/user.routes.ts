@@ -100,6 +100,33 @@ userRouter.get("/me",
     }
 )
 
+userRouter.get('/get-fiscals-for-review',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access");
+        if (user.role === "FISCAL") return res.status(403).json("Forbidden");
+
+
+        try {
+
+            const userId = user.id;
+            const userRole = user.role;
+
+            const response = await UserService.getFiscalsForReview(userId, userRole);
+
+            return res.status(200).json(response);
+
+        } catch (err) {
+            console.error("Error in /users/get-fiscals-for-review:", err);
+            res.status(500).json({ message: "Server error" });
+        }
+    }
+)
+
 userRouter.put('/update-by-name/:name',
     authenticateToken,
     body("name").optional(),

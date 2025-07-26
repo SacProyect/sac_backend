@@ -105,12 +105,9 @@ taxpayerRouter.get("/download-investigation",
     authenticateToken,
 
     async (req: Request, res: Response) => {
-        console.log("SE ACTIVA ESTO")
         try {
 
             const key = decodeURIComponent(req.query.key as string);
-
-            console.log(decodeURIComponent("pdfs%2F1749919201388-Documento%20sin%20t%C3%ADtulo.docx"))
 
 
 

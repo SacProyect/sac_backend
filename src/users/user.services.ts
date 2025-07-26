@@ -215,7 +215,7 @@ export const getUser = async (id: string) => {
             //         },
             //     },
             // },
-            
+
         });
 
         if (!user) {
@@ -274,6 +274,102 @@ export async function updatePassword(userId: string, password: string) {
     } catch (e) {
         console.error(e);
         throw new Error("No se pudo actualizar el password.");
+    }
+}
+
+export async function getFiscalsForReview(userId: string, userRole: string) {
+
+
+    try {
+
+        let fiscals;
+
+        if (userRole === "ADMIN") {
+            const users = await db.user.findMany({
+                select: {
+                    id: true,
+                    name: true,
+                    group: {
+                        select: {
+                            name: true,
+                        },
+                    },
+                    role: true,
+                    personId: true,
+                    supervisor: {
+                        select: {
+                            name: true,
+                        }
+                    },
+                },
+            });
+            fiscals = users.filter((u) => u.role === "SUPERVISOR" || u.role === "FISCAL");
+        } else if (userRole === "COORDINATOR") {
+            const members = await db.fiscalGroup.findUnique({
+                where: {
+                    coordinatorId: userId,
+                },
+                select: {
+                    members: {
+                        select: {
+                            id: true,
+                            name: true,
+                            group: {
+                                select: {
+                                    name: true,
+                                }
+                            },
+                            role: true,
+                            personId: true,
+                            supervisor: {
+                                select: {
+                                    name: true,
+                                }
+                            },
+                        }
+                    }
+                }
+            });
+
+            fiscals = members;
+        } else if (userRole === "SUPERVISOR") {
+            const supervised = await db.user.findUnique({
+                where: {
+                    id: userId,
+                },
+                select: {
+                    supervised_members: {
+                        select: {
+                            id: true,
+                            name: true,
+                            group: {
+                                select: {
+                                    name: true,
+                                }
+                            },
+                            role: true,
+                            personId: true,
+                            supervisor: {
+                                select: {
+                                    name: true,
+                                }
+                            },
+                        },
+                    },
+                },
+            });
+
+            fiscals = supervised;
+        };
+
+        if (!fiscals) throw new Error("No se obtuvieron fiscales.")
+
+        return fiscals;
+
+
+    } catch (e) {
+        console.error("Cannot get fiscals for review: ", e);
+        throw new Error("Cannot get fiscals for review");
     }
 }
 

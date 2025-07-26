@@ -638,7 +638,6 @@ reportRouter.get('/get-fiscal-compliance/:id',
     authenticateToken,
 
     async (req: Request, res: Response) => {
-        console.log("SE ACTIVA");
 
         const { user } = req as AuthRequest
 
