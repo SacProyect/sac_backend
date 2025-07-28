@@ -1042,33 +1042,12 @@ export const getTaxpayersByUser = async (userId: string): Promise<Taxpayer[] | E
  */
 export const deleteTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Error> => {
     try {
-        const updatedTaxpayer = await db.taxpayer.update({
+        const removedTaxpayer = await db.taxpayer.delete({
             where: {
                 id: taxpayerId
             },
-            data: {
-                status: false
-            }
         });
-        await db.event.updateMany({
-            where: {
-                taxpayerId: taxpayerId,
-                status: true
-            },
-            data: {
-                status: false
-            }
-        });
-        await db.payment.updateMany({
-            where: {
-                taxpayerId: taxpayerId,
-                status: true
-            },
-            data: {
-                status: false
-            }
-        });
-        return updatedTaxpayer;
+        return removedTaxpayer;
     } catch (error) {
         throw error;
     }
