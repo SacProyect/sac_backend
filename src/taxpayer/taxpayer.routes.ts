@@ -354,6 +354,7 @@ taxpayerRouter.put("/:id",
             const updatedTaxpayer = await TaxpayerServices.updateTaxpayer(id, input)
             return res.status(200).json(updatedTaxpayer)
         } catch (error: any) {
+            console.error(error);
             return res.status(500).json(error.message)
         }
     }
