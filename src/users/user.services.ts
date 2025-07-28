@@ -282,7 +282,7 @@ export async function getFiscalsForReview(userId: string, userRole: string) {
 
     try {
 
-        let fiscals;
+        let fiscals: User[] = [];
 
         if (userRole === "ADMIN") {
             const users = await db.user.findMany({
@@ -305,7 +305,7 @@ export async function getFiscalsForReview(userId: string, userRole: string) {
             });
             fiscals = users.filter((u) => u.role === "SUPERVISOR" || u.role === "FISCAL");
         } else if (userRole === "COORDINATOR") {
-            const members = await db.fiscalGroup.findUnique({
+            const group = await db.fiscalGroup.findUnique({
                 where: {
                     coordinatorId: userId,
                 },
@@ -331,9 +331,9 @@ export async function getFiscalsForReview(userId: string, userRole: string) {
                 }
             });
 
-            fiscals = members;
+            fiscals = group?.members || [];
         } else if (userRole === "SUPERVISOR") {
-            const supervised = await db.user.findUnique({
+            const supervisor = await db.user.findUnique({
                 where: {
                     id: userId,
                 },
@@ -359,7 +359,7 @@ export async function getFiscalsForReview(userId: string, userRole: string) {
                 },
             });
 
-            fiscals = supervised;
+            fiscals = supervisor?.supervised_members || [];
         };
 
         if (!fiscals) throw new Error("No se obtuvieron fiscales.")
