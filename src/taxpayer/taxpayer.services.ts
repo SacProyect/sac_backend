@@ -925,7 +925,19 @@ export const getTaxpayersForEvents = async (userId: string, userRole: string) =>
                     id: userId,
                 },
                 include: {
-                    supervised_members: {
+                    taxpayer: { // 👈 Taxpayers assigned directly to the supervisor
+                        include: {
+                            event: true,
+                            IVAReports: true,
+                            ISLRReports: true,
+                            user: {
+                                select: {
+                                    name: true,
+                                },
+                            },
+                        },
+                    },
+                    supervised_members: {  // 👈 Taxpayers assigned to supervised members
                         include: {
                             taxpayer: {
                                 include: {
@@ -946,7 +958,9 @@ export const getTaxpayersForEvents = async (userId: string, userRole: string) =>
 
             if (!user) throw new Error("Usuario no encontrado.");
 
-            taxpayers = user?.supervised_members.flatMap((member) => member.taxpayer);
+            // Combine supervised members' taxpayers and supervisor's own taxpayers
+            const supervisedTaxpayers = user.supervised_members.flatMap((member) => member.taxpayer);
+            taxpayers = [...user.taxpayer, ...supervisedTaxpayers];
         } else if (userRole === "FISCAL") {
             const fiscal = await db.user.findUnique({
                 where: {
