@@ -32,7 +32,6 @@
     "nodemon": "^3.1.4",
     "pm2": "^5.4.2",
     "resend": "^4.5.1",
-    "sac_backend": "file:",
     "tsx": "^4.19.1"
   },
   "devDependencies": {
