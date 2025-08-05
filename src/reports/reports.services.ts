@@ -861,14 +861,33 @@ export async function getGlobalTaxpayersPerformance() {
     const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
 
     try {
-        const events = await db.event.findMany({
-            where: {
-                date: {
-                    gte: start,
-                    lte: end,
+
+        const [events, iva, islr] = await Promise.all([
+            db.event.findMany({
+                where: {
+                    date: {
+                        gte: start,
+                        lte: end,
+                    }
                 }
-            }
-        });
+            }),
+            db.iVAReports.findMany({
+                where: {
+                    date: {
+                        gte: start,
+                        lte: end,
+                    }
+                }
+            }),
+            db.iSLRReports.findMany({
+                where: {
+                    emition_date: {
+                        gte: start,
+                        lte: end,
+                    }
+                }
+            })
+        ]);
 
         events.forEach((event) => {
             if (event.type === "FINE" && event.debt.equals(0)) {
@@ -876,27 +895,10 @@ export async function getGlobalTaxpayersPerformance() {
             }
         });
 
-        const iva = await db.iVAReports.findMany({
-            where: {
-                date: {
-                    gte: start,
-                    lte: end,
-                }
-            }
-        });
-
         iva.forEach((rep) => {
             ivaCollected = ivaCollected.plus(rep.paid);
         })
 
-        const islr = await db.iSLRReports.findMany({
-            where: {
-                emition_date: {
-                    gte: start,
-                    lte: end,
-                }
-            }
-        });
 
         islr.forEach((rep) => {
             islrCollected = islrCollected.plus(rep.paid);

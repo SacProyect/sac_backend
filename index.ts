@@ -26,6 +26,7 @@ const allowedOrigins = [
     "https://main.d2inp34pig64ff.amplifyapp.com",
     "https://sac-app.com",
     "https://www.sac-app.com",
+    "http://localhost:39733"
 ];
 
 app.use(cors({

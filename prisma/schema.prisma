@@ -29,14 +29,14 @@ model user {
     Census              TaxpayerCensus[]
     supervisorId        String?               @map("supervisor_id")
     supervisor          user?                 @relation("UserSupervisor", fields: [supervisorId], references: [id])
-    supervised_members  user[]                @relation("UserSupervisor") 
+    supervised_members  user[]                @relation("UserSupervisor")
 }
 
 model FiscalGroup {
     id               String             @id @default(uuid())
     name             String             @default("")
-    coordinatorId    String?             @unique
-    coordinator      user ?              @relation("GroupCoordinator", fields: [coordinatorId], references: [id])
+    coordinatorId    String?            @unique
+    coordinator      user?              @relation("GroupCoordinator", fields: [coordinatorId], references: [id])
     members          user[]             @relation("GroupMembers")
     created_at       DateTime           @default(now())
     GroupRecordMonth GroupRecordMonth[]
@@ -149,34 +149,51 @@ model payment {
 }
 
 model taxpayer {
-    id                 String                 @id @default(uuid())
-    providenceNum      BigInt
-    address            String                 @default("Caracas")
-    process            taxpayer_process       @default(NA)
-    name               String
-    rif                String
-    emition_date       DateTime               @default(now())
-    contract_type      taxpayer_contract_type @default(ORDINARY)
-    status             Boolean                @default(true)
-    fase               Taxpayer_Fases         @default(FASE_1)
-    notified           Boolean                @default(false)
-    culminated         Boolean                @default(false)
-    officerId          String?
-    event              event[]
-    payment            payment[]
-    user               user?                  @relation(fields: [officerId], references: [id], map: "contribuyente_funcionarioId_fkey", onDelete: Cascade)
-    created_at         DateTime               @default(now())
-    updated_at         DateTime               @default(now()) @updatedAt
-    index_iva          Decimal?
-    investigation_pdfs InvestigationPdf[]
-    observations       Observations[]
-    IVAReports         IVAReports[]
-    ISLRReports        ISLRReports[]
-    RepairReports      RepairReport[]
+    id                   String                 @id @default(uuid())
+    providenceNum        BigInt
+    address              String                 @default("Caracas")
+    process              taxpayer_process       @default(NA)
+    name                 String
+    rif                  String
+    emition_date         DateTime               @default(now())
+    contract_type        taxpayer_contract_type @default(ORDINARY)
+    status               Boolean                @default(true)
+    fase                 Taxpayer_Fases         @default(FASE_1)
+    notified             Boolean                @default(false)
+    culminated           Boolean                @default(false)
+    officerId            String?
+    event                event[]
+    payment              payment[]
+    user                 user?                  @relation(fields: [officerId], references: [id], map: "contribuyente_funcionarioId_fkey", onDelete: Cascade)
+    created_at           DateTime               @default(now())
+    updated_at           DateTime               @default(now()) @updatedAt
+    index_iva            Decimal?
+    parish_id            String?
+    parish               Parish?                 @relation(fields: [parish_id], references: [id]) 
+    taxpayer_category_id String?
+    taxpayer_category    TaxpayerCategory?       @relation(fields: [taxpayer_category_id], references: [id])
+    investigation_pdfs   InvestigationPdf[]
+    observations         Observations[]
+    IVAReports           IVAReports[]
+    ISLRReports          ISLRReports[]
+    RepairReports        RepairReport[]
 
     @@index([officerId], map: "contribuyente_funcionarioId_fkey")
     @@index([process], map: "contribuyente_procedimiento_idx")
     @@index([contract_type], map: "contribuyente_tipoContrato_idx")
+    @@index([parish_id])
+}
+
+model Parish {
+    id        String     @id @default(uuid())
+    name      String
+    taxpayers taxpayer[]
+}
+
+model TaxpayerCategory {
+    id        String     @id @default(uuid())
+    name      String
+    taxpayers taxpayer[]
 }
 
 model IndexIva {
