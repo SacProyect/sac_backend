@@ -1652,6 +1652,8 @@ export async function getObservations(taxpayerId: string) {
     }
 }
 
+
+
 export async function getTaxpayerSummary(taxpayerId: string) {
 
     try {
@@ -1790,3 +1792,24 @@ export const createISLR = async (data: NewIslrReport) => {
         throw new Error(e.message || "Couldn't create the ISLR Report");
     }
 };
+
+export const CreateTaxpayerCategory = async (name: string) => {
+
+    if (!name) throw new Error("Name missing in CreateTaxpayerCategory");
+
+    try {
+
+        const createdCategory = await db.taxpayerCategory.create({
+            data: {
+                name: name,
+            }
+        });
+
+        return createdCategory;
+
+    } catch (e: any) {
+        console.error(e);
+        throw new Error(e);
+    }
+
+}

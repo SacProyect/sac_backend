@@ -101,6 +101,11 @@ taxpayerRouter.get('/download-repair-report/:key',
     }
 )
 
+
+
+
+
+
 taxpayerRouter.get("/download-investigation",
     authenticateToken,
 
@@ -678,6 +683,8 @@ taxpayerRouter.post('/fine',
     }
 )
 
+
+
 taxpayerRouter.post('/create-index-iva',
     authenticateToken,
     body("specialAmount").isDecimal(),
@@ -793,6 +800,8 @@ taxpayerRouter.post('/createIVA',
         }
     }
 )
+
+
 
 taxpayerRouter.post('/create-islr-report',
     authenticateToken,
@@ -1149,5 +1158,29 @@ taxpayerRouter.delete("/delete-islr/:id",
     }
 )
 
+
+taxpayerRouter.post("/create-taxpayer-category",
+    authenticateToken,
+    body("name"),
+
+    async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden")
+
+        const { name } = req.body;
+
+        try {
+            const response = await TaxpayerServices.CreateTaxpayerCategory(name);
+
+            return res.status(201).json("New category created successfully: " + response);
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json("Something went wrong.")
+        }
+    }
+)
 
 
