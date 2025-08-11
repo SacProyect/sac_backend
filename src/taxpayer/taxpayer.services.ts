@@ -9,7 +9,7 @@ import {
     S3RequestPresigner,
 } from "@aws-sdk/s3-request-presigner";
 import { Decimal } from "@prisma/client/runtime/library";
-import { ISLRReports, IVAReports, taxpayer } from "@prisma/client";
+import { ISLRReports, IVAReports, Prisma, taxpayer, taxpayer_contract_type, taxpayer_process } from "@prisma/client";
 
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -87,10 +87,6 @@ async function sendEmailWithRetry(
  */
 export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Error> => {
     try {
-        const userName = await db.user.findFirst({
-            where: { id: input.userId },
-            select: { name: true }
-        });
 
         const emitionDate = new Date(input.emition_date);
         const inputYear = emitionDate.getFullYear();
@@ -145,6 +141,9 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                 rif: input.rif,
                 address: input.address,
                 emition_date: emitionDate.toISOString(),
+                taxpayer_category_id: input.categoryId,
+                parish_id: input.parishId,
+
             }
         });
 
@@ -1161,21 +1160,28 @@ export const deleteObservation = async (id: string) => {
  * @param data The updated data for the taxpayer.
  * @returns The updated taxpayer object or an error if the operation fails.
  */
-export const updateTaxpayer = async (taxpayerId: string, data: Partial<NewTaxpayer>): Promise<Taxpayer | Error> => {
+
+export const updateTaxpayer = async (taxpayerId: string, data: Partial<Taxpayer>): Promise<Taxpayer | Error> => {
     try {
+        const updateData: Prisma.taxpayerUpdateInput = {};
+        if (data.name !== undefined) updateData.name = data.name;
+        if (data.rif !== undefined) updateData.rif = data.rif;
+        if (data.providenceNum !== undefined) updateData.providenceNum = data.providenceNum;
+        if (data.contract_type !== undefined) updateData.contract_type = data.contract_type as taxpayer_contract_type;
+        if (data.process !== undefined) updateData.process = data.process as taxpayer_process;
+        if (data.fase !== undefined) updateData.fase = data.fase;
+        if (data.address !== undefined) updateData.address = data.address;
+        // add other fields similarly...
+
         const updatedTaxpayer = await db.taxpayer.update({
-            where: {
-                id: taxpayerId
-            },
-            data: {
-                ...data
-            }
+            where: { id: taxpayerId },
+            data: updateData,
         });
         return updatedTaxpayer;
     } catch (error) {
         throw error;
     }
-}
+};
 
 /**
  * Updates an event object.
@@ -1811,5 +1817,38 @@ export const CreateTaxpayerCategory = async (name: string) => {
         console.error(e);
         throw new Error(e);
     }
+}
 
+
+export const getTaxpayerCategories = async () => {
+
+    try {
+
+        const categories = await db.taxpayerCategory.findMany();
+
+        return categories;
+
+    } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError) {
+            console.error('Prisma error:', e.code);
+        }
+        throw new Error("Can't get the taxpayer categories");
+    }
+}
+
+export const getParishList = async () => {
+
+
+    try {
+        
+        const parishList = await db.parish.findMany();
+
+        return parishList;
+        
+    } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError) {
+            console.error('Prisma error:', e.code);
+        }
+        throw new Error("Can't get the parish list.")
+    }
 }

@@ -15,38 +15,13 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
         where: {
             personId,
         },
-        // include: {
-        //     taxpayer: {
-        //         include: {
-        //             IVAReports: true,
-        //             user: {
-        //                 select: {
-        //                     name: true,
-        //                     supervisor: {
-        //                         select: { id: true },
-        //                     },
-        //                     group: {
-        //                         select: { coordinatorId: true },
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     },
-        //     coordinatedGroup: {
-        //         include: {
-        //             members: {
-        //                 include: {
-        //                     taxpayer: {
-        //                         include: {
-        //                             IVAReports: true,
-        //                         }
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     },
-        //     supervised_members: true,
-        // }
+        include: {
+            coordinatedGroup: {
+                select: {
+                    id: true,
+                }
+            }
+        }
     });
 
     if (!user) {
@@ -164,57 +139,13 @@ export const getUser = async (id: string) => {
     try {
         const user = await db.user.findUnique({
             where: { id: id },
-            // include: {
-            //     supervised_members: true,
-            //     coordinatedGroup: {
-            //         include: {
-            //             members: {
-            //                 include: {
-            //                     taxpayer: {
-            //                         select: {
-            //                             address: true,
-            //                             contract_type: true,
-            //                             created_at: true,
-            //                             culminated: true,
-            //                             emition_date: true,
-            //                             event: true,
-            //                             fase: true,
-            //                             index_iva: true,
-            //                             id: true,
-            //                             name: true,
-            //                             notified: true,
-            //                             process: true,
-            //                             rif: true,
-            //                             status: true,
-            //                             updated_at: true,
-            //                             providenceNum: true,
-            //                             user: {
-            //                                 select: {
-            //                                     name: true,
-            //                                 }
-            //                             }
-            //                         }
-            //                     },
-            //                 }
-            //             }
-            //         }
-            //     },
-            //     taxpayer: {
-            //         include: {
-            //             IVAReports: true,
-            //             user: {
-            //                 select: {
-            //                     name: true,
-            //                     supervisor: {
-            //                         select: {
-            //                             id: true,
-            //                         },
-            //                     },
-            //                 },
-            //             }
-            //         },
-            //     },
-            // },
+            include: {
+                coordinatedGroup: {
+                    select: {
+                        id: true,
+                    }
+                }
+            }
 
         });
 
@@ -327,7 +258,7 @@ export async function getFiscalsForReview(userId: string, userRole: string) {
                                 }
                             },
                         }
-                    }
+                    },
                 }
             });
 

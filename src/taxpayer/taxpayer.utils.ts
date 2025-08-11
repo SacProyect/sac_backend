@@ -3,14 +3,15 @@ import { db } from "../utils/db.server"
 import { taxpayer_contract_type, Taxpayer_Fases, taxpayer_process } from "@prisma/client"
 
 export type Taxpayer = {
-    providenceNum: bigint
+    providenceNum: bigint;
     id: string;
-    process: string
-    name: string
-    rif: string
-    contract_type: string
-    fase: Taxpayer_Fases
-    events?: Event[]
+    process: string;
+    name: string;
+    rif: string;
+    contract_type: string;
+    fase: Taxpayer_Fases;
+    events?: Event[];
+    address: string;
 }
 
 export type CreateIndexIva = {
@@ -63,6 +64,8 @@ export type NewTaxpayer = {
     pdfs?: InvestigationPdf[];
     userId?: string;
     role?: string;
+    categoryId: string;
+    parishId: string;
 }
 
 export type NewTaxpayerCensus = {

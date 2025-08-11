@@ -135,30 +135,25 @@ taxpayerRouter.post(
     '/',
     authenticateToken,
     uploadLocal.array("pdfs", 20),
-    body("providenceNum").isNumeric(),
-    body("process").isString(),
-    body("name").isString(),
-    body("rif").matches(/^[JVEPG]\d{9}$/).withMessage("RIF format is invalid"),
-    body("contract_type").isString(),
-    body("officerId").isString(),
-    body("address").notEmpty(),
-    body("emition_date").notEmpty().isString(),
+    body("providenceNum").isNumeric().withMessage("providenceNum must be numeric"),
+    body("process").isString().withMessage("process must be a string"),
+    body("name").isString().withMessage("name must be a string"),
+    body("rif").matches(/^[JVEPG]\d{9}$/).withMessage("RIF format is invalid (must start with J, V, E, P or G followed by 9 digits)"),
+    body("contract_type").isString().withMessage("contract_type must be a string"),
+    body("officerName").isString().withMessage("officerName must be a string"),
+    body("address").notEmpty().withMessage("address is required"),
+    body("emition_date").notEmpty().withMessage("emition_date is required").isString().withMessage("emition_date must be a string"),
+    body("category").notEmpty().withMessage("category must be provided").isString().withMessage("Category must be a string"),
+    body("parish").notEmpty().withMessage("parish is required").isString().withMessage("parish must be a string"),
 
     async (req: Request, res: Response) => {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            // Delete local files if validation fails
-            for (const file of req.files as Express.Multer.File[]) {
-                await fs.promises.unlink(file.path);
-            }
-            return res.status(400).json({ errors: errors.array() });
-        }
-
-
-
-        try {
+        try { 
 
             const { user } = req as AuthRequest;
+            if (!user) return res.status(401).json("Unauthorized access");
+            if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden");
+
+
             const userId = user?.id;
             const role = user?.role;
             const s3Files = [];
@@ -181,7 +176,7 @@ taxpayerRouter.post(
                 await fs.promises.unlink(file.path);
             }
 
-            const { providenceNum, process, name, rif, contract_type, officerId, address, emition_date } = req.body;
+            const { providenceNum, process, name, rif, contract_type, officerId, address, emition_date, parishId, categoryId } = req.body;
 
             console.log("OFFICER ID: " + officerId);
 
@@ -197,6 +192,8 @@ taxpayerRouter.post(
                 pdfs: s3Files,
                 userId: userId,
                 role: role,
+                parishId: parishId,
+                categoryId: categoryId,
             });
 
             return res.status(200).json(newTaxpayer);
@@ -270,6 +267,56 @@ taxpayerRouter.post(
     }
 );
 
+taxpayerRouter.get("/get-taxpayer-categories",
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
+
+        try {
+            const categories = await TaxpayerServices.getTaxpayerCategories();
+
+            return res.status(200).json(categories);
+
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json("couldn't get the taxpayer categories.")
+        }
+    }
+)
+
+taxpayerRouter.get('/get-parish-list',
+    authenticateToken,
+
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
+
+
+        try {
+
+            const parishList = await TaxpayerServices.getParishList();
+
+            return res.status(200).json(parishList);
+
+        } catch (e) {
+            console.error(e);
+            return res.status(500).json("Couldn't get the list of parish.")
+        }
+
+    }
+)
+
+
 taxpayerRouter.post(
     '/create-taxpayer',
     authenticateToken,
@@ -281,6 +328,9 @@ taxpayerRouter.post(
     body("officerName").isString().withMessage("officerName must be a string"),
     body("address").notEmpty().withMessage("address is required"),
     body("emition_date").notEmpty().withMessage("emition_date is required").isString().withMessage("emition_date must be a string"),
+    body("category").notEmpty().withMessage("category must be provided").isString().withMessage("Category must be a string"),
+    body("parish").notEmpty().withMessage("parish is required").isString().withMessage("parish must be a string"),
+
     async (req: Request, res: Response) => {
         try {
             const { user } = req as AuthRequest;
@@ -1094,6 +1144,11 @@ taxpayerRouter.delete('/event/:id',
     authenticateToken,
     async (req: Request, res: Response) => {
 
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
+
         try {
             const id: string = (req.params.id);
 
@@ -1111,6 +1166,12 @@ taxpayerRouter.delete('/event/:id',
 taxpayerRouter.delete('/payment/:id',
     authenticateToken,
     async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
+
         try {
             const id: string = (req.params.id);
             const event = await TaxpayerServices.deletePayment(id)
@@ -1125,6 +1186,11 @@ taxpayerRouter.delete('/payment/:id',
 taxpayerRouter.delete("/delete-iva/:id",
     authenticateToken,
     async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden")
 
         try {
             const id: string = req.params.id;
@@ -1145,6 +1211,11 @@ taxpayerRouter.delete("/delete-iva/:id",
 taxpayerRouter.delete("/delete-islr/:id",
     authenticateToken,
     async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN") return res.status(403).json("Forbidden")
         try {
             const id: string = req.params.id;
 
@@ -1182,5 +1253,6 @@ taxpayerRouter.post("/create-taxpayer-category",
         }
     }
 )
+
 
 
