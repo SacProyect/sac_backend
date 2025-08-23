@@ -1007,6 +1007,8 @@ export const getTaxpayers = async () => {
                 providenceNum: true,
                 contract_type: true,
                 emition_date: true,
+                taxpayer_category: true,
+                parish: true,
                 user: {
                     select: {
                         id: true,
@@ -1589,7 +1591,9 @@ export async function getTaxpayerData(id: string) {
                     orderBy: {
                         date: 'desc'
                     }
-                }
+                },
+                taxpayer_category: true,
+                parish: true,
             },
         });
 
