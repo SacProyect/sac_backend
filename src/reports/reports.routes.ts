@@ -276,7 +276,7 @@ reportRouter.get("/global-taxpayer-performance",
         }
 
         try {
-            const response = await ReportService.getGlobalTaxpayersPerformance()
+            const response = await ReportService.getIvaByMonth()
 
             return res.status(200).json(response)
 

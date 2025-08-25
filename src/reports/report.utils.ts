@@ -22,6 +22,20 @@ interface InputPayment {
     amount: BigInt,
 }
 
+export type MonthIva = {
+    monthIndex: number;   // 0 = Jan, 11 = Dec
+    monthName: string;    // "Enero", ...
+    ivaCollected: number; // sum of paid for the month (2 decimals)
+};
+
+export type MonthlyRow = {
+    month: string;             // "2025-01"
+    expectedAmount: number;    // monthly expected sum across taxpayers (always add index)
+    realAmount: number;        // sum of IVA paid in that month
+    taxpayersEmitted: number;  // count with emition_date in that month
+};
+
+
 export interface InputGroupRecords {
     id?: string,
     month?: number,
