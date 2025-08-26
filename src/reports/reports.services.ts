@@ -1867,54 +1867,152 @@ export async function getTaxpayerCompliance() {
 
 export async function getExpectedAmount() {
     try {
-        // Obtener todos los IVAReports con taxpayer asociado
+        const now = new Date();
+        const currentYear = now.getUTCFullYear();
+        const start = new Date(Date.UTC(currentYear, 0, 1)); // First day of current year
+        const end = new Date(Date.UTC(currentYear + 1, 0, 1)); // First day of next year
+        const currentMonthIdx = now.getUTCMonth(); // 0..11
+
+        // 1) Pull all IVA reports with taxpayer
         const ivaReports = await db.iVAReports.findMany({
             include: {
                 taxpayer: true,
             },
         });
 
-        // Obtener los índices de IVA más recientes por tipo de contrato
-        const indexIva = await db.indexIva.findMany();
+        // 2) Pull all taxpayers (we need those without reports as well)
+        const taxpayers = await db.taxpayer.findMany({
+            where: {
+                emition_date: {
+                    gte: start,
+                    lte: end
+                }
+            },
+            select: {
+                id: true,
+                contract_type: true,
+                created_at: true,
+                emition_date: true, // not strictly required here, but often useful
+            },
+        });
 
+        // 3) Pull all indices
+        const indexIva = await db.indexIva.findMany({
+            select: {
+                contract_type: true,
+                base_amount: true,
+                created_at: true,
+                expires_at: true,
+            },
+        });
+
+        // Group indices by contract_type and sort by created_at asc
+        const idxByContract = new Map<string, typeof indexIva>();
+        for (const ct of new Set(indexIva.map(i => i.contract_type))) {
+            idxByContract.set(
+                ct,
+                indexIva
+                    .filter(i => i.contract_type === ct)
+                    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+            );
+        }
+
+        // Helper: find active index for a given date, else fallback to expires_at null
+        const getActiveIndexOrFallback = (contractType: string, refDate: Date) => {
+            const list = idxByContract.get(contractType);
+            if (!list || list.length === 0) return null;
+
+            // active candidates
+            const active = list.filter(i => {
+                const c = new Date(i.created_at).getTime();
+                const e = i.expires_at ? new Date(i.expires_at).getTime() : null;
+                const t = refDate.getTime();
+                return c <= t && (e === null || t < e);
+            });
+
+            if (active.length > 0) {
+                // pick latest by created_at
+                return active.reduce((latest, cur) =>
+                    new Date(cur.created_at).getTime() > new Date(latest.created_at).getTime() ? cur : latest
+                );
+            }
+
+            // fallback: the one with expires_at null (if any). If multiple, pick latest created_at
+            const fallback = list
+                .filter(i => i.expires_at === null)
+                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                .at(-1);
+
+            return fallback ?? null;
+        };
+
+        // Map taxpayerId -> their reports
+        const reportsByTaxpayer = new Map<string, typeof ivaReports>();
+        for (const r of ivaReports) {
+            if (!r.taxpayer) continue;
+            const arr = reportsByTaxpayer.get(r.taxpayer.id) ?? [];
+            arr.push(r);
+            reportsByTaxpayer.set(r.taxpayer.id, arr);
+        }
+
+        // Totals
         let totalExpected = new Decimal(0);
         let totalPaid = new Decimal(0);
         let reportCount = 0;
 
+        // A) Expected from EXISTING REPORTS (original behavior, but with fallback index)
         for (const report of ivaReports) {
             const taxpayer = report.taxpayer;
             if (!taxpayer) continue;
 
-            const contractType = taxpayer.contract_type;
+            const idx = getActiveIndexOrFallback(taxpayer.contract_type, new Date(report.date));
+            if (!idx) continue;
 
-            // Buscar el índice correspondiente a la fecha del reporte
-            const index = indexIva.find(i =>
-                i.contract_type === contractType &&
-                report.date >= i.created_at &&
-                (i.expires_at === null || report.date < i.expires_at)
-            );
-
-            if (!index) continue;
-
-            totalExpected = totalExpected.plus(index.base_amount);
-            totalPaid = totalPaid.plus(report.paid);
+            totalExpected = totalExpected.plus(idx.base_amount);
+            totalPaid = totalPaid.plus(report.paid ?? 0);
             reportCount++;
         }
 
+        // B) Expected from TAXPAYERS WITHOUT ANY REPORTS
+        //    For each of these taxpayers, sum index per month for their "max year":
+        //    - If maxYear < currentYear (i.e., 2024): 12 months of that year (Jan..Dec).
+        //    - If maxYear === currentYear (i.e., 2025): months Jan..currentMonth inclusive.
+        // For taxpayers without reports, we define maxYear = currentYear.
+        for (const t of taxpayers) {
+            const tReports = reportsByTaxpayer.get(t.id) ?? [];
+
+            if (tReports.length > 0) continue; // only taxpayers with NO reports
+
+            // taxpayer has zero reports; define maxYear as currentYear
+            const maxYear = currentYear;
+
+            const monthsToCount = maxYear < currentYear ? 12 : currentMonthIdx + 1; // for current year, up to now
+
+            // Iterate months and add index vigente each month (use mid-month as ref date)
+            for (let m = 0; m < monthsToCount; m++) {
+                const refDate = new Date(Date.UTC(maxYear, m, 15));
+                const idx = getActiveIndexOrFallback(t.contract_type, refDate);
+                if (idx?.base_amount != null) {
+                    totalExpected = totalExpected.plus(idx.base_amount);
+                }
+            }
+        }
+
+        // Difference and percentage
         const difference = totalPaid.minus(totalExpected);
-        const percentageDifference = totalExpected.gt(0)
-            ? difference.dividedBy(totalExpected).times(100).toDecimalPlaces(2)
-            : new Decimal(0);
+        const percentageDifference =
+            totalExpected.gt(0)
+                ? difference.dividedBy(totalExpected).times(100).toDecimalPlaces(2)
+                : new Decimal(0);
 
         return {
             totalReports: reportCount,
             totalExpected: totalExpected.toNumber(),
             totalPaid: totalPaid.toNumber(),
             difference: difference.toNumber(),
-            percentage: percentageDifference.toNumber(), // positivo: superávit, negativo: déficit
+            percentage: percentageDifference.toNumber(), // positive: surplus, negative: deficit
             status: percentageDifference.gte(0) ? "superávit" : "déficit",
         };
-
     } catch (e) {
         console.error("Error al calcular la recaudación esperada:", e);
         throw new Error("Error al calcular la recaudación esperada.");
