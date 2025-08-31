@@ -1866,70 +1866,160 @@ export async function getTaxpayerCompliance() {
 
 
 
-
-
-
 export async function getExpectedAmount() {
     try {
         const now = new Date();
         const currentYear = now.getUTCFullYear();
-        const currentMonth = now.getUTCMonth(); // 0..11
+        const currentMonthIdx = now.getUTCMonth(); // 0..11
 
-        // Define current month range
-        const currentMonthStart = new Date(Date.UTC(currentYear, currentMonth, 1));
-        const nextMonthStart = new Date(Date.UTC(currentYear, currentMonth + 1, 1));
+        // If January, use current month as "previous"
+        const prevMonthIdx = currentMonthIdx === 0 ? 0 : currentMonthIdx - 1;
 
-        // Define previous month range
-        const prevMonthStart = new Date(Date.UTC(currentYear, currentMonth - 1, 1));
-        const prevMonthEnd = currentMonthStart;
+        const prevMonthStart = new Date(Date.UTC(currentYear, prevMonthIdx, 1));
+        const prevMonthEnd = new Date(Date.UTC(currentYear, prevMonthIdx + 1, 1));
 
-        // Get IVA reports for previous month
-        const prevReports = await db.iVAReports.findMany({
+        // 1) Pull IVA reports for the chosen month
+        const ivaReports = await db.iVAReports.findMany({
             where: {
                 date: {
                     gte: prevMonthStart,
                     lt: prevMonthEnd,
                 },
             },
-        });
-
-        // Get IVA reports for current month
-        const currentReports = await db.iVAReports.findMany({
-            where: {
-                date: {
-                    gte: currentMonthStart,
-                    lt: nextMonthStart,
-                },
+            include: {
+                taxpayer: true,
             },
         });
 
-        // Expected = previous month sum
-        const totalExpected = prevReports.reduce(
-            (acc, r) => acc.plus(r.paid ?? 0),
-            new Decimal(0)
-        );
+        // 2) Pull taxpayers of this year
+        const taxpayers = await db.taxpayer.findMany({
+            where: {
+                emition_date: {
+                    gte: new Date(Date.UTC(currentYear, 0, 1)),
+                    lt: new Date(Date.UTC(currentYear + 1, 0, 1)),
+                },
+            },
+            select: {
+                id: true,
+                contract_type: true,
+                emition_date: true,
+            },
+        });
 
-        // Paid = current month sum
-        const totalPaid = currentReports.reduce(
-            (acc, r) => acc.plus(r.paid ?? 0),
-            new Decimal(0)
-        );
+        // 3) Pull all indices
+        const indexIva = await db.indexIva.findMany({
+            select: {
+                contract_type: true,
+                base_amount: true,
+                created_at: true,
+                expires_at: true,
+            },
+        });
 
+        // Group indices by contract_type
+        const idxByContract = new Map<string, typeof indexIva>();
+        for (const ct of new Set(indexIva.map((i) => i.contract_type))) {
+            idxByContract.set(
+                ct,
+                indexIva
+                    .filter((i) => i.contract_type === ct)
+                    .sort(
+                        (a, b) =>
+                            new Date(a.created_at).getTime() -
+                            new Date(b.created_at).getTime()
+                    )
+            );
+        }
+
+        // Helper: get active index for a given date
+        const getActiveIndexOrFallback = (contractType: string, refDate: Date) => {
+            const list = idxByContract.get(contractType);
+            if (!list || list.length === 0) return null;
+
+            const active = list.filter((i) => {
+                const c = new Date(i.created_at).getTime();
+                const e = i.expires_at ? new Date(i.expires_at).getTime() : null;
+                const t = refDate.getTime();
+                return c <= t && (e === null || t < e);
+            });
+
+            if (active.length > 0) {
+                return active.reduce((latest, cur) =>
+                    new Date(cur.created_at).getTime() >
+                        new Date(latest.created_at).getTime()
+                        ? cur
+                        : latest
+                );
+            }
+
+            const fallback = list
+                .filter((i) => i.expires_at === null)
+                .sort(
+                    (a, b) =>
+                        new Date(a.created_at).getTime() -
+                        new Date(b.created_at).getTime()
+                )
+                .at(-1);
+
+            return fallback ?? null;
+        };
+
+        // Totals
+        let totalExpected = new Decimal(0);
+        let totalPaid = new Decimal(0);
+        let reportCount = 0;
+
+        // Expected and Paid for each report in that month
+        for (const report of ivaReports) {
+            const taxpayer = report.taxpayer;
+            if (!taxpayer) continue;
+
+            const idx = getActiveIndexOrFallback(
+                taxpayer.contract_type,
+                new Date(report.date)
+            );
+            if (!idx) continue;
+
+            totalExpected = totalExpected.plus(idx.base_amount);
+            totalPaid = totalPaid.plus(report.paid ?? 0);
+            reportCount++;
+        }
+
+        // Also account taxpayers without reports in that month
+        for (const t of taxpayers) {
+            const hasReport = ivaReports.some((r) => r.taxpayer?.id === t.id);
+            if (hasReport) continue;
+
+            const refDate = new Date(Date.UTC(currentYear, prevMonthIdx, 15));
+            const idx = getActiveIndexOrFallback(t.contract_type, refDate);
+            if (idx?.base_amount != null) {
+                totalExpected = totalExpected.plus(idx.base_amount);
+            }
+        }
+
+        // Difference and percentage
         const difference = totalPaid.minus(totalExpected);
-        const percentage = totalExpected.gt(0)
+        const percentageDifference = totalExpected.gt(0)
             ? difference.dividedBy(totalExpected).times(100).toDecimalPlaces(2)
             : new Decimal(0);
 
+        const compliancePercentage = totalExpected.gt(0)
+            ? totalPaid.dividedBy(totalExpected).times(100).toDecimalPlaces(2)
+            : new Decimal(0);
+
         return {
+            month: prevMonthIdx + 1, // 1..12
+            totalReports: reportCount,
             totalExpected: totalExpected.toNumber(),
             totalPaid: totalPaid.toNumber(),
             difference: difference.toNumber(),
-            percentage: percentage.toNumber(),
-            status: percentage.gte(0) ? "superávit" : "déficit",
+            percentage: percentageDifference.toNumber(),
+            compliance: compliancePercentage.toNumber(), 
+            status: percentageDifference.gte(0) ? "superávit" : "déficit",
         };
     } catch (e) {
-        console.error("Error al calcular la recaudación mensual:", e);
-        throw new Error("Error al calcular la recaudación mensual.");
+        console.error("Error al calcular la recaudación esperada:", e);
+        throw new Error("Error al calcular la recaudación esperada.");
     }
 }
 
