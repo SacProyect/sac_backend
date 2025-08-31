@@ -1823,10 +1823,12 @@ export async function getTaxpayerCompliance() {
                 }
             }
 
-            // Compliance: paid vs expected
-            const compliance = expectedIVA.gt(0)
+            // Compliance: paid vs expected (capped at 100)
+            let compliance = expectedIVA.gt(0)
                 ? totalIVA.div(expectedIVA).times(100).toDecimalPlaces(2).toNumber()
                 : 0;
+
+            if (compliance > 100) compliance = 100;
 
             const taxpayerResult = {
                 name: taxpayer.name,
@@ -2759,10 +2761,12 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
 
             const totalCollected = totalIva.plus(totalIslr).plus(totalFines);
 
-            // Compliance based on expected vs real IVA
-            const complianceRate = expectedIVA.gt(0)
+            // Compliance based on expected vs real IVA (capped at 100)
+            let complianceRate = expectedIVA.gt(0)
                 ? totalIva.div(expectedIVA).times(100).toDecimalPlaces(2).toNumber()
                 : 0;
+
+            if (complianceRate > 100) complianceRate = 100;
 
             const taxpayerSummary = {
                 name: taxpayer.name,
@@ -2794,7 +2798,6 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
         throw new Error("No se pudo obtener el cumplimiento de los contribuyentes.");
     }
 }
-
 
 export async function getFiscalCollectAnalisis(fiscalId: string) {
     const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
