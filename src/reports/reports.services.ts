@@ -1733,18 +1733,17 @@ export async function getMonthlyGrowth() {
 
 export async function getTaxpayerCompliance() {
     try {
-        const startOfYear = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
-        const endOfYear = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+        const now = new Date();
+        const currentYear = now.getUTCFullYear();
+        const startOfYear = new Date(Date.UTC(currentYear, 0, 1));
+        const endOfYear = new Date(Date.UTC(currentYear + 1, 0, 1));
+        const currentMonthIdx = now.getUTCMonth(); // 0..11
 
         const taxpayers = await db.taxpayer.findMany({
             where: {
-                IVAReports: {
-                    some: {
-                        date: {
-                            gte: startOfYear,
-                            lt: endOfYear,
-                        },
-                    },
+                emition_date: {
+                    gte: startOfYear,
+                    lt: endOfYear,
                 },
             },
             include: {
@@ -1785,44 +1784,22 @@ export async function getTaxpayerCompliance() {
             const contractType = taxpayer.contract_type;
             const ivaReports = taxpayer.IVAReports;
 
-            let monthsWithCompliance = 0;
             let totalIVA = new Decimal(0);
             let totalISLR = new Decimal(0);
             let totalFines = new Decimal(0);
             let totalCollected = new Decimal(0);
 
-            // console.log(`📄 Evaluando taxpayer: ${taxpayer.name} (${taxpayer.rif}) - Tipo de contrato: ${contractType}`);
-
+            // Real IVA collected
             for (const report of ivaReports) {
-                const index = indexIva.find(i =>
-                    i.contract_type === contractType &&
-                    report.date >= i.created_at &&
-                    (i.expires_at === null || report.date < i.expires_at)
-                );
-
                 totalIVA = totalIVA.plus(report.paid);
                 totalCollected = totalCollected.plus(report.paid);
-
-                // console.log(`  📆 Fecha Reporte IVA: ${report.date.toISOString()}`);
-                if (index) {
-                    // console.log(`  🔍 Índice encontrado: base_amount=${index.base_amount.toString()}, desde=${index.created_at.toISOString()} hasta=${index.expires_at?.toISOString() ?? "∞"}`);
-                    // console.log(`  💰 Pago IVA del mes: ${report.paid.toString()}`);
-                    if (new Decimal(report.paid).gte(index.base_amount)) {
-                        monthsWithCompliance += 1;
-                        // console.log("  ✅ Cumple con el monto mínimo del índice.");
-                    } else {
-                        // console.log("  ❌ No cumple con el monto mínimo del índice.");
-                    }
-                } else {
-                    // console.log("  ⚠️ No se encontró índice válido para este reporte.");
-                }
             }
 
+            // ISLR + fines
             for (const rep of taxpayer.ISLRReports) {
                 totalISLR = totalISLR.plus(rep.paid);
                 totalCollected = totalCollected.plus(rep.paid);
             }
-
             for (const ev of taxpayer.event) {
                 if (ev.type === "FINE") {
                     totalFines = totalFines.plus(ev.amount);
@@ -1830,21 +1807,36 @@ export async function getTaxpayerCompliance() {
                 }
             }
 
-            const monthsReported = ivaReports.length;
-            const compliance = monthsReported > 0
-                ? Math.round((monthsWithCompliance / monthsReported) * 100)
-                : 0;
+            // Expected IVA: sum index for each month until current
+            let expectedIVA = new Decimal(0);
+            for (let m = 0; m <= currentMonthIdx; m++) {
+                const refDate = new Date(Date.UTC(currentYear, m, 15)); // mid-month
+                const index = indexIva.find(
+                    (i) =>
+                        i.contract_type === contractType &&
+                        refDate >= i.created_at &&
+                        (i.expires_at === null || refDate < i.expires_at)
+                );
 
-            // console.log(`📊 Cumplimiento final de ${taxpayer.name}: ${compliance}% (${monthsWithCompliance}/${monthsReported})\n`);
+                if (index) {
+                    expectedIVA = expectedIVA.plus(index.base_amount);
+                }
+            }
+
+            // Compliance: paid vs expected
+            const compliance = expectedIVA.gt(0)
+                ? totalIVA.div(expectedIVA).times(100).toDecimalPlaces(2).toNumber()
+                : 0;
 
             const taxpayerResult = {
                 name: taxpayer.name,
                 rif: taxpayer.rif,
                 compliance,
-                totalIVA,
-                totalISLR,
-                totalFines,
-                totalCollected,
+                expectedIVA: expectedIVA.toNumber(),
+                totalIVA: totalIVA.toNumber(),
+                totalISLR: totalISLR.toNumber(),
+                totalFines: totalFines.toNumber(),
+                totalCollected: totalCollected.toNumber(),
             };
 
             if (compliance >= 67) high.push(taxpayerResult);
@@ -1857,7 +1849,6 @@ export async function getTaxpayerCompliance() {
         low.sort((a, b) => b.compliance - a.compliance);
 
         return { high, medium, low };
-
     } catch (e) {
         console.error(e);
         throw new Error("Error al calcular el cumplimiento de IVA.");
@@ -2014,7 +2005,7 @@ export async function getExpectedAmount() {
             totalPaid: totalPaid.toNumber(),
             difference: difference.toNumber(),
             percentage: percentageDifference.toNumber(),
-            compliance: compliancePercentage.toNumber(), 
+            compliance: compliancePercentage.toNumber(),
             status: percentageDifference.gte(0) ? "superávit" : "déficit",
         };
     } catch (e) {
