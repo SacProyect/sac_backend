@@ -2674,9 +2674,13 @@ export async function getComplianceByProcess(fiscalId: string) {
     }
 }
 
+
 export async function getFiscalTaxpayerCompliance(fiscalId: string) {
-    const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
-    const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+    const now = new Date();
+    const currentYear = now.getUTCFullYear();
+    const start = new Date(Date.UTC(currentYear, 0, 1));
+    const end = new Date(Date.UTC(currentYear + 1, 0, 1));
+    const currentMonthIdx = now.getUTCMonth(); // 0..11
 
     try {
         const taxpayers = await db.taxpayer.findMany({
@@ -2688,7 +2692,7 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
                     where: {
                         date: {
                             gte: start,
-                            lte: end,
+                            lt: end,
                         },
                     },
                 },
@@ -2696,7 +2700,7 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
                     where: {
                         emition_date: {
                             gte: start,
-                            lte: end,
+                            lt: end,
                         },
                     },
                 },
@@ -2704,7 +2708,7 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
                     where: {
                         date: {
                             gte: start,
-                            lte: end,
+                            lt: end,
                         },
                     },
                 },
@@ -2718,37 +2722,35 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
         const low: any[] = [];
 
         for (const taxpayer of taxpayers) {
-            let reportsCompliant = 0;
-            let totalReports = taxpayer.IVAReports.length;
-
             let totalIva = new Decimal(0);
             let totalIslr = new Decimal(0);
             let totalFines = new Decimal(0);
 
+            // Real IVA paid
             for (const report of taxpayer.IVAReports) {
-                const reportDate = new Date(report.date.toISOString());
+                totalIva = totalIva.plus(report.paid || 0);
+            }
 
-                const applicableIndex = indexIva.find(index =>
-                    index.contract_type === taxpayer.contract_type &&
-                    new Date(index.created_at.toISOString()) <= reportDate &&
-                    (!index.expires_at || new Date(index.expires_at.toISOString()) >= reportDate)
+            // Expected IVA: sum index for each month until current
+            let expectedIVA = new Decimal(0);
+            for (let m = 0; m <= currentMonthIdx; m++) {
+                const refDate = new Date(Date.UTC(currentYear, m, 15));
+                const applicableIndex = indexIva.find(
+                    (index) =>
+                        index.contract_type === taxpayer.contract_type &&
+                        refDate >= index.created_at &&
+                        (!index.expires_at || refDate < index.expires_at)
                 );
 
-                const paid = new Decimal(report.paid);
-                totalIva = totalIva.plus(paid);
-
                 if (applicableIndex) {
-                    const expectedAmount = new Decimal(applicableIndex.base_amount);
-                    if (paid.greaterThanOrEqualTo(expectedAmount)) {
-                        reportsCompliant++;
-                    }
+                    expectedIVA = expectedIVA.plus(applicableIndex.base_amount);
                 }
             }
 
+            // ISLR + fines
             for (const islr of taxpayer.ISLRReports) {
                 totalIslr = totalIslr.plus(islr.paid || 0);
             }
-
             for (const ev of taxpayer.event) {
                 if (ev.type === "FINE") {
                     totalFines = totalFines.plus(ev.amount || 0);
@@ -2757,14 +2759,16 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
 
             const totalCollected = totalIva.plus(totalIslr).plus(totalFines);
 
-            if (totalReports === 0) continue;
-
-            const complianceRate = (reportsCompliant / totalReports) * 100;
+            // Compliance based on expected vs real IVA
+            const complianceRate = expectedIVA.gt(0)
+                ? totalIva.div(expectedIVA).times(100).toDecimalPlaces(2).toNumber()
+                : 0;
 
             const taxpayerSummary = {
                 name: taxpayer.name,
                 rif: taxpayer.rif,
-                complianceRate: Number(complianceRate.toFixed(2)),
+                complianceRate,
+                expectedIVA: expectedIVA.toNumber(),
                 totalCollected: Number(totalCollected.toFixed(2)),
                 totalIva: Number(totalIva.toFixed(2)),
                 totalIslr: Number(totalIslr.toFixed(2)),
@@ -2781,11 +2785,10 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string) {
         }
 
         return {
-            high,
-            medium,
-            low,
+            high: high.sort((a, b) => b.complianceRate - a.complianceRate),
+            medium: medium.sort((a, b) => b.complianceRate - a.complianceRate),
+            low: low.sort((a, b) => b.complianceRate - a.complianceRate),
         };
-
     } catch (e) {
         console.error(e);
         throw new Error("No se pudo obtener el cumplimiento de los contribuyentes.");
