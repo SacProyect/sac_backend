@@ -107,6 +107,40 @@ censusRouter.delete('/delete-census/:id',
         }
 
     }
-)
+);
+
+censusRouter.get('/processes/active',
+    authenticateToken,
+    async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest;
+        if (!user) return res.status(401).json({ error: "Unauthorized access" });
+        if (!["ADMIN", "COORDINATOR", "FISCAL", "SUPERVISOR"].includes(user.role)) {
+            return res.status(403).json({ error: "Forbidden role" });
+        }
+        try {
+            const activeProcesses = await CensusServices.getActiveProcesses();
+            return res.status(200).json(activeProcesses);
+        } catch (error: any) {
+            return res.status(500).json({ message: "Server error", error: error.message });
+        }
+    }
+);
+
+censusRouter.get('/processes/completed',
+    authenticateToken,
+    async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest;
+        if (!user) return res.status(401).json({ error: "Unauthorized access" });
+        if (!["ADMIN", "COORDINATOR", "FISCAL", "SUPERVISOR"].includes(user.role)) {
+            return res.status(403).json({ error: "Forbidden role" });
+        }
+        try {
+            const completedProcesses = await CensusServices.getCompletedProcesses();
+            return res.status(200).json(completedProcesses);
+        } catch (error: any) {
+            return res.status(500).json({ message: "Server error", error: error.message });
+        }
+    }
+);
 
 

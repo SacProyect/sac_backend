@@ -64,3 +64,36 @@ export const deleteTaxpayerCensus = async (id: string) => {
         throw new Error("No se pudo eliminar el contribuyente de censo.")
     }
 }
+
+
+
+
+export const getActiveProcesses = async () => {
+    try {
+        const activeProcesses = await db.taxpayer.findMany({
+            where: {
+                status: true,
+                culminated: false
+            }
+        });
+        return activeProcesses;
+    } catch (error) {
+        console.error(error);
+        throw new Error("Error al obtener procesos activos");
+    }
+}
+
+export const getCompletedProcesses = async () => {
+    try {
+        const completedProcesses = await db.taxpayer.findMany({
+            where: {
+                status: true,
+                culminated: true
+            }
+        });
+        return completedProcesses;
+    } catch (error) {
+        console.error(error);
+        throw new Error("Error al obtener procesos completados");
+    }
+}
