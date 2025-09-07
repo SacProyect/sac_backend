@@ -1183,12 +1183,10 @@ export const updateTaxpayer = async (
 
         // Relaciones
         if (data.parish_id) {
-            console.log("Parish_id" + data.parish_id)
             updateData.parish = { connect: { id: data.parish_id } };
         }
 
         if (data.taxpayer_category_id) {
-            console.log("Category_id " + data.taxpayer_category_id)
             updateData.taxpayer_category = { connect: { id: data.taxpayer_category_id } };
         }
 
