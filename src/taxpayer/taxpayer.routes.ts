@@ -147,7 +147,7 @@ taxpayerRouter.post(
     body("parish").notEmpty().withMessage("parish is required").isString().withMessage("parish must be a string"),
 
     async (req: Request, res: Response) => {
-        try { 
+        try {
 
             const { user } = req as AuthRequest;
             if (!user) return res.status(401).json("Unauthorized access");
@@ -1044,6 +1044,53 @@ taxpayerRouter.put('/payment/:eventId',
             return res.status(200).json(payment);
         } catch (error: any) {
             return res.status(500).json(error.message);
+        }
+    }
+);
+
+taxpayerRouter.put(
+    '/update-taxpayer/:id',
+    authenticateToken,
+    body("address").optional(),
+    body("providenceNum").optional(),
+    body("process").optional(),
+    body("name").optional(),
+    body("rif").optional(),
+    body("parish_id").optional(),
+    body("taxpayer_category_id").optional(),
+    async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest;
+
+        if (!user) return res.status(401).json("Unauthorized access");
+        if (
+            user.role !== "ADMIN" &&
+            user.role !== "COORDINATOR" &&
+            user.role !== "FISCAL" &&
+            user.role !== "SUPERVISOR"
+        )
+            return res.status(403).json("Forbidden");
+
+        let data;
+
+        if (user.role === "ADMIN") {
+            // admin puede actualizar lo que quiera
+            data = req.body;
+
+        } else {
+            // los demás solo parish_id y taxpayer_category_id
+            const { parish_id, taxpayer_category_id } = req.body;
+            data = { parish_id, taxpayer_category_id };
+        }
+
+        const id = req.params.id;
+
+        try {
+            const updated = await TaxpayerServices.updateTaxpayer(id, data);
+
+            return res.status(201).json(updated);
+        } catch (err) {
+            console.error(err);
+            return res.status(500).json("Error al actualizar el contribuyente");
         }
     }
 );

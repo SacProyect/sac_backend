@@ -1163,27 +1163,46 @@ export const deleteObservation = async (id: string) => {
  * @returns The updated taxpayer object or an error if the operation fails.
  */
 
-export const updateTaxpayer = async (taxpayerId: string, data: Partial<Taxpayer>): Promise<Taxpayer | Error> => {
+export const updateTaxpayer = async (
+    taxpayerId: string,
+    data: Partial<Taxpayer>
+): Promise<Taxpayer | Error> => {
     try {
         const updateData: Prisma.taxpayerUpdateInput = {};
+
         if (data.name !== undefined) updateData.name = data.name;
         if (data.rif !== undefined) updateData.rif = data.rif;
-        if (data.providenceNum !== undefined) updateData.providenceNum = data.providenceNum;
-        if (data.contract_type !== undefined) updateData.contract_type = data.contract_type as taxpayer_contract_type;
-        if (data.process !== undefined) updateData.process = data.process as taxpayer_process;
+        if (data.providenceNum !== undefined)
+            updateData.providenceNum = data.providenceNum;
+        if (data.contract_type !== undefined)
+            updateData.contract_type = data.contract_type as taxpayer_contract_type;
+        if (data.process !== undefined)
+            updateData.process = data.process as taxpayer_process;
         if (data.fase !== undefined) updateData.fase = data.fase;
         if (data.address !== undefined) updateData.address = data.address;
-        // add other fields similarly...
+
+        // Relaciones
+        if (data.parish_id) {
+            console.log("Parish_id" + data.parish_id)
+            updateData.parish = { connect: { id: data.parish_id } };
+        }
+
+        if (data.taxpayer_category_id) {
+            console.log("Category_id " + data.taxpayer_category_id)
+            updateData.taxpayer_category = { connect: { id: data.taxpayer_category_id } };
+        }
 
         const updatedTaxpayer = await db.taxpayer.update({
             where: { id: taxpayerId },
             data: updateData,
         });
+
         return updatedTaxpayer;
-    } catch (error) {
-        throw error;
+    } catch (e: any) {
+        throw new Error(e);
     }
 };
+
 
 /**
  * Updates an event object.
@@ -1844,11 +1863,11 @@ export const getParishList = async () => {
 
 
     try {
-        
+
         const parishList = await db.parish.findMany();
 
         return parishList;
-        
+
     } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError) {
             console.error('Prisma error:', e.code);

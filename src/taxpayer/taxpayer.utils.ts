@@ -1,6 +1,6 @@
 import { Decimal } from "@prisma/client/runtime/library"
 import { db } from "../utils/db.server"
-import { taxpayer_contract_type, Taxpayer_Fases, taxpayer_process } from "@prisma/client"
+import { Parish, taxpayer_contract_type, Taxpayer_Fases, taxpayer_process, TaxpayerCategory } from "@prisma/client"
 
 export type Taxpayer = {
     providenceNum: bigint;
@@ -12,6 +12,10 @@ export type Taxpayer = {
     fase: Taxpayer_Fases;
     events?: Event[];
     address: string;
+    parish?: Parish;
+    category?: TaxpayerCategory;
+    parish_id?: string | null;             // ✅ corregido
+    taxpayer_category_id?: string | null;  // ✅ corregido
 }
 
 export type CreateIndexIva = {
