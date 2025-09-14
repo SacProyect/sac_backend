@@ -178,8 +178,6 @@ taxpayerRouter.post(
 
             const { providenceNum, process, name, rif, contract_type, officerId, address, emition_date, parishId, categoryId } = req.body;
 
-            console.log("OFFICER ID: " + officerId);
-
             const newTaxpayer = await TaxpayerServices.createTaxpayer({
                 providenceNum: BigInt(providenceNum),
                 process,

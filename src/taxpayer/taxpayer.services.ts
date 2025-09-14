@@ -143,7 +143,6 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                 emition_date: emitionDate.toISOString(),
                 taxpayer_category_id: input.categoryId,
                 parish_id: input.parishId,
-
             }
         });
 
