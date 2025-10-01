@@ -1607,7 +1607,7 @@ export async function getTopFiveByGroup() {
     }
 }
 
-export async function getMonthlyGrowth() {
+export async function getMonthlyCompliance() {
     try {
         const now = new Date();
 
@@ -1629,7 +1629,7 @@ export async function getMonthlyGrowth() {
                                     where: {
                                         emition_date: {
                                             gte: antePrevMonthStart,
-                                            lt: currentMonthStart // only anteprev + prev months
+                                            lt: currentMonthStart
                                         }
                                     }
                                 },
@@ -1656,12 +1656,12 @@ export async function getMonthlyGrowth() {
             }
         });
 
-        const growthResults: {
+        const complianceResults: {
             groupName: string;
             coordinatorName: string;
-            antePreviousMonth: Decimal;
-            previousMonth: Decimal;
-            growthPercentage: number;
+            antePreviousMonth: number;
+            previousMonth: number;
+            compliancePercentage: number;
         }[] = [];
 
         for (const group of groups) {
@@ -1712,27 +1712,29 @@ export async function getMonthlyGrowth() {
                 }
             }
 
-            const growthPercentage = antePrevTotal.equals(0)
-                ? prevTotal.greaterThan(0) ? 100 : 0
-                : Number(prevTotal.minus(antePrevTotal).dividedBy(antePrevTotal).times(100));
+            // Calcular cumplimiento
+            const compliancePercentage = antePrevTotal.equals(0)
+                ? 0
+                : Number(prevTotal.dividedBy(antePrevTotal).times(100));
 
-            growthResults.push({
+            complianceResults.push({
                 groupName: group.name,
                 coordinatorName,
-                antePreviousMonth: antePrevTotal,
-                previousMonth: prevTotal,
-                growthPercentage: Math.round(growthPercentage * 100) / 100,
+                antePreviousMonth: antePrevTotal.toNumber(),
+                previousMonth: prevTotal.toNumber(),
+                compliancePercentage: Math.round(compliancePercentage * 100) / 100,
             });
         }
 
-        growthResults.sort((a, b) => b.growthPercentage - a.growthPercentage);
+        complianceResults.sort((a, b) => b.compliancePercentage - a.compliancePercentage);
 
-        return growthResults;
+        return complianceResults;
     } catch (e) {
         console.error(e);
-        throw new Error("No se pudo calcular el crecimiento mensual.");
+        throw new Error("No se pudo calcular el porcentaje de cumplimiento.");
     }
 }
+
 
 
 export async function getTaxpayerCompliance() {

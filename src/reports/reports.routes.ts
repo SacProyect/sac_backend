@@ -465,7 +465,7 @@ reportRouter.get('/get-monthly-growth',
 
 
         try {
-            const response = await ReportService.getMonthlyGrowth();
+            const response = await ReportService.getMonthlyCompliance();
 
             return res.status(200).json(response);
         } catch (e) {
