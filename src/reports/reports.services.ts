@@ -1610,9 +1610,13 @@ export async function getTopFiveByGroup() {
 export async function getMonthlyGrowth() {
     try {
         const now = new Date();
+
+        // start of current month
         const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-        const nextMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+        // start of previous month
         const prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+        // start of anteprevious month
+        const antePrevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1));
 
         const groups = await db.fiscalGroup.findMany({
             include: {
@@ -1624,24 +1628,24 @@ export async function getMonthlyGrowth() {
                                 ISLRReports: {
                                     where: {
                                         emition_date: {
-                                            gte: prevMonthStart,
-                                            lt: nextMonthStart
+                                            gte: antePrevMonthStart,
+                                            lt: currentMonthStart // only anteprev + prev months
                                         }
                                     }
                                 },
                                 IVAReports: {
                                     where: {
                                         date: {
-                                            gte: prevMonthStart,
-                                            lt: nextMonthStart
+                                            gte: antePrevMonthStart,
+                                            lt: currentMonthStart
                                         }
                                     }
                                 },
                                 event: {
                                     where: {
                                         date: {
-                                            gte: prevMonthStart,
-                                            lt: nextMonthStart
+                                            gte: antePrevMonthStart,
+                                            lt: currentMonthStart
                                         }
                                     }
                                 }
@@ -1655,68 +1659,68 @@ export async function getMonthlyGrowth() {
         const growthResults: {
             groupName: string;
             coordinatorName: string;
+            antePreviousMonth: Decimal;
             previousMonth: Decimal;
-            currentMonth: Decimal;
             growthPercentage: number;
         }[] = [];
 
         for (const group of groups) {
-            let previousTotal = new Decimal(0);
-            let currentTotal = new Decimal(0);
+            let antePrevTotal = new Decimal(0);
+            let prevTotal = new Decimal(0);
 
-            const coordinator = group.coordinator?.name
-
-            const coordinatorName = coordinator || "Sin coordinador";
-
+            const coordinatorName = group.coordinator?.name || "Sin coordinador";
             const fiscals = group.members.filter(m => m.role === "FISCAL");
 
             for (const fiscal of fiscals) {
                 for (const taxp of fiscal.taxpayer) {
+                    // ISLR
                     for (const rep of taxp.ISLRReports) {
                         const date = new Date(rep.emition_date);
                         const amount = new Decimal(rep.paid);
 
-                        if (date >= currentMonthStart && date < nextMonthStart) {
-                            currentTotal = currentTotal.plus(amount);
-                        } else if (date >= prevMonthStart && date < currentMonthStart) {
-                            previousTotal = previousTotal.plus(amount);
+                        if (date >= prevMonthStart && date < currentMonthStart) {
+                            prevTotal = prevTotal.plus(amount);
+                        } else if (date >= antePrevMonthStart && date < prevMonthStart) {
+                            antePrevTotal = antePrevTotal.plus(amount);
                         }
                     }
 
+                    // IVA
                     for (const rep of taxp.IVAReports) {
                         const date = new Date(rep.date);
                         const amount = new Decimal(rep.paid);
 
-                        if (date >= currentMonthStart && date < nextMonthStart) {
-                            currentTotal = currentTotal.plus(amount);
-                        } else if (date >= prevMonthStart && date < currentMonthStart) {
-                            previousTotal = previousTotal.plus(amount);
+                        if (date >= prevMonthStart && date < currentMonthStart) {
+                            prevTotal = prevTotal.plus(amount);
+                        } else if (date >= antePrevMonthStart && date < prevMonthStart) {
+                            antePrevTotal = antePrevTotal.plus(amount);
                         }
                     }
 
+                    // Fines
                     for (const ev of taxp.event) {
                         if (ev.type !== "FINE") continue;
                         const date = new Date(ev.date);
                         const amount = new Decimal(ev.amount);
 
-                        if (date >= currentMonthStart && date < nextMonthStart) {
-                            currentTotal = currentTotal.plus(amount);
-                        } else if (date >= prevMonthStart && date < currentMonthStart) {
-                            previousTotal = previousTotal.plus(amount);
+                        if (date >= prevMonthStart && date < currentMonthStart) {
+                            prevTotal = prevTotal.plus(amount);
+                        } else if (date >= antePrevMonthStart && date < prevMonthStart) {
+                            antePrevTotal = antePrevTotal.plus(amount);
                         }
                     }
                 }
             }
 
-            const growthPercentage = previousTotal.equals(0)
-                ? currentTotal.greaterThan(0) ? 100 : 0
-                : Number(currentTotal.minus(previousTotal).dividedBy(previousTotal).times(100));
+            const growthPercentage = antePrevTotal.equals(0)
+                ? prevTotal.greaterThan(0) ? 100 : 0
+                : Number(prevTotal.minus(antePrevTotal).dividedBy(antePrevTotal).times(100));
 
             growthResults.push({
                 groupName: group.name,
-                coordinatorName: coordinatorName,
-                previousMonth: previousTotal,
-                currentMonth: currentTotal,
+                coordinatorName,
+                antePreviousMonth: antePrevTotal,
+                previousMonth: prevTotal,
                 growthPercentage: Math.round(growthPercentage * 100) / 100,
             });
         }
