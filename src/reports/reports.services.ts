@@ -1607,16 +1607,15 @@ export async function getTopFiveByGroup() {
     }
 }
 
+
+
+
 export async function getMonthlyCompliance() {
     try {
         const now = new Date();
-
-        // start of current month
         const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-        // start of previous month
+        const nextMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
         const prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-        // start of anteprevious month
-        const antePrevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1));
 
         const groups = await db.fiscalGroup.findMany({
             include: {
@@ -1628,24 +1627,24 @@ export async function getMonthlyCompliance() {
                                 ISLRReports: {
                                     where: {
                                         emition_date: {
-                                            gte: antePrevMonthStart,
-                                            lt: currentMonthStart
+                                            gte: prevMonthStart,
+                                            lt: nextMonthStart
                                         }
                                     }
                                 },
                                 IVAReports: {
                                     where: {
                                         date: {
-                                            gte: antePrevMonthStart,
-                                            lt: currentMonthStart
+                                            gte: prevMonthStart,
+                                            lt: nextMonthStart
                                         }
                                     }
                                 },
                                 event: {
                                     where: {
                                         date: {
-                                            gte: antePrevMonthStart,
-                                            lt: currentMonthStart
+                                            gte: prevMonthStart,
+                                            lt: nextMonthStart
                                         }
                                     }
                                 }
@@ -1659,14 +1658,14 @@ export async function getMonthlyCompliance() {
         const complianceResults: {
             groupName: string;
             coordinatorName: string;
-            antePreviousMonth: number;
             previousMonth: number;
+            currentMonth: number;
             compliancePercentage: number;
         }[] = [];
 
         for (const group of groups) {
-            let antePrevTotal = new Decimal(0);
-            let prevTotal = new Decimal(0);
+            let previousTotal = new Decimal(0);
+            let currentTotal = new Decimal(0);
 
             const coordinatorName = group.coordinator?.name || "Sin coordinador";
             const fiscals = group.members.filter(m => m.role === "FISCAL");
@@ -1678,10 +1677,10 @@ export async function getMonthlyCompliance() {
                         const date = new Date(rep.emition_date);
                         const amount = new Decimal(rep.paid);
 
-                        if (date >= prevMonthStart && date < currentMonthStart) {
-                            prevTotal = prevTotal.plus(amount);
-                        } else if (date >= antePrevMonthStart && date < prevMonthStart) {
-                            antePrevTotal = antePrevTotal.plus(amount);
+                        if (date >= currentMonthStart && date < nextMonthStart) {
+                            currentTotal = currentTotal.plus(amount);
+                        } else if (date >= prevMonthStart && date < currentMonthStart) {
+                            previousTotal = previousTotal.plus(amount);
                         }
                     }
 
@@ -1690,10 +1689,10 @@ export async function getMonthlyCompliance() {
                         const date = new Date(rep.date);
                         const amount = new Decimal(rep.paid);
 
-                        if (date >= prevMonthStart && date < currentMonthStart) {
-                            prevTotal = prevTotal.plus(amount);
-                        } else if (date >= antePrevMonthStart && date < prevMonthStart) {
-                            antePrevTotal = antePrevTotal.plus(amount);
+                        if (date >= currentMonthStart && date < nextMonthStart) {
+                            currentTotal = currentTotal.plus(amount);
+                        } else if (date >= prevMonthStart && date < currentMonthStart) {
+                            previousTotal = previousTotal.plus(amount);
                         }
                     }
 
@@ -1703,25 +1702,25 @@ export async function getMonthlyCompliance() {
                         const date = new Date(ev.date);
                         const amount = new Decimal(ev.amount);
 
-                        if (date >= prevMonthStart && date < currentMonthStart) {
-                            prevTotal = prevTotal.plus(amount);
-                        } else if (date >= antePrevMonthStart && date < prevMonthStart) {
-                            antePrevTotal = antePrevTotal.plus(amount);
+                        if (date >= currentMonthStart && date < nextMonthStart) {
+                            currentTotal = currentTotal.plus(amount);
+                        } else if (date >= prevMonthStart && date < currentMonthStart) {
+                            previousTotal = previousTotal.plus(amount);
                         }
                     }
                 }
             }
 
-            // Calcular cumplimiento
-            const compliancePercentage = antePrevTotal.equals(0)
+            // Cumplimiento = (mes actual / mes previo) * 100
+            const compliancePercentage = previousTotal.equals(0)
                 ? 0
-                : Number(prevTotal.dividedBy(antePrevTotal).times(100));
+                : Number(currentTotal.dividedBy(previousTotal).times(100));
 
             complianceResults.push({
                 groupName: group.name,
                 coordinatorName,
-                antePreviousMonth: antePrevTotal.toNumber(),
-                previousMonth: prevTotal.toNumber(),
+                previousMonth: previousTotal.toNumber(),
+                currentMonth: currentTotal.toNumber(),
                 compliancePercentage: Math.round(compliancePercentage * 100) / 100,
             });
         }
@@ -1734,7 +1733,6 @@ export async function getMonthlyCompliance() {
         throw new Error("No se pudo calcular el porcentaje de cumplimiento.");
     }
 }
-
 
 
 export async function getTaxpayerCompliance() {
