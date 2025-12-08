@@ -131,6 +131,11 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
             throw new Error("At least one PDF must be uploaded.");
         }
 
+        // ✅ Validar que parishId y categoryId estén presentes
+        if (!input.parishId || !input.categoryId) {
+            throw new Error("Parroquia y Actividad Económica son campos obligatorios.");
+        }
+
         const taxpayer = await db.taxpayer.create({
             data: {
                 providenceNum: input.providenceNum,
@@ -1601,7 +1606,23 @@ export async function getTaxpayerData(id: string) {
             include: {
                 RepairReports: true,
                 investigation_pdfs: true,
-                user: { select: { group: { select: { coordinatorId: true } }, supervisorId: true, } },
+                user: { 
+                    select: { 
+                        id: true,
+                        name: true,
+                        group: { 
+                            select: { 
+                                coordinatorId: true,
+                                coordinator: {
+                                    select: {
+                                        name: true
+                                    }
+                                }
+                            } 
+                        }, 
+                        supervisorId: true,
+                    } 
+                },
                 IVAReports: {
                     take: 1,
                     orderBy: {
