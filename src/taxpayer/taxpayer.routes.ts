@@ -176,7 +176,15 @@ taxpayerRouter.post(
                 await fs.promises.unlink(file.path);
             }
 
-            const { providenceNum, process, name, rif, contract_type, officerId, address, emition_date, parishId, categoryId } = req.body;
+            const { providenceNum, process, name, rif, contract_type, officerId, address, emition_date, parish, category } = req.body;
+
+            // ✅ Validar que parish y category estén presentes (ya validado por express-validator, pero doble verificación)
+            if (!parish || !category) {
+                return res.status(400).json({ 
+                    message: "Server error", 
+                    error: "Parroquia y Actividad Económica son campos obligatorios" 
+                });
+            }
 
             const newTaxpayer = await TaxpayerServices.createTaxpayer({
                 providenceNum: BigInt(providenceNum),
@@ -190,8 +198,8 @@ taxpayerRouter.post(
                 pdfs: s3Files,
                 userId: userId,
                 role: role,
-                parishId: parishId,
-                categoryId: categoryId,
+                parishId: parish,  // El frontend envía el ID como "parish"
+                categoryId: category,  // El frontend envía el ID como "category"
             });
 
             return res.status(200).json(newTaxpayer);
