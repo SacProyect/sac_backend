@@ -170,8 +170,8 @@ model taxpayer {
     index_iva            Decimal?
     parish_id            String
     parish               Parish                  @relation(fields: [parish_id], references: [id]) 
-    taxpayer_category_id String
-    taxpayer_category    TaxpayerCategory        @relation(fields: [taxpayer_category_id], references: [id])
+    taxpayer_category_id String?
+    taxpayer_category    TaxpayerCategory?       @relation(fields: [taxpayer_category_id], references: [id])
     investigation_pdfs   InvestigationPdf[]
     observations         Observations[]
     IVAReports           IVAReports[]
