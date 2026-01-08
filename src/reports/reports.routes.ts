@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import * as ReportService from './reports.services'
 import { authenticateToken, AuthRequest } from "../users/user.utils";
-import { body, validationResult } from 'express-validator';
+import { body, validationResult, query } from 'express-validator';
 import { createError } from "./reports.services";
 import multer, { StorageEngine } from "multer";
 import path from "path";
@@ -100,17 +100,17 @@ reportRouter.post('/errors',
 
 
 
-// reportRouter.get('/kpi',
-//     authenticateToken,
-//     async (req: Request, res: Response) => {
-//         try {
-//             const KPI = await ReportService.getKPI()
-//             return res.status(200).json(KPI)
-//         } catch (error: any) {
-//             return res.status(500).json(error.message)
-//         }
-//     }
-// )
+reportRouter.get('/kpi',
+    authenticateToken,
+    async (req: Request, res: Response) => {
+        try {
+            const KPI = await ReportService.getGlobalKPI()
+            return res.status(200).json(KPI)
+        } catch (error: any) {
+            return res.status(500).json(error.message)
+        }
+    }
+)
 
 reportRouter.get('/fine/:id?',
     authenticateToken,
@@ -240,19 +240,19 @@ reportRouter.get('/get-group-records',
 
 reportRouter.get('/global-performance',
     authenticateToken,
+    query("date").isDate().optional(),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest
 
 
         if (!user) return res.status(401).json("Unauthorized access")
-        console.log("user role: " + user.role)
         if (user.role !== "ADMIN" && user.role !== "COORDINATOR") {
-            console.error("USER ROLE: " + user.role);
             return res.status(403).json("Forbidden access")
         }
 
         try {
-            const globalPerformance = await ReportService.getGlobalPerformance();
+            const date = req.query.date ? new Date(req.query.date as string) : new Date();
+            const globalPerformance = await ReportService.getGlobalPerformance(date);
 
             return res.json(globalPerformance)
         } catch (e) {
@@ -265,18 +265,19 @@ reportRouter.get('/global-performance',
 
 reportRouter.get("/global-taxpayer-performance",
     authenticateToken,
+    query("date").isDate().optional(),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest
 
 
         if (!user) return res.status(401).json("Unauthorized access")
-        console.log("user role: " + user.role)
         if (user.role !== "ADMIN" && user.role !== "COORDINATOR") {
             return res.status(403).json("Forbidden access")
         }
 
         try {
-            const response = await ReportService.getIvaByMonth()
+            const date = req.query.date ? new Date(req.query.date as string) : new Date();
+            const response = await ReportService.getIvaByMonth(date)
 
             return res.status(200).json(response)
 
@@ -295,7 +296,6 @@ reportRouter.get("/debug-query",
 
 
         if (!user) return res.status(401).json("Unauthorized access")
-        console.log("user role: " + user.role)
         if (user.role !== "ADMIN") {
             return res.status(403).json("Forbidden access")
         }
@@ -315,6 +315,7 @@ reportRouter.get("/debug-query",
 
 reportRouter.get("/group-performance",
     authenticateToken,
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -324,8 +325,10 @@ reportRouter.get("/group-performance",
 
 
         try {
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
 
-            const response = await ReportService.getGroupPerformance();
+            const response = await ReportService.getGroupPerformance(date);
 
             return res.status(200).json(response);
 
@@ -339,7 +342,7 @@ reportRouter.get("/group-performance",
 
 reportRouter.get("/global-kpi",
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -349,8 +352,10 @@ reportRouter.get("/global-kpi",
 
 
         try {
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
 
-            const response = await ReportService.getGlobalKPI();
+            const response = await ReportService.getGlobalKPI(date);
 
             return res.status(200).json(response);
 
@@ -364,7 +369,7 @@ reportRouter.get("/global-kpi",
 
 reportRouter.get("/individual-iva-report/:id",
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -377,7 +382,10 @@ reportRouter.get("/individual-iva-report/:id",
         const id: string = req.params.id;
 
         try {
-            const response = await ReportService.getIndividualIvaReport(id);
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getIndividualIvaReport(id, date);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -389,7 +397,7 @@ reportRouter.get("/individual-iva-report/:id",
 
 reportRouter.get('/get-best-supervisor-by-group',
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -399,7 +407,10 @@ reportRouter.get('/get-best-supervisor-by-group',
 
 
         try {
-            const response = await ReportService.getBestSupervisorByGroups();
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getBestSupervisorByGroups(date);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -411,7 +422,7 @@ reportRouter.get('/get-best-supervisor-by-group',
 
 reportRouter.get('/get-top-fiscals',
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -421,7 +432,10 @@ reportRouter.get('/get-top-fiscals',
 
 
         try {
-            const response = await ReportService.getTopFiscals();
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getTopFiscals(date);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -433,7 +447,7 @@ reportRouter.get('/get-top-fiscals',
 
 reportRouter.get('/get-top-five-by-group',
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -443,7 +457,10 @@ reportRouter.get('/get-top-five-by-group',
 
 
         try {
-            const response = await ReportService.getTopFiveByGroup();
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getTopFiveByGroup(date);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -455,7 +472,7 @@ reportRouter.get('/get-top-five-by-group',
 
 reportRouter.get('/get-monthly-growth',
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -465,7 +482,10 @@ reportRouter.get('/get-monthly-growth',
 
 
         try {
-            const response = await ReportService.getMonthlyCompliance();
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getMonthlyCompliance(date);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -477,7 +497,7 @@ reportRouter.get('/get-monthly-growth',
 
 reportRouter.get('/get-taxpayers-compliance',
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -487,7 +507,10 @@ reportRouter.get('/get-taxpayers-compliance',
 
 
         try {
-            const response = await ReportService.getTaxpayerCompliance();
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getTaxpayerCompliance(date);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -499,7 +522,7 @@ reportRouter.get('/get-taxpayers-compliance',
 
 reportRouter.get('/get-expected-amount',
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -509,7 +532,10 @@ reportRouter.get('/get-expected-amount',
 
 
         try {
-            const response = await ReportService.getExpectedAmount();
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getExpectedAmount(date);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -521,7 +547,7 @@ reportRouter.get('/get-expected-amount',
 
 reportRouter.get('/get-fiscal-info/:id',
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -532,7 +558,10 @@ reportRouter.get('/get-fiscal-info/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const response = await ReportService.getFiscalInfo(id);
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getFiscalInfo(id, date);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -544,7 +573,7 @@ reportRouter.get('/get-fiscal-info/:id',
 
 reportRouter.get('/get-fiscal-taxpayers/:id',
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -555,7 +584,10 @@ reportRouter.get('/get-fiscal-taxpayers/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const response = await ReportService.getFiscalTaxpayers(id);
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getFiscalTaxpayers(id, date);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -567,7 +599,7 @@ reportRouter.get('/get-fiscal-taxpayers/:id',
 
 reportRouter.get('/get-fiscal-monthly-collect/:id',
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -578,7 +610,10 @@ reportRouter.get('/get-fiscal-monthly-collect/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const response = await ReportService.getMonthyCollect(id);
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getMonthyCollect(id, date);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -590,7 +625,7 @@ reportRouter.get('/get-fiscal-monthly-collect/:id',
 
 reportRouter.get('/get-fiscal-monthly-performance/:id',
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -601,7 +636,10 @@ reportRouter.get('/get-fiscal-monthly-performance/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const response = await ReportService.getMontlyPerformance(id);
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getMontlyPerformance(id, date);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -613,7 +651,7 @@ reportRouter.get('/get-fiscal-monthly-performance/:id',
 
 reportRouter.get('/get-fiscal-compliance-by-process/:id',
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -624,7 +662,10 @@ reportRouter.get('/get-fiscal-compliance-by-process/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const response = await ReportService.getComplianceByProcess(id);
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getComplianceByProcess(id, date);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -636,7 +677,7 @@ reportRouter.get('/get-fiscal-compliance-by-process/:id',
 
 reportRouter.get('/get-fiscal-compliance/:id',
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -647,7 +688,10 @@ reportRouter.get('/get-fiscal-compliance/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const response = await ReportService.getFiscalTaxpayerCompliance(id);
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getFiscalTaxpayerCompliance(id, date);
 
             return res.status(200).json(response);
         } catch (e) {
@@ -659,7 +703,7 @@ reportRouter.get('/get-fiscal-compliance/:id',
 
 reportRouter.get('/get-fiscal-collect-analisis/:id',
     authenticateToken,
-
+    query("date").optional(),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -670,7 +714,10 @@ reportRouter.get('/get-fiscal-collect-analisis/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const response = await ReportService.getFiscalCollectAnalisis(id);
+            const dateParam = req.query.date as string;
+            const date = dateParam ? new Date(dateParam) : new Date();
+
+            const response = await ReportService.getFiscalCollectAnalisis(id, date);
 
             return res.status(200).json(response);
         } catch (e) {

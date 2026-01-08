@@ -12,7 +12,7 @@ import { Decimal } from "@prisma/client/runtime/library";
 import { ISLRReports, IVAReports, Prisma, taxpayer, taxpayer_contract_type, taxpayer_process } from "@prisma/client";
 
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// const resend = new Resend(process.env.RESEND_API_KEY); 
 const s3 = new S3Client({ region: "us-east-2" });
 
 
@@ -57,26 +57,26 @@ export async function generateDownloadInvestigationPdfUrl(key: string) {
 // Helper para 'dormir' N milisegundos
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function sendEmailWithRetry(
-    params: Parameters<typeof resend.emails.send>[0],
-    retries = 3,
-    delayMs = 3000
-) {
-    for (let attempt = 1; attempt <= retries; attempt++) {
-        try {
-            return await resend.emails.send(params);
-        } catch (err) {
-            console.error(`Intento ${attempt} de envío de email fallido:`, err);
-            if (attempt < retries) {
-                // espera antes del próximo intento
-                await sleep(delayMs);
-            } else {
-                // tras último intento, registra error y sigue adelante
-                console.error("Todos los intentos de envío de email han fallado.");
-            }
-        }
-    }
-}
+// async function sendEmailWithRetry(
+//     params: Parameters<typeof resend.emails.send>[0],
+//     retries = 3,
+//     delayMs = 3000
+// ) {
+//     for (let attempt = 1; attempt <= retries; attempt++) {
+//         try {
+//             return await resend.emails.send(params);
+//         } catch (err) {
+//             console.error(`Intento ${attempt} de envío de email fallido:`, err);
+//             if (attempt < retries) {
+//                 // espera antes del próximo intento
+//                 await sleep(delayMs);
+//             } else {
+//                 // tras último intento, registra error y sigue adelante
+//                 console.error("Todos los intentos de envío de email han fallado.");
+//             }
+//         }
+//     }
+// }
 
 
 /**
@@ -85,272 +85,272 @@ async function sendEmailWithRetry(
  * @param {NewTaxpayer} input - The input data for the new taxpayer.
  * @returns {Promise<Taxpayer | Error>} A Promise resolving to the created taxpayer or an error.
  */
-export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Error> => {
-    try {
+// export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Error> => {
+//     try {
 
-        const emitionDate = new Date(input.emition_date);
-        const inputYear = emitionDate.getFullYear();
+//         const emitionDate = new Date(input.emition_date);
+//         const inputYear = emitionDate.getFullYear();
 
-        if (input.role !== "ADMIN") {
-            const normalizedName = input.name.replace(/\s+/g, "").toLowerCase();
-            const firstWord = input.name.trim().split(/\s+/)[0];
+//         if (input.role !== "ADMIN") {
+//             const normalizedName = input.name.replace(/\s+/g, "").toLowerCase();
+//             const firstWord = input.name.trim().split(/\s+/)[0];
 
-            const matches = await db.taxpayer.findMany({
-                where: {
-                    OR: [
-                        { providenceNum: input.providenceNum },
-                        { name: { contains: firstWord } }
-                    ]
-                },
-                select: {
-                    name: true,
-                    emition_date: true,
-                    process: true,
-                    providenceNum: true
-                }
-            });
+//             const matches = await db.taxpayer.findMany({
+//                 where: {
+//                     OR: [
+//                         { providenceNum: input.providenceNum },
+//                         { name: { contains: firstWord } }
+//                     ]
+//                 },
+//                 select: {
+//                     name: true,
+//                     emition_date: true,
+//                     process: true,
+//                     providenceNum: true
+//                 }
+//             });
 
-            for (const entry of matches) {
-                const normalized = entry.name.replace(/\s+/g, "").toLowerCase();
-                const sameName = normalized === normalizedName;
-                const prevDate = new Date(entry.emition_date);
-                const prevYear = prevDate.getFullYear();
+//             for (const entry of matches) {
+//                 const normalized = entry.name.replace(/\s+/g, "").toLowerCase();
+//                 const sameName = normalized === normalizedName;
+//                 const prevDate = new Date(entry.emition_date);
+//                 const prevYear = prevDate.getFullYear();
 
-                if (sameName) {
-                    const afFpCombo = (entry.process === "AF" && input.process === "FP") ||
-                        (entry.process === "FP" && input.process === "AF");
+//                 if (sameName) {
+//                     const afFpCombo = (entry.process === "AF" && input.process === "FP") ||
+//                         (entry.process === "FP" && input.process === "AF");
 
-                    if (afFpCombo && inputYear === prevYear) {
-                        throw new Error(`No se pueden registrar AF y FP en el mismo año para el mismo contribuyente.`);
-                    }
-                }
-            }
-        }
+//                     if (afFpCombo && inputYear === prevYear) {
+//                         throw new Error(`No se pueden registrar AF y FP en el mismo año para el mismo contribuyente.`);
+//                     }
+//                 }
+//             }
+//         }
 
-        if (!input.pdfs || input.pdfs.length === 0) {
-            throw new Error("At least one PDF must be uploaded.");
-        }
+//         if (!input.pdfs || input.pdfs.length === 0) {
+//             throw new Error("At least one PDF must be uploaded.");
+//         }
 
-        // ✅ Validar que parishId y categoryId estén presentes
-        if (!input.parishId || !input.categoryId) {
-            throw new Error("Parroquia y Actividad Económica son campos obligatorios.");
-        }
+//         // ✅ Validar que parishId y categoryId estén presentes
+//         if (!input.parishId || !input.categoryId) {
+//             throw new Error("Parroquia y Actividad Económica son campos obligatorios.");
+//         }
 
-        const taxpayer = await db.taxpayer.create({
-            data: {
-                providenceNum: input.providenceNum,
-                process: input.process,
-                name: input.name,
-                contract_type: input.contract_type,
-                officerId: input.officerId,
-                rif: input.rif,
-                address: input.address,
-                emition_date: emitionDate.toISOString(),
-                taxpayer_category_id: input.categoryId,
-                parish_id: input.parishId,
-            }
-        });
+//         const taxpayer = await db.taxpayer.create({
+//             data: {
+//                 providenceNum: input.providenceNum,
+//                 process: input.process,
+//                 name: input.name,
+//                 contract_type: input.contract_type,
+//                 officerId: input.officerId,
+//                 rif: input.rif,
+//                 address: input.address,
+//                 emition_date: emitionDate.toISOString(),
+//                 taxpayer_category_id: input.categoryId,
+//                 parish_id: input.parishId,
+//             }
+//         });
 
-        await db.investigationPdf.createMany({
-            data: input.pdfs.map((pdf) => ({
-                pdf_url: pdf.pdf_url,
-                taxpayerId: taxpayer.id,
-            })),
-        });
+//         await db.investigationPdf.createMany({
+//             data: input.pdfs.map((pdf) => ({
+//                 pdf_url: pdf.pdf_url,
+//                 taxpayerId: taxpayer.id,
+//             })),
+//         });
 
-        if (input.process === "AF") {
-            const officer = await db.user.findUnique({
-                where: { id: input.officerId },
-                include: {
-                    group: {
-                        include: {
-                            coordinator: {
-                                select: { email: true }
-                            }
-                        }
-                    }
-                }
-            });
+//         if (input.process === "AF") {
+//             const officer = await db.user.findUnique({
+//                 where: { id: input.officerId },
+//                 include: {
+//                     group: {
+//                         include: {
+//                             coordinator: {
+//                                 select: { email: true }
+//                             }
+//                         }
+//                     }
+//                 }
+//             });
 
-            const fiscalName = (await db.user.findUnique({
-                where: { id: input.userId },
-                select: { name: true }
-            }))?.name ?? "—";
+//             const fiscalName = (await db.user.findUnique({
+//                 where: { id: input.userId },
+//                 select: { name: true }
+//             }))?.name ?? "—";
 
-            const admins = await db.user.findMany({
-                where: { role: "ADMIN" },
-            });
+//             const admins = await db.user.findMany({
+//                 where: { role: "ADMIN" },
+//             });
 
-            const fromAddress = process.env.EMAIL_FROM ?? 'no-reply@sac-app.com';
-            const recipients = [
-                ...admins.map(admin => admin.email),
-                ...(officer?.group?.coordinator?.email ? [officer.group.coordinator.email] : [])
-            ];
+//             const fromAddress = process.env.EMAIL_FROM ?? 'no-reply@sac-app.com';
+//             const recipients = [
+//                 ...admins.map(admin => admin.email),
+//                 ...(officer?.group?.coordinator?.email ? [officer.group.coordinator.email] : [])
+//             ];
 
-            const contractTypeMap: Record<string, string> = {
-                SPECIAL: "ESPECIAL",
-                ORDINARY: "ORDINARIO",
-            };
+//             const contractTypeMap: Record<string, string> = {
+//                 SPECIAL: "ESPECIAL",
+//                 ORDINARY: "ORDINARIO",
+//             };
 
-            const displayContractType = contractTypeMap[input.contract_type] ?? input.contract_type;
+//             const displayContractType = contractTypeMap[input.contract_type] ?? input.contract_type;
 
-            const emailHtml = `
-                <div style="font-family: Arial, sans-serif; color: #333;">
-                <h2 style="color: #2c3e50;">🆕 Nuevo Contribuyente para Auditoría Fiscal</h2>
-                <p><strong>Fiscal Responsable:</strong> ${fiscalName}</p>
-                <p>Se ha creado un nuevo contribuyente con el procedimiento <strong>Auditoría Fiscal (AF)</strong>.</p>
-                <h3 style="margin-top:20px;color:#2980b9;">📋 Detalles</h3>
-                <ul style="line-height:1.6;">
-                    <li><strong>Nombre:</strong> ${input.name}</li>
-                    <li><strong>RIF:</strong> ${input.rif}</li>
-                    <li><strong>Tipo de contrato:</strong> ${displayContractType ?? "Desconocido"}</li>
-                    <li><strong>Número de providencia:</strong> ${input.providenceNum}</li>
-                    <li><strong>Fecha de emisión:</strong> ${new Date(input.emition_date).toLocaleDateString()}</li>
-                    <li><strong>Dirección:</strong> ${input.address}</li>
-                </ul>
-                <a href="https://sac-app.com" target="_blank" 
-                style="
-                    display: inline-block;
-                    background-color: #2980b9;
-                    color: white;
-                    padding: 10px 20px;
-                    text-decoration: none;
-                    border-radius: 5px;
-                    margin-top: 10px;
-                ">
-                🔗 Ir a SAC App
-                </a>
+//             const emailHtml = `
+//                 <div style="font-family: Arial, sans-serif; color: #333;">
+//                 <h2 style="color: #2c3e50;">🆕 Nuevo Contribuyente para Auditoría Fiscal</h2>
+//                 <p><strong>Fiscal Responsable:</strong> ${fiscalName}</p>
+//                 <p>Se ha creado un nuevo contribuyente con el procedimiento <strong>Auditoría Fiscal (AF)</strong>.</p>
+//                 <h3 style="margin-top:20px;color:#2980b9;">📋 Detalles</h3>
+//                 <ul style="line-height:1.6;">
+//                     <li><strong>Nombre:</strong> ${input.name}</li>
+//                     <li><strong>RIF:</strong> ${input.rif}</li>
+//                     <li><strong>Tipo de contrato:</strong> ${displayContractType ?? "Desconocido"}</li>
+//                     <li><strong>Número de providencia:</strong> ${input.providenceNum}</li>
+//                     <li><strong>Fecha de emisión:</strong> ${new Date(input.emition_date).toLocaleDateString()}</li>
+//                     <li><strong>Dirección:</strong> ${input.address}</li>
+//                 </ul>
+//                 <a href="https://sac-app.com" target="_blank" 
+//                 style="
+//                     display: inline-block;
+//                     background-color: #2980b9;
+//                     color: white;
+//                     padding: 10px 20px;
+//                     text-decoration: none;
+//                     border-radius: 5px;
+//                     margin-top: 10px;
+//                 ">
+//                 🔗 Ir a SAC App
+//                 </a>
 
-                <hr style="margin-top: 30px;" />
-                <footer style="font-size: 12px; color: #888;">
-                Este correo fue generado automáticamente por el sistema de gestión fiscal.
-                </footer>
-                </div>
-            `;
+//                 <hr style="margin-top: 30px;" />
+//                 <footer style="font-size: 12px; color: #888;">
+//                 Este correo fue generado automáticamente por el sistema de gestión fiscal.
+//                 </footer>
+//                 </div>
+//             `;
 
-            sendEmailWithRetry({
-                from: fromAddress,
-                to: recipients,
-                subject: '🔍 Nuevo contribuyente creado para Auditoría Fiscal',
-                html: emailHtml
-            }).catch(err => console.error("Error inesperado al enviar email:", err));
-        }
+//             sendEmailWithRetry({
+//                 from: fromAddress,
+//                 to: recipients,
+//                 subject: '🔍 Nuevo contribuyente creado para Auditoría Fiscal',
+//                 html: emailHtml
+//             }).catch(err => console.error("Error inesperado al enviar email:", err));
+//         }
 
-        return taxpayer;
+//         return taxpayer;
 
-    } catch (error: any) {
-        console.error(error);
-        throw error;
-    }
-};
+//     } catch (error: any) {
+//         console.error(error);
+//         throw error;
+//     }
+// };
 
 
 
-export const updateFase = async (data: NewFase) => {
-    try {
-        // Obtener al contribuyente antes de hacer el update para comparar fases
-        const taxpayerBefore = await db.taxpayer.findUnique({
-            where: { id: data.id },
-            include: {
-                user: {
-                    include: {
-                        group: {
-                            include: {
-                                coordinator: true, // para acceder al coordinador del grupo
-                            },
-                        },
-                    },
-                },
-            },
-        });
+// export const updateFase = async (data: NewFase) => {
+//     try {
+//         // Obtener al contribuyente antes de hacer el update para comparar fases
+//         const taxpayerBefore = await db.taxpayer.findUnique({
+//             where: { id: data.id },
+//             include: {
+//                 user: {
+//                     include: {
+//                         group: {
+//                             include: {
+//                                 coordinator: true, // para acceder al coordinador del grupo
+//                             },
+//                         },
+//                     },
+//                 },
+//             },
+//         });
 
-        if (!taxpayerBefore) {
-            throw new Error('Taxpayer not found');
-        }
+//         if (!taxpayerBefore) {
+//             throw new Error('Taxpayer not found');
+//         }
 
-        const oldFase = taxpayerBefore.fase.replace("_", " ");
+//         const oldFase = taxpayerBefore.fase.replace("_", " ");
 
-        // Actualizar la fase
-        const updatedTaxpayerFase = await db.taxpayer.update({
-            where: {
-                id: data.id,
-            },
-            data: {
-                fase: data.fase,
-            },
-        });
+//         // Actualizar la fase
+//         const updatedTaxpayerFase = await db.taxpayer.update({
+//             where: {
+//                 id: data.id,
+//             },
+//             data: {
+//                 fase: data.fase,
+//             },
+//         });
 
-        // Obtener todos los admins
-        const adminUsers = await db.user.findMany({
-            where: { role: 'ADMIN' },
-            select: { email: true },
-        });
+//         // Obtener todos los admins
+//         const adminUsers = await db.user.findMany({
+//             where: { role: 'ADMIN' },
+//             select: { email: true },
+//         });
 
-        // Construir lista de destinatarios
-        const recipients = [
-            taxpayerBefore.user?.email,
-            ...adminUsers.map((admin) => admin.email),
-        ].filter(Boolean); // Elimina null/undefined
+//         // Construir lista de destinatarios
+//         const recipients = [
+//             taxpayerBefore.user?.email,
+//             ...adminUsers.map((admin) => admin.email),
+//         ].filter(Boolean); // Elimina null/undefined
 
-        // Obtener nombres de personas
-        const fiscalName = taxpayerBefore.user?.name || 'Fiscal asignado';
-        const coordinatorName = taxpayerBefore.user?.group?.coordinator?.name || 'Coordinador asignado';
-        const taxpayerName = taxpayerBefore.name;
-        const taxpayerRif = taxpayerBefore.rif;
-        const newFase = data.fase.replace("_", " ");
+//         // Obtener nombres de personas
+//         const fiscalName = taxpayerBefore.user?.name || 'Fiscal asignado';
+//         const coordinatorName = taxpayerBefore.user?.group?.coordinator?.name || 'Coordinador asignado';
+//         const taxpayerName = taxpayerBefore.name;
+//         const taxpayerRif = taxpayerBefore.rif;
+//         const newFase = data.fase.replace("_", " ");
 
-        // Enviar correo con Resend
-        await resend.emails.send({
-            from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com', // asegúrate que esté verificado en Resend
-            to: recipients.join(', '),
-            subject: `Cambio de fase de auditoría fiscal - ${taxpayerName}`,
-            html: `
-            <div style="font-family: Arial, sans-serif; background-color: #f7f7f7; padding: 20px;">
-            <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-                <h2 style="color: #2c3e50;">🔔 Cambio de Fase de Auditoría Fiscal</h2>
-                <p style="font-size: 16px; color: #333;">Se ha actualizado la fase del contribuyente <strong>${taxpayerName}</strong> (RIF: ${taxpayerRif}).</p>
+//         // Enviar correo con Resend
+//         await resend.emails.send({
+//             from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com', // asegúrate que esté verificado en Resend
+//             to: recipients.join(', '),
+//             subject: `Cambio de fase de auditoría fiscal - ${taxpayerName}`,
+//             html: `
+//             <div style="font-family: Arial, sans-serif; background-color: #f7f7f7; padding: 20px;">
+//             <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+//                 <h2 style="color: #2c3e50;">🔔 Cambio de Fase de Auditoría Fiscal</h2>
+//                 <p style="font-size: 16px; color: #333;">Se ha actualizado la fase del contribuyente <strong>${taxpayerName}</strong> (RIF: ${taxpayerRif}).</p>
                 
-                <table style="width: 100%; font-size: 15px; color: #555; margin: 20px 0;">
-                <tr>
-                    <td><strong>Fase anterior:</strong></td>
-                    <td>${oldFase}</td>
-                </tr>
-                <tr>
-                    <td><strong>Nueva fase:</strong></td>
-                    <td>${newFase}</td>
-                </tr>
-                <tr>
-                    <td><strong>Fiscal responsable:</strong></td>
-                    <td>${fiscalName}</td>
-                </tr>
-                <tr>
-                    <td><strong>Coordinador del grupo:</strong></td>
-                    <td>${coordinatorName}</td>
-                </tr>
-                </table>
+//                 <table style="width: 100%; font-size: 15px; color: #555; margin: 20px 0;">
+//                 <tr>
+//                     <td><strong>Fase anterior:</strong></td>
+//                     <td>${oldFase}</td>
+//                 </tr>
+//                 <tr>
+//                     <td><strong>Nueva fase:</strong></td>
+//                     <td>${newFase}</td>
+//                 </tr>
+//                 <tr>
+//                     <td><strong>Fiscal responsable:</strong></td>
+//                     <td>${fiscalName}</td>
+//                 </tr>
+//                 <tr>
+//                     <td><strong>Coordinador del grupo:</strong></td>
+//                     <td>${coordinatorName}</td>
+//                 </tr>
+//                 </table>
 
-                <p style="font-size: 15px; color: #333;">
-                Puedes acceder a la plataforma para revisar el detalle del cambio haciendo clic en el siguiente botón:
-                </p>
+//                 <p style="font-size: 15px; color: #333;">
+//                 Puedes acceder a la plataforma para revisar el detalle del cambio haciendo clic en el siguiente botón:
+//                 </p>
 
-                <div style="text-align: center; margin: 30px 0;">
-                <a href="https://sac-app.com/taxpayer/${data.id}" style="background-color: #1e88e5; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; display: inline-block;">
-                    Ver contribuyente
-                </a>
-                </div>
+//                 <div style="text-align: center; margin: 30px 0;">
+//                 <a href="https://sac-app.com/taxpayer/${data.id}" style="background-color: #1e88e5; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; display: inline-block;">
+//                     Ver contribuyente
+//                 </a>
+//                 </div>
 
-                <p style="font-size: 13px; color: #888;">Este cambio fue registrado automáticamente por el sistema SAC.</p>
-            </div>
-            </div>
-        `,
-        });
+//                 <p style="font-size: 13px; color: #888;">Este cambio fue registrado automáticamente por el sistema SAC.</p>
+//             </div>
+//             </div>
+//         `,
+//         });
 
-        return updatedTaxpayerFase;
-    } catch (e) {
-        console.error(e);
-        throw new Error('Could not update the fase');
-    }
-};
+//         return updatedTaxpayerFase;
+//     } catch (e) {
+//         console.error(e);
+//         throw new Error('Could not update the fase');
+//     }
+// };
 
 
 export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
@@ -363,6 +363,8 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
         officerName,
         address,
         emition_date,
+        categoryId,
+        parishId,
     } = data;
 
     try {
@@ -449,6 +451,8 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
                 officerId: matchedOfficer.id,
                 address,
                 emition_date: new Date(emition_date),
+                taxpayer_category_id: categoryId,
+                parish_id: parishId,
             },
         });
 
@@ -825,15 +829,15 @@ export const getFiscalTaxpayersForStats = async (userId: string) => {
             afLate: [],
         };
 
-        user.taxpayer.forEach((tp) => {
+        user.taxpayer.forEach((tp: any) => {
             const daysElapsed = tp.created_at ? differenceInDays(today, new Date(tp.created_at)) : null;
             const isCulminated = tp.culminated;
 
-            const totalIva = tp.IVAReports.reduce((sum, r) => sum + Number(r.paid || 0), 0);
-            const totalIslr = tp.ISLRReports.reduce((sum, r) => sum + Number(r.paid || 0), 0);
+            const totalIva = tp.IVAReports.reduce((sum: number, r: any) => sum + Number(r.paid || 0), 0);
+            const totalIslr = tp.ISLRReports.reduce((sum: number, r: any) => sum + Number(r.paid || 0), 0);
             const totalFines = tp.event
-                .filter((e) => e.type === "FINE" && e.debt.equals(0))
-                .reduce((sum) => sum + 1, 0);
+                .filter((e: any) => e.type === "FINE" && e.debt.equals(0))
+                .reduce((sum: number) => sum + 1, 0);
 
             const totalCollected = totalIva + totalIslr + totalFines;
 
@@ -1324,94 +1328,94 @@ export const updateIslr = async (id: string, input: Partial<ISLRReports>) => {
 
 
 
-export const updateCulminated = async (id: string, culminated: boolean) => {
+// export const updateCulminated = async (id: string, culminated: boolean) => {
 
 
-    try {
-        const updatedCulminatedProcess = await db.taxpayer.update({
-            where: {
-                id: id,
-            },
-            data: {
-                culminated: true,
-            }
-        })
+//     try {
+//         const updatedCulminatedProcess = await db.taxpayer.update({
+//             where: {
+//                 id: id,
+//             },
+//             data: {
+//                 culminated: true,
+//             }
+//         })
 
-        const taxpayer = await db.taxpayer.findFirst({
-            where: {
-                id: id,
-            },
-            include: {
-                user: {
-                    select: {
-                        name: true,
-                        group: { select: { coordinator: { select: { email: true } } } }
-                    }
-                }
-            }
-        })
+//         const taxpayer = await db.taxpayer.findFirst({
+//             where: {
+//                 id: id,
+//             },
+//             include: {
+//                 user: {
+//                     select: {
+//                         name: true,
+//                         group: { select: { coordinator: { select: { email: true } } } }
+//                     }
+//                 }
+//             }
+//         })
 
-        const coordinatorEmail = taxpayer?.user?.group?.coordinator?.email;
-        const fiscalName = taxpayer?.user?.name;
-        const taxpayerName = taxpayer?.name;
-        const taxpayerProcess = taxpayer?.process;
-        const providenceNum = taxpayer?.providenceNum;
-        const address = taxpayer?.address;
-        const taxpayerId = taxpayer?.id;
+//         const coordinatorEmail = taxpayer?.user?.group?.coordinator?.email;
+//         const fiscalName = taxpayer?.user?.name;
+//         const taxpayerName = taxpayer?.name;
+//         const taxpayerProcess = taxpayer?.process;
+//         const providenceNum = taxpayer?.providenceNum;
+//         const address = taxpayer?.address;
+//         const taxpayerId = taxpayer?.id;
 
-        const now = new Date();
-        const formattedDate = now.toLocaleDateString('es-VE', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-        });
-        const formattedTime = now.toLocaleTimeString('es-VE', {
-            hour: '2-digit',
-            minute: '2-digit',
-        });
+//         const now = new Date();
+//         const formattedDate = now.toLocaleDateString('es-VE', {
+//             year: 'numeric',
+//             month: 'long',
+//             day: 'numeric',
+//         });
+//         const formattedTime = now.toLocaleTimeString('es-VE', {
+//             hour: '2-digit',
+//             minute: '2-digit',
+//         });
 
-        if (coordinatorEmail) {
-            await resend.emails.send({
-                from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com',
-                to: coordinatorEmail,
-                subject: `Procedimiento culminado para ${taxpayerName}`,
-                html: `
-                <div style="font-family: sans-serif; background-color: #f3f4f6; padding: 30px;">
-                    <div style="max-width: 600px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.1);">
-                    <h2 style="color: #2563eb;">📌 Procedimiento Culminado</h2>
-                    <p>Se ha marcado como <strong>culminado</strong> el procedimiento correspondiente al siguiente contribuyente:</p>
+//         if (coordinatorEmail) {
+//             await resend.emails.send({
+//                 from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com',
+//                 to: coordinatorEmail,
+//                 subject: `Procedimiento culminado para ${taxpayerName}`,
+//                 html: `
+//                 <div style="font-family: sans-serif; background-color: #f3f4f6; padding: 30px;">
+//                     <div style="max-width: 600px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.1);">
+//                     <h2 style="color: #2563eb;">📌 Procedimiento Culminado</h2>
+//                     <p>Se ha marcado como <strong>culminado</strong> el procedimiento correspondiente al siguiente contribuyente:</p>
 
-                    <ul style="line-height: 1.6; font-size: 14px; padding-left: 20px; color: #374151;">
-                        <li><strong>Contribuyente:</strong> ${taxpayerName}</li>
-                        <li><strong>Proceso:</strong> ${taxpayerProcess}</li>
-                        <li><strong>Número de Providencia:</strong> ${providenceNum}</li>
-                        <li><strong>Dirección:</strong> ${address}</li>
-                        <li><strong>Finalizado por:</strong> ${fiscalName}</li>
-                        <li><strong>Fecha y hora:</strong> ${formattedDate} a las ${formattedTime}</li>
-                    </ul>
+//                     <ul style="line-height: 1.6; font-size: 14px; padding-left: 20px; color: #374151;">
+//                         <li><strong>Contribuyente:</strong> ${taxpayerName}</li>
+//                         <li><strong>Proceso:</strong> ${taxpayerProcess}</li>
+//                         <li><strong>Número de Providencia:</strong> ${providenceNum}</li>
+//                         <li><strong>Dirección:</strong> ${address}</li>
+//                         <li><strong>Finalizado por:</strong> ${fiscalName}</li>
+//                         <li><strong>Fecha y hora:</strong> ${formattedDate} a las ${formattedTime}</li>
+//                     </ul>
 
-                    <p>Puede consultar el detalle del contribuyente directamente en la plataforma:</p>
+//                     <p>Puede consultar el detalle del contribuyente directamente en la plataforma:</p>
 
-                    <a href="https://www.sac-app.com/taxpayer/${taxpayerId}" target="_blank" style="display: inline-block; margin-top: 12px; padding: 10px 18px; background-color: #2563eb; color: white; border-radius: 8px; text-decoration: none;">Ver contribuyente</a>
+//                     <a href="https://www.sac-app.com/taxpayer/${taxpayerId}" target="_blank" style="display: inline-block; margin-top: 12px; padding: 10px 18px; background-color: #2563eb; color: white; border-radius: 8px; text-decoration: none;">Ver contribuyente</a>
 
-                    <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;" />
+//                     <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;" />
 
-                    <p style="font-size: 13px; color: #6b7280;">Este mensaje ha sido generado automáticamente por el sistema SAC. No es necesario responder a este correo.</p>
-                    <p style="font-size: 12px; color: #9ca3af;">© ${now.getFullYear()} Sistema de Administración de Contribuyentes</p>
-                    </div>
-                </div>
-                `,
-            });
-        }
+//                     <p style="font-size: 13px; color: #6b7280;">Este mensaje ha sido generado automáticamente por el sistema SAC. No es necesario responder a este correo.</p>
+//                     <p style="font-size: 12px; color: #9ca3af;">© ${now.getFullYear()} Sistema de Administración de Contribuyentes</p>
+//                     </div>
+//                 </div>
+//                 `,
+//             });
+//         }
 
 
-        return updatedCulminatedProcess;
+//         return updatedCulminatedProcess;
 
-    } catch (e) {
-        console.error(e);
-        throw new Error("Couldn't update the culminated field.");
-    }
-}
+//     } catch (e) {
+//         console.error(e);
+//         throw new Error("Couldn't update the culminated field.");
+//     }
+// }
 
 
 export const updatePayment = async (id: string, newStatus: string) => {
@@ -1462,91 +1466,91 @@ export const updatePayment = async (id: string, newStatus: string) => {
 
 
 
-export const notifyTaxpayer = async (id: string) => {
+// export const notifyTaxpayer = async (id: string) => {
 
-    try {
-        const notifiedTaxpayer = await db.taxpayer.update({
-            where: {
-                id: id,
-            },
-            data: {
-                notified: true,
-            }
-        })
+//     try {
+//         const notifiedTaxpayer = await db.taxpayer.update({
+//             where: {
+//                 id: id,
+//             },
+//             data: {
+//                 notified: true,
+//             }
+//         })
 
-        const taxpayer = await db.taxpayer.findFirst({
-            where: { id: id },
-            include: {
-                user: {
-                    select: {
-                        name: true,
-                        group: { select: { coordinator: { select: { email: true } } } }
-                    }
-                }
-            }
-        })
+//         const taxpayer = await db.taxpayer.findFirst({
+//             where: { id: id },
+//             include: {
+//                 user: {
+//                     select: {
+//                         name: true,
+//                         group: { select: { coordinator: { select: { email: true } } } }
+//                     }
+//                 }
+//             }
+//         })
 
-        const coordinatorEmail = taxpayer?.user?.group?.coordinator?.email;
-        const fiscalName = taxpayer?.user?.name;
-        const taxpayerName = taxpayer?.name;
-        const taxpayerProcess = taxpayer?.process;
-        const providenceNum = taxpayer?.providenceNum;
-        const address = taxpayer?.address;
-        const taxpayerId = taxpayer?.id;
+//         const coordinatorEmail = taxpayer?.user?.group?.coordinator?.email;
+//         const fiscalName = taxpayer?.user?.name;
+//         const taxpayerName = taxpayer?.name;
+//         const taxpayerProcess = taxpayer?.process;
+//         const providenceNum = taxpayer?.providenceNum;
+//         const address = taxpayer?.address;
+//         const taxpayerId = taxpayer?.id;
 
-        const now = new Date();
-        const formattedDate = now.toLocaleDateString('es-VE', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-        });
-        const formattedTime = now.toLocaleTimeString('es-VE', {
-            hour: '2-digit',
-            minute: '2-digit',
-        });
+//         const now = new Date();
+//         const formattedDate = now.toLocaleDateString('es-VE', {
+//             year: 'numeric',
+//             month: 'long',
+//             day: 'numeric',
+//         });
+//         const formattedTime = now.toLocaleTimeString('es-VE', {
+//             hour: '2-digit',
+//             minute: '2-digit',
+//         });
 
-        if (coordinatorEmail) {
-            await resend.emails.send({
-                from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com',
-                to: coordinatorEmail,
-                subject: `Contribuyente notificado: ${taxpayerName}`,
-                html: `
-                <div style="font-family: sans-serif; background-color: #f3f4f6; padding: 30px;">
-                    <div style="max-width: 600px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.1);">
-                    <h2 style="color: #2563eb;">📬 Contribuyente Notificado</h2>
-                    <p>El contribuyente <strong>${taxpayerName}</strong> ha sido <span style="color: green; font-weight: bold;">notificado</span> por el fiscal <strong>${fiscalName}</strong>.</p>
+//         if (coordinatorEmail) {
+//             await resend.emails.send({
+//                 from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com',
+//                 to: coordinatorEmail,
+//                 subject: `Contribuyente notificado: ${taxpayerName}`,
+//                 html: `
+//                 <div style="font-family: sans-serif; background-color: #f3f4f6; padding: 30px;">
+//                     <div style="max-width: 600px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.1);">
+//                     <h2 style="color: #2563eb;">📬 Contribuyente Notificado</h2>
+//                     <p>El contribuyente <strong>${taxpayerName}</strong> ha sido <span style="color: green; font-weight: bold;">notificado</span> por el fiscal <strong>${fiscalName}</strong>.</p>
 
-                    <ul style="line-height: 1.6; font-size: 14px; padding-left: 20px; color: #374151;">
-                        <li><strong>Contribuyente:</strong> ${taxpayerName}</li>
-                        <li><strong>Proceso:</strong> ${taxpayerProcess}</li>
-                        <li><strong>Número de Providencia:</strong> ${providenceNum}</li>
-                        <li><strong>Dirección:</strong> ${address}</li>
-                        <li><strong>Notificado por:</strong> ${fiscalName}</li>
-                        <li><strong>Fecha y hora:</strong> ${formattedDate} a las ${formattedTime}</li>
-                    </ul>
+//                     <ul style="line-height: 1.6; font-size: 14px; padding-left: 20px; color: #374151;">
+//                         <li><strong>Contribuyente:</strong> ${taxpayerName}</li>
+//                         <li><strong>Proceso:</strong> ${taxpayerProcess}</li>
+//                         <li><strong>Número de Providencia:</strong> ${providenceNum}</li>
+//                         <li><strong>Dirección:</strong> ${address}</li>
+//                         <li><strong>Notificado por:</strong> ${fiscalName}</li>
+//                         <li><strong>Fecha y hora:</strong> ${formattedDate} a las ${formattedTime}</li>
+//                     </ul>
 
-                    <p>Puedes ver los detalles directamente en la plataforma:</p>
+//                     <p>Puedes ver los detalles directamente en la plataforma:</p>
 
-                    <a href="https://www.sac-app.com/taxpayer/${taxpayerId}" target="_blank" style="display: inline-block; margin-top: 12px; padding: 10px 18px; background-color: #2563eb; color: white; border-radius: 8px; text-decoration: none;">Ver contribuyente</a>
+//                     <a href="https://www.sac-app.com/taxpayer/${taxpayerId}" target="_blank" style="display: inline-block; margin-top: 12px; padding: 10px 18px; background-color: #2563eb; color: white; border-radius: 8px; text-decoration: none;">Ver contribuyente</a>
 
-                    <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;" />
+//                     <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;" />
 
-                    <p style="font-size: 13px; color: #6b7280;">Este mensaje fue generado automáticamente por el sistema. No respondas a este correo.</p>
-                    <p style="font-size: 12px; color: #9ca3af;">© ${now.getFullYear()} Sistema de Administración de Contribuyentes</p>
-                    </div>
-                </div>
-                `,
-            });
-        }
+//                     <p style="font-size: 13px; color: #6b7280;">Este mensaje fue generado automáticamente por el sistema. No respondas a este correo.</p>
+//                     <p style="font-size: 12px; color: #9ca3af;">© ${now.getFullYear()} Sistema de Administración de Contribuyentes</p>
+//                     </div>
+//                 </div>
+//                 `,
+//             });
+//         }
 
 
 
-        return notifiedTaxpayer;
-    } catch (e) {
-        console.error(e);
-        throw new Error("error marking the taxpayer as notified")
-    }
-}
+//         return notifiedTaxpayer;
+//     } catch (e) {
+//         console.error(e);
+//         throw new Error("error marking the taxpayer as notified")
+//     }
+// }
 
 
 
