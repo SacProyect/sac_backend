@@ -168,10 +168,10 @@ model taxpayer {
     created_at           DateTime               @default(now())
     updated_at           DateTime               @default(now()) @updatedAt
     index_iva            Decimal?
-    parish_id            String
-    parish               Parish                  @relation(fields: [parish_id], references: [id]) 
-    taxpayer_category_id String
-    taxpayer_category    TaxpayerCategory        @relation(fields: [taxpayer_category_id], references: [id])
+    parish_id            String?
+    parish               Parish?                  @relation(fields: [parish_id], references: [id]) 
+    taxpayer_category_id String?
+    taxpayer_category    TaxpayerCategory?        @relation(fields: [taxpayer_category_id], references: [id])
     investigation_pdfs   InvestigationPdf[]
     observations         Observations[]
     IVAReports           IVAReports[]

@@ -19,10 +19,6 @@ interface InputFiscalGroups {
     supervisorId?: string;
 }
 
-
-
-
-
 export const getFineHistory = async (taxpayerId?: string) => {
     try {
         const where: any = {
@@ -766,10 +762,13 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
 // - "Index vigente" for a given month/day = idx.created_at <= date && (idx.expires_at is null || date < idx.expires_at)
 // - If multiple indexes match, use the one with the latest created_at (most recent in effect).
 
-export const getGlobalPerformance = async (): Promise<MonthlyRow[]> => {
+export const getGlobalPerformance = async (date: Date): Promise<MonthlyRow[]> => {
     try {
-        const now = new Date();
-        const year = now.getUTCFullYear();
+        if (!date) {
+            const now = new Date();
+            date = new Date(now.getUTCFullYear(), now.getUTCMonth(), 1);
+        }
+        const year = date.getUTCFullYear();
 
         const startOfYear = new Date(Date.UTC(year, 0, 1));
         const startOfNextYear = new Date(Date.UTC(year + 1, 0, 1));
@@ -831,11 +830,10 @@ export const getGlobalPerformance = async (): Promise<MonthlyRow[]> => {
             realByMonth.set(key, (realByMonth.get(key) ?? 0) + Number(r.paid ?? 0));
         }
 
-        // Build rows from January to current month inclusive
-        const lastMonthIdx = now.getUTCMonth(); // 0..11
+        // Build rows for all 12 months of the year
         const rows: MonthlyRow[] = [];
 
-        for (let m = 0; m <= lastMonthIdx; m++) {
+        for (let m = 0; m <= 11; m++) {
             const monthKey = `${year}-${String(m + 1).padStart(2, "0")}`;
             const monthStart = new Date(Date.UTC(year, m, 1));
             const monthEnd = new Date(Date.UTC(year, m + 1, 1));
@@ -844,11 +842,9 @@ export const getGlobalPerformance = async (): Promise<MonthlyRow[]> => {
             // realAmount
             const realAmount = Number((realByMonth.get(monthKey) ?? 0).toFixed(2));
 
-            // expectedAmount: add index vigente for EVERY taxpayer (rule: always counts),
-            // regardless of reports, and regardless of emition_date month.
+            // expectedAmount: add index vigente for EVERY taxpayer emitted in the target year
             let expected = new Decimal(0);
             for (const t of taxpayers) {
-                // As per your rule, expected runs from January anyway, so we do NOT gate by emition_date.
                 const idx = getIndexFor(t.contract_type, midMonth);
                 if (idx?.base_amount != null) {
                     expected = expected.plus(idx.base_amount);
@@ -878,14 +874,17 @@ export const getGlobalPerformance = async (): Promise<MonthlyRow[]> => {
 
 
 
-export async function getIvaByMonth(): Promise<{
+export async function getIvaByMonth(date: Date): Promise<{
     year: number;
     months: MonthIva[];
     totalIvaCollected: number;
 }> {
     // Use UTC to avoid timezone edge cases
-    const now = new Date();
-    const year = now.getUTCFullYear();
+    if (!date) {
+        const now = new Date();
+        date = new Date(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    }
+    const year = date.getUTCFullYear();
     const start = new Date(Date.UTC(year, 0, 1));
     const end = new Date(Date.UTC(year + 1, 0, 1));
 
@@ -983,23 +982,53 @@ export async function debugQuery() {
 }
 
 
-export async function getGroupPerformance() {
+export async function getGroupPerformance(date?: Date) {
     try {
+        const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+        const start = new Date(Date.UTC(year, 0, 1));
+        const end = new Date(Date.UTC(year + 1, 0, 1));
+
         const groupPerformance = await db.fiscalGroup.findMany({
-            include: {
+            select: {
+                id: true,
+                name: true,
                 members: {
-                    include: {
+                    select: {
                         taxpayer: {
-                            include: {
-                                event: true,
-                                IVAReports: true,  // Asegúrate que el nombre del campo en Prisma sea este
-                                ISLRReports: true,  // Asegúrate que el nombre del campo en Prisma sea este
+                            select: {
+                                event: {
+                                    where: { 
+                                        type: "FINE",
+                                        date: { gte: start, lt: end }
+                                    },
+                                    select: {
+                                        amount: true,
+                                        debt: true,
+                                        type: true
+                                    }
+                                },
+                                IVAReports: {
+                                    where: { date: { gte: start, lt: end } },
+                                    select: {
+                                        paid: true
+                                    }
+                                },
+                                ISLRReports: {
+                                    where: { emition_date: { gte: start, lt: end } },
+                                    select: {
+                                        paid: true
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         });
+
+        if (!groupPerformance || groupPerformance.length === 0) {
+            return [];
+        }
 
         const performanceByGroup = groupPerformance.map((group) => {
             let totalFines = 0;  // Total de multas asignadas al grupo
@@ -1095,14 +1124,24 @@ function calculateCreditSurplus(
     return totalAdded;
 }
 
-export async function getGlobalKPI() {
+export async function getGlobalKPI(date?: Date) {
     try {
+        const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+        const startOfYear = new Date(Date.UTC(year, 0, 1));
+        const endOfYear = new Date(Date.UTC(year + 1, 0, 1));
+
         // 1) Cargar todos los contribuyentes con sus reportes y eventos
         const taxpayers = await db.taxpayer.findMany({
             include: {
-                IVAReports: true,
-                ISLRReports: true,
-                event: true,
+                IVAReports: {
+                    where: { date: { gte: startOfYear, lt: endOfYear } }
+                },
+                ISLRReports: {
+                    where: { emition_date: { gte: startOfYear, lt: endOfYear } }
+                },
+                event: {
+                    where: { date: { gte: startOfYear, lt: endOfYear } }
+                },
             },
         });
 
@@ -1113,12 +1152,35 @@ export async function getGlobalKPI() {
         let totalDebt = 0;            // Suma de deudas pendientes
 
         // Fecha para crecimiento interanual
-        const now = dayjs();
-        const startThisYear = now.startOf("year");
-        const startLastYear = now.subtract(1, "year").startOf("year");
-        const endLastYear = now.subtract(1, "year").endOf("year");
+        const baseDate = date ? dayjs(date) : dayjs();
+        const startLastYear = baseDate.subtract(1, "year").startOf("year").toDate();
+        const endLastYear = baseDate.subtract(1, "year").endOf("year").toDate();
+
+        // Necesitamos cargar datos del año pasado para el crecimiento
+        const taxpayersLastYear = await db.taxpayer.findMany({
+            include: {
+                IVAReports: {
+                    where: { date: { gte: startLastYear, lte: endLastYear } }
+                },
+                ISLRReports: {
+                    where: { emition_date: { gte: startLastYear, lte: endLastYear } }
+                },
+                event: {
+                    where: { 
+                        type: "FINE",
+                        debt: 0,
+                        date: { gte: startLastYear, lte: endLastYear }
+                    }
+                },
+            },
+        });
 
         let lastYearCollection = 0;
+        taxpayersLastYear.forEach(tp => {
+            tp.IVAReports.forEach(r => lastYearCollection += Number(r.paid));
+            tp.ISLRReports.forEach(r => lastYearCollection += Number(r.paid));
+            tp.event.forEach(e => lastYearCollection += Number(e.amount));
+        });
 
         // Recabar datos de cada contribuyente
         for (const tp of taxpayers) {
@@ -1149,21 +1211,6 @@ export async function getGlobalKPI() {
                 creditSurplusSum += surplus;
                 creditSurplusCount++;
             }
-
-            // d) Recaudación año pasado para crecimiento
-            tp.IVAReports
-                .filter(r => dayjs(r.date).isBetween(startLastYear, endLastYear, null, "[]"))
-                .forEach(r => lastYearCollection += Number(r.paid));
-            tp.ISLRReports
-                .filter(r => dayjs(r.emition_date).isBetween(startLastYear, endLastYear, null, "[]"))
-                .forEach(r => lastYearCollection += Number(r.paid));
-            tp.event
-                .filter(e =>
-                    e.type === "FINE" &&
-                    e.debt.equals(0) &&
-                    dayjs(e.date).isBetween(startLastYear, endLastYear, null, "[]")
-                )
-                .forEach(e => lastYearCollection += Number(e.amount));
         }
 
         const totalTaxpayers = taxpayers.length;
@@ -1207,10 +1254,17 @@ export async function getGlobalKPI() {
 }
 
 
-export async function getIndividualIvaReport(id: string) {
+export async function getIndividualIvaReport(id: string, date?: Date) {
     try {
+        const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+        const start = new Date(Date.UTC(year, 0, 1));
+        const end = new Date(Date.UTC(year + 1, 0, 1));
+
         const ivaReports = await db.iVAReports.findMany({
-            where: { taxpayerId: id },
+            where: { 
+                taxpayerId: id,
+                date: { gte: start, lt: end }
+            },
             orderBy: { date: 'asc' },
             include: { taxpayer: true }
         });
@@ -1310,13 +1364,13 @@ export async function getIndividualIvaReport(id: string) {
     }
 }
 
-export async function getBestSupervisorByGroups() {
+export async function getBestSupervisorByGroups(date?: Date) {
 
 
     try {
-
-        const startOfYear = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
-        const endOfYear = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+        const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+        const startOfYear = new Date(Date.UTC(year, 0, 1));
+        const endOfYear = new Date(Date.UTC(year + 1, 0, 1));
 
 
         const groups = await db.fiscalGroup.findMany({
@@ -1435,11 +1489,12 @@ export async function getBestSupervisorByGroups() {
 }
 
 
-export async function getTopFiscals() {
+export async function getTopFiscals(date?: Date) {
 
     try {
-        const startOfYear = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
-        const endOfYear = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+        const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+        const startOfYear = new Date(Date.UTC(year, 0, 1));
+        const endOfYear = new Date(Date.UTC(year + 1, 0, 1));
 
         const fiscals = await db.user.findMany({
             where: {
@@ -1531,10 +1586,11 @@ export async function getTopFiscals() {
     }
 }
 
-export async function getTopFiveByGroup() {
+export async function getTopFiveByGroup(date?: Date) {
     try {
-        const startOfYear = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
-        const endOfYear = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+        const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+        const startOfYear = new Date(Date.UTC(year, 0, 1));
+        const endOfYear = new Date(Date.UTC(year + 1, 0, 1));
 
         const groups = await db.fiscalGroup.findMany({
             include: {
@@ -1620,16 +1676,18 @@ export async function getTopFiveByGroup() {
 
 
 
-export async function getMonthlyCompliance() {
+export async function getMonthlyCompliance(date?: Date) {
     try {
-        const now = new Date();
-        const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-        const nextMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-        const prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-        const currentYear = now.getUTCFullYear();
+        const baseDate = date || new Date();
+        const currentYear = baseDate.getUTCFullYear();
+        const currentMonthIdx = baseDate.getUTCMonth();
+
+        const currentMonthStart = new Date(Date.UTC(currentYear, currentMonthIdx, 1));
+        const nextMonthStart = new Date(Date.UTC(currentYear, currentMonthIdx + 1, 1));
+        const prevMonthStart = new Date(Date.UTC(currentYear, currentMonthIdx - 1, 1));
+        
         const startOfYear = new Date(Date.UTC(currentYear, 0, 1));
         const endOfYear = new Date(Date.UTC(currentYear + 1, 0, 1));
-        const currentMonthIdx = now.getUTCMonth();
 
         const groups = await db.fiscalGroup.findMany({
             include: {
@@ -1885,13 +1943,13 @@ export async function getMonthlyCompliance() {
 }
 
 
-export async function getTaxpayerCompliance() {
+export async function getTaxpayerCompliance(date?: Date) {
     try {
-        const now = new Date();
-        const currentYear = now.getUTCFullYear();
+        const baseDate = date || new Date();
+        const currentYear = baseDate.getUTCFullYear();
         const startOfYear = new Date(Date.UTC(currentYear, 0, 1));
         const endOfYear = new Date(Date.UTC(currentYear + 1, 0, 1));
-        const currentMonthIdx = now.getUTCMonth(); // 0..11
+        const currentMonthIdx = baseDate.getUTCMonth(); // 0..11
 
         const taxpayers = await db.taxpayer.findMany({
             where: {
@@ -2060,11 +2118,11 @@ export async function getTaxpayerCompliance() {
 
 
 
-export async function getExpectedAmount() {
+export async function getExpectedAmount(date?: Date) {
     try {
-        const now = new Date();
-        const currentYear = now.getUTCFullYear();
-        const currentMonthIdx = now.getUTCMonth(); // 0..11
+        const baseDate = date || new Date();
+        const currentYear = baseDate.getUTCFullYear();
+        const currentMonthIdx = baseDate.getUTCMonth(); // 0..11
 
         // If January, use current month as "previous"
         const prevMonthIdx = currentMonthIdx === 0 ? 0 : currentMonthIdx - 1;
@@ -2430,11 +2488,12 @@ export async function getCompleteReport(data?: CompleteReportInput) {
     }
 }
 
-export async function getFiscalInfo(fiscalId: string) {
+export async function getFiscalInfo(fiscalId: string, date?: Date) {
 
     try {
-        const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
-        const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+        const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+        const start = new Date(Date.UTC(year, 0, 1));
+        const end = new Date(Date.UTC(year + 1, 0, 1));
 
         const fiscal = await db.user.findFirst({
             where: {
@@ -2489,12 +2548,13 @@ export async function getFiscalInfo(fiscalId: string) {
     }
 }
 
-export async function getFiscalTaxpayers(fiscalId: string) {
+export async function getFiscalTaxpayers(fiscalId: string, date?: Date) {
 
     try {
 
-        const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
-        const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+        const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+        const start = new Date(Date.UTC(year, 0, 1));
+        const end = new Date(Date.UTC(year + 1, 0, 1));
 
         const taxpayers = await db.taxpayer.findMany({
             where: {
@@ -2548,9 +2608,10 @@ export async function getFiscalTaxpayers(fiscalId: string) {
     }
 }
 
-export async function getMonthyCollect(fiscalId: string) {
-    const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
-    const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+export async function getMonthyCollect(fiscalId: string, date?: Date) {
+    const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+    const start = new Date(Date.UTC(year, 0, 1));
+    const end = new Date(Date.UTC(year + 1, 0, 1));
 
     try {
         const fiscal = await db.user.findFirst({
@@ -2627,10 +2688,10 @@ export async function getMonthyCollect(fiscalId: string) {
     }
 }
 
-export async function getMontlyPerformance(fiscalId: string) {
-    const currentYear = new Date().getUTCFullYear();
-    const start = new Date(Date.UTC(currentYear - 1, 11, 1)); // Diciembre año anterior
-    const end = new Date(Date.UTC(currentYear + 1, 0, 1)); // Enero año siguiente
+export async function getMontlyPerformance(fiscalId: string, date?: Date) {
+    const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+    const start = new Date(Date.UTC(year - 1, 11, 1)); // Diciembre año anterior
+    const end = new Date(Date.UTC(year + 1, 0, 1)); // Enero año siguiente
 
     try {
         const fiscal = await db.user.findFirst({
@@ -2701,11 +2762,11 @@ export async function getMontlyPerformance(fiscalId: string) {
 
         for (let i = 0; i < months.length; i++) {
             const currentMonth = months[i];
-            const currentKey = `${currentMonth}-${currentYear}`;
+            const currentKey = `${currentMonth}-${year}`;
             const prevKey =
                 i === 0
-                    ? `diciembre-${currentYear - 1}`
-                    : `${months[i - 1]}-${currentYear}`;
+                    ? `diciembre-${year - 1}`
+                    : `${months[i - 1]}-${year}`;
 
             const currentTotal = monthlyTotals[currentKey] || 0;
             const prevTotal = monthlyTotals[prevKey] || 0;
@@ -2732,9 +2793,10 @@ export async function getMontlyPerformance(fiscalId: string) {
     }
 }
 
-export async function getComplianceByProcess(fiscalId: string) {
-    const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
-    const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+export async function getComplianceByProcess(fiscalId: string, date?: Date) {
+    const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+    const start = new Date(Date.UTC(year, 0, 1));
+    const end = new Date(Date.UTC(year + 1, 0, 1));
 
     try {
         const taxpayers = await db.taxpayer.findMany({
@@ -2878,12 +2940,12 @@ export async function getComplianceByProcess(fiscalId: string) {
 }
 
 
-export async function getFiscalTaxpayerCompliance(fiscalId: string) {
-    const now = new Date();
-    const currentYear = now.getUTCFullYear();
+export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date) {
+    const baseDate = date || new Date();
+    const currentYear = baseDate.getUTCFullYear();
     const start = new Date(Date.UTC(currentYear, 0, 1));
     const end = new Date(Date.UTC(currentYear + 1, 0, 1));
-    const currentMonthIdx = now.getUTCMonth(); // 0..11
+    const currentMonthIdx = baseDate.getUTCMonth(); // 0..11
 
     try {
         const taxpayers = await db.taxpayer.findMany({
@@ -3260,9 +3322,10 @@ export async function getCoordinationPerformance() {
     }
 }
 
-export async function getFiscalCollectAnalisis(fiscalId: string) {
-    const start = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
-    const end = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 1));
+export async function getFiscalCollectAnalisis(fiscalId: string, date?: Date) {
+    const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+    const start = new Date(Date.UTC(year, 0, 1));
+    const end = new Date(Date.UTC(year + 1, 0, 1));
 
     try {
         const taxpayers = await db.taxpayer.findMany({

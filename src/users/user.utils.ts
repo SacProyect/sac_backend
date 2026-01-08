@@ -3,6 +3,16 @@ import { NextFunction, Request, Response } from "express"
 import { hash } from "bcrypt";
 import { Taxpayer } from "../taxpayer/taxpayer.utils";
 import { Taxpayer_Fases, user_roles } from "@prisma/client";
+//TODO ESTO ES UNA PRUEBA PARA VER SI FUNCIONA EN LOCAL ESTO SE VA A ELIMINAR MAS ADELANTE
+
+import * as dotenv from "dotenv";
+import path from "path";
+
+// Cargar variables de entorno
+dotenv.config({ 
+    path: path.resolve(__dirname, "../../.env"),
+    override: true 
+});
 
 const TOKEN_SECRET = process.env.TOKEN_SECRET as string
 

@@ -54,6 +54,8 @@ export type NewTaxpayerExcelInput = {
     pdfs?: InvestigationPdf[];
     userId?: string;
     role?: string;
+    categoryId: string;
+    parishId: string;
 }
 
 export type NewTaxpayer = {
