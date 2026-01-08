@@ -11,6 +11,28 @@ import { createLocalUpload } from "../utils/multer.local";
 import fs from 'fs';
 import { report } from "process";
 
+// Helper function to parse date parameter - handles both year numbers and date strings
+function parseDateParam(dateParam: string | undefined): Date {
+    if (!dateParam) {
+        return new Date();
+    }
+    
+    // If it's just a number (year), create a date for January 1st of that year
+    const yearNum = parseInt(dateParam, 10);
+    if (!isNaN(yearNum) && yearNum >= 2000 && yearNum <= 2100) {
+        return new Date(Date.UTC(yearNum, 0, 1));
+    }
+    
+    // Otherwise, try to parse as a date string
+    const parsed = new Date(dateParam);
+    if (isNaN(parsed.getTime())) {
+        // If invalid, return current date
+        return new Date();
+    }
+    
+    return parsed;
+}
+
 
 const s3 = new S3Client({ region: "us-east-2" }); // Sustituye "your-region" con la región de tu bucket S3
 export const reportRouter = Router();
@@ -240,7 +262,7 @@ reportRouter.get('/get-group-records',
 
 reportRouter.get('/global-performance',
     authenticateToken,
-    query("date").isDate().optional(),
+    query("date").optional(),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest
 
@@ -251,7 +273,7 @@ reportRouter.get('/global-performance',
         }
 
         try {
-            const date = req.query.date ? new Date(req.query.date as string) : new Date();
+            const date = parseDateParam(req.query.date as string | undefined);
             const globalPerformance = await ReportService.getGlobalPerformance(date);
 
             return res.json(globalPerformance)
@@ -265,7 +287,7 @@ reportRouter.get('/global-performance',
 
 reportRouter.get("/global-taxpayer-performance",
     authenticateToken,
-    query("date").isDate().optional(),
+    query("date").optional(),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest
 
@@ -276,7 +298,7 @@ reportRouter.get("/global-taxpayer-performance",
         }
 
         try {
-            const date = req.query.date ? new Date(req.query.date as string) : new Date();
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getIvaByMonth(date)
 
             return res.status(200).json(response)
@@ -325,9 +347,7 @@ reportRouter.get("/group-performance",
 
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getGroupPerformance(date);
 
             return res.status(200).json(response);
@@ -352,9 +372,7 @@ reportRouter.get("/global-kpi",
 
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getGlobalKPI(date);
 
             return res.status(200).json(response);
@@ -382,9 +400,7 @@ reportRouter.get("/individual-iva-report/:id",
         const id: string = req.params.id;
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getIndividualIvaReport(id, date);
 
             return res.status(200).json(response);
@@ -407,9 +423,7 @@ reportRouter.get('/get-best-supervisor-by-group',
 
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getBestSupervisorByGroups(date);
 
             return res.status(200).json(response);
@@ -432,9 +446,7 @@ reportRouter.get('/get-top-fiscals',
 
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getTopFiscals(date);
 
             return res.status(200).json(response);
@@ -457,9 +469,7 @@ reportRouter.get('/get-top-five-by-group',
 
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getTopFiveByGroup(date);
 
             return res.status(200).json(response);
@@ -482,9 +492,7 @@ reportRouter.get('/get-monthly-growth',
 
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getMonthlyCompliance(date);
 
             return res.status(200).json(response);
@@ -507,9 +515,7 @@ reportRouter.get('/get-taxpayers-compliance',
 
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getTaxpayerCompliance(date);
 
             return res.status(200).json(response);
@@ -532,9 +538,7 @@ reportRouter.get('/get-expected-amount',
 
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getExpectedAmount(date);
 
             return res.status(200).json(response);
@@ -558,9 +562,7 @@ reportRouter.get('/get-fiscal-info/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getFiscalInfo(id, date);
 
             return res.status(200).json(response);
@@ -584,9 +586,7 @@ reportRouter.get('/get-fiscal-taxpayers/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getFiscalTaxpayers(id, date);
 
             return res.status(200).json(response);
@@ -610,9 +610,7 @@ reportRouter.get('/get-fiscal-monthly-collect/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getMonthyCollect(id, date);
 
             return res.status(200).json(response);
@@ -636,9 +634,7 @@ reportRouter.get('/get-fiscal-monthly-performance/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getMontlyPerformance(id, date);
 
             return res.status(200).json(response);
@@ -662,9 +658,7 @@ reportRouter.get('/get-fiscal-compliance-by-process/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getComplianceByProcess(id, date);
 
             return res.status(200).json(response);
@@ -688,9 +682,7 @@ reportRouter.get('/get-fiscal-compliance/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getFiscalTaxpayerCompliance(id, date);
 
             return res.status(200).json(response);
@@ -714,9 +706,7 @@ reportRouter.get('/get-fiscal-collect-analisis/:id',
         const id: string = (req.params.id) as string;
 
         try {
-            const dateParam = req.query.date as string;
-            const date = dateParam ? new Date(dateParam) : new Date();
-
+            const date = parseDateParam(req.query.date as string | undefined);
             const response = await ReportService.getFiscalCollectAnalisis(id, date);
 
             return res.status(200).json(response);
