@@ -1729,29 +1729,16 @@ export async function getMonthlyCompliance(date?: Date) {
                                         status: true,  // ✅ Solo contribuyentes activos
                                     },
                                     include: {
-                                        IVAReports: {
-                                            where: {
-                                                date: {
-                                                    gte: startOfYear,
-                                                    lt: endOfYear,
-                                                },
-                                            },
-                                        },
-                                        ISLRReports: {
-                                            where: {
-                                                emition_date: {
-                                                    gte: startOfYear,
-                                                    lt: endOfYear,
-                                                },
-                                            },
-                                        },
+                                        IVAReports: true, // Incluir todos para calcular fecha_corte
+                                        ISLRReports: true,
                                         event: {
                                             where: {
-                                                date: {
-                                                    gte: startOfYear,
-                                                    lt: endOfYear,
-                                                },
+                                                type: { in: ["FINE", "WARNING"] },
+                                                status: true,
                                             },
+                                        },
+                                        payment: {
+                                            where: { status: true },
                                         },
                                     },
                                 },
@@ -1806,26 +1793,71 @@ export async function getMonthlyCompliance(date?: Date) {
             let goodComplianceCount = 0;
 
             for (const taxpayer of allActiveTaxpayers) {
-                // ✅ Usar la misma lógica que en getTaxpayerCompliance (filtrar por fecha_procedimiento)
-                const fechaProcedimiento = new Date(taxpayer.emition_date);
+                // ✅ NUEVA LÓGICA: Determinar fecha_corte con prioridades
+                let fechaCorte: Date;
                 
-                const ivaReportsPostProcedimiento = taxpayer.IVAReports.filter(
-                    (report: any) => new Date(report.date) >= fechaProcedimiento
+                // Prioridad 1: Último Procedimiento/Fiscalización (eventos FINE/WARNING)
+                const relevantEvents = taxpayer.event.filter(
+                    (ev: any) => ev.type === "FINE" || ev.type === "WARNING"
+                );
+                if (relevantEvents.length > 0) {
+                    const lastEvent = relevantEvents.sort(
+                        (a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()
+                    )[0];
+                    fechaCorte = new Date(lastEvent.date);
+                } 
+                // Prioridad 2: Inicio de racha de pagos actual
+                else if (taxpayer.IVAReports.length > 0) {
+                    const sortedReports = [...taxpayer.IVAReports].sort(
+                        (a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()
+                    );
+                    
+                    let currentStreakStart: Date | null = null;
+                    let previousHadPayment = false;
+                    
+                    for (const report of sortedReports) {
+                        const hasPayment = report.paid.gt(0);
+                        const reportDate = new Date(report.date);
+                        
+                        if (hasPayment && !previousHadPayment) {
+                            currentStreakStart = reportDate;
+                        } else if (!hasPayment && previousHadPayment) {
+                            currentStreakStart = null;
+                        }
+                        previousHadPayment = hasPayment;
+                    }
+                    
+                    if (currentStreakStart) {
+                        fechaCorte = currentStreakStart;
+                    } else {
+                        const firstReportWithPayment = sortedReports.find((r: any) => r.paid.gt(0));
+                        fechaCorte = firstReportWithPayment 
+                            ? new Date(firstReportWithPayment.date)
+                            : new Date(taxpayer.emition_date);
+                    }
+                }
+                // Fallback: fecha de registro
+                else {
+                    fechaCorte = new Date(taxpayer.emition_date);
+                }
+                
+                const ivaReportsPostCorte = taxpayer.IVAReports.filter(
+                    (report: any) => new Date(report.date) >= fechaCorte
                 );
                 
-                const procedimientoMonth = fechaProcedimiento.getUTCMonth();
-                const procedimientoYear = fechaProcedimiento.getUTCFullYear();
+                const corteMonth = fechaCorte.getUTCMonth();
+                const corteYear = fechaCorte.getUTCFullYear();
                 
                 let totalIVA = new Decimal(0);
-                for (const report of ivaReportsPostProcedimiento) {
+                for (const report of ivaReportsPostCorte) {
                     totalIVA = totalIVA.plus(report.paid || 0);
                 }
 
-                // Expected IVA: calcular solo desde el mes de fecha_procedimiento hasta el mes actual
+                // Expected IVA: calcular solo desde fecha_corte hasta el mes actual
                 let expectedIVA = new Decimal(0);
                 
-                if (procedimientoYear === currentYear) {
-                    for (let m = procedimientoMonth; m <= currentMonthIdx; m++) {
+                if (corteYear === currentYear) {
+                    for (let m = corteMonth; m <= currentMonthIdx; m++) {
                         const refDate = new Date(Date.UTC(currentYear, m, 15));
                         const index = indexIva.find(
                             (i) =>
@@ -1838,7 +1870,23 @@ export async function getMonthlyCompliance(date?: Date) {
                             expectedIVA = expectedIVA.plus(index.base_amount);
                         }
                     }
-                } else if (procedimientoYear < currentYear) {
+                } else if (corteYear < currentYear) {
+                    // Si fecha_corte es de un año anterior
+                    // Calcular desde el mes de corte hasta fin de ese año
+                    for (let m = corteMonth; m <= 11; m++) {
+                        const refDate = new Date(Date.UTC(corteYear, m, 15));
+                        const index = indexIva.find(
+                            (i) =>
+                                i.contract_type === taxpayer.contract_type &&
+                                refDate >= i.created_at &&
+                                (i.expires_at === null || refDate < i.expires_at)
+                        );
+
+                        if (index) {
+                            expectedIVA = expectedIVA.plus(index.base_amount);
+                        }
+                    }
+                    // Calcular todo el año actual
                     for (let m = 0; m <= currentMonthIdx; m++) {
                         const refDate = new Date(Date.UTC(currentYear, m, 15));
                         const index = indexIva.find(
@@ -1864,8 +1912,8 @@ export async function getMonthlyCompliance(date?: Date) {
                     if (compliance > 100) compliance = 100;
                 }
 
-                // Contar solo si tiene buen cumplimiento (>= 67) y es numérico
-                if (typeof compliance === "number" && compliance >= 67) {
+                // Contar solo si tiene buen cumplimiento (>67%) y es numérico
+                if (typeof compliance === "number" && compliance > 67) {
                     goodComplianceCount++;
                 }
             }
@@ -1957,31 +2005,19 @@ export async function getTaxpayerCompliance(date?: Date) {
                     gte: startOfYear,
                     lt: endOfYear,
                 },
+                status: true, // Solo contribuyentes activos
             },
             include: {
-                IVAReports: {
-                    where: {
-                        date: {
-                            gte: startOfYear,
-                            lt: endOfYear,
-                        },
-                    },
-                },
-                ISLRReports: {
-                    where: {
-                        emition_date: {
-                            gte: startOfYear,
-                            lt: endOfYear,
-                        },
-                    },
-                },
+                IVAReports: true, // Incluir todos los reportes para calcular fecha_corte
+                ISLRReports: true,
                 event: {
                     where: {
-                        date: {
-                            gte: startOfYear,
-                            lt: endOfYear,
-                        },
+                        type: { in: ["FINE", "WARNING"] },
+                        status: true,
                     },
+                },
+                payment: {
+                    where: { status: true },
                 },
             },
         });
@@ -1994,20 +2030,63 @@ export async function getTaxpayerCompliance(date?: Date) {
 
         for (const taxpayer of taxpayers) {
             const contractType = taxpayer.contract_type;
-            // ✅ Fecha del procedimiento: usar emition_date como fecha_procedimiento
-            const fechaProcedimiento = new Date(taxpayer.emition_date);
             
-            // Filtrar solo registros posteriores a la fecha del procedimiento
-            const ivaReportsPostProcedimiento = taxpayer.IVAReports.filter(
-                (report) => new Date(report.date) >= fechaProcedimiento
+            // ✅ NUEVA LÓGICA: Determinar fecha_corte con prioridades
+            let fechaCorte: Date;
+            
+            // Prioridad 1: Último Procedimiento/Fiscalización (eventos FINE/WARNING)
+            if (taxpayer.event.length > 0) {
+                const lastEvent = taxpayer.event.sort(
+                    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+                )[0];
+                fechaCorte = new Date(lastEvent.date);
+            } 
+            // Prioridad 2: Inicio de racha de pagos actual
+            else if (taxpayer.IVAReports.length > 0) {
+                const sortedReports = [...taxpayer.IVAReports].sort(
+                    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+                );
+                
+                let currentStreakStart: Date | null = null;
+                let previousHadPayment = false;
+                
+                for (const report of sortedReports) {
+                    const hasPayment = report.paid.gt(0);
+                    const reportDate = new Date(report.date);
+                    
+                    if (hasPayment && !previousHadPayment) {
+                        currentStreakStart = reportDate;
+                    } else if (!hasPayment && previousHadPayment) {
+                        currentStreakStart = null;
+                    }
+                    previousHadPayment = hasPayment;
+                }
+                
+                if (currentStreakStart) {
+                    fechaCorte = currentStreakStart;
+                } else {
+                    const firstReportWithPayment = sortedReports.find((r) => r.paid.gt(0));
+                    fechaCorte = firstReportWithPayment 
+                        ? new Date(firstReportWithPayment.date)
+                        : new Date(taxpayer.emition_date);
+                }
+            }
+            // Fallback: fecha de registro
+            else {
+                fechaCorte = new Date(taxpayer.emition_date);
+            }
+            
+            // Filtrar solo registros posteriores a fecha_corte
+            const ivaReportsPostCorte = taxpayer.IVAReports.filter(
+                (report) => new Date(report.date) >= fechaCorte
             );
             
-            const islrReportsPostProcedimiento = taxpayer.ISLRReports.filter(
-                (report) => new Date(report.emition_date) >= fechaProcedimiento
+            const islrReportsPostCorte = taxpayer.ISLRReports.filter(
+                (report) => new Date(report.emition_date) >= fechaCorte
             );
             
-            const eventsPostProcedimiento = taxpayer.event.filter(
-                (ev) => new Date(ev.date) >= fechaProcedimiento
+            const eventsPostCorte = taxpayer.event.filter(
+                (ev) => new Date(ev.date) >= fechaCorte
             );
 
             let totalIVA = new Decimal(0);
@@ -2015,34 +2094,34 @@ export async function getTaxpayerCompliance(date?: Date) {
             let totalFines = new Decimal(0);
             let totalCollected = new Decimal(0);
 
-            // Real IVA collected - solo después de fecha_procedimiento
-            for (const report of ivaReportsPostProcedimiento) {
+            // Real IVA collected - solo después de fecha_corte
+            for (const report of ivaReportsPostCorte) {
                 totalIVA = totalIVA.plus(report.paid);
                 totalCollected = totalCollected.plus(report.paid);
             }
 
-            // ISLR + fines - solo después de fecha_procedimiento
-            for (const rep of islrReportsPostProcedimiento) {
+            // ISLR + fines - solo después de fecha_corte
+            for (const rep of islrReportsPostCorte) {
                 totalISLR = totalISLR.plus(rep.paid);
                 totalCollected = totalCollected.plus(rep.paid);
             }
-            for (const ev of eventsPostProcedimiento) {
+            for (const ev of eventsPostCorte) {
                 if (ev.type === "FINE") {
                     totalFines = totalFines.plus(ev.amount);
                     totalCollected = totalCollected.plus(ev.amount);
                 }
             }
 
-            // Expected IVA: calcular solo desde el mes de fecha_procedimiento hasta el mes actual
-            const procedimientoMonth = fechaProcedimiento.getUTCMonth();
-            const procedimientoYear = fechaProcedimiento.getUTCFullYear();
+            // Expected IVA: calcular solo desde fecha_corte hasta el mes actual
+            const corteMonth = fechaCorte.getUTCMonth();
+            const corteYear = fechaCorte.getUTCFullYear();
             
             let expectedIVA = new Decimal(0);
             
-            // Si el procedimiento es del año actual, calcular desde ese mes
-            if (procedimientoYear === currentYear) {
-                for (let m = procedimientoMonth; m <= currentMonthIdx; m++) {
-                    const refDate = new Date(Date.UTC(currentYear, m, 15)); // mid-month
+            // Si fecha_corte es del año actual
+            if (corteYear === currentYear) {
+                for (let m = corteMonth; m <= currentMonthIdx; m++) {
+                    const refDate = new Date(Date.UTC(currentYear, m, 15));
                     const index = indexIva.find(
                         (i) =>
                             i.contract_type === contractType &&
@@ -2054,8 +2133,23 @@ export async function getTaxpayerCompliance(date?: Date) {
                         expectedIVA = expectedIVA.plus(index.base_amount);
                     }
                 }
-            } else if (procedimientoYear < currentYear) {
-                // Si el procedimiento es de un año anterior, calcular todo el año actual
+            } else if (corteYear < currentYear) {
+                // Si fecha_corte es de un año anterior
+                // Calcular desde el mes de corte hasta fin de ese año
+                for (let m = corteMonth; m <= 11; m++) {
+                    const refDate = new Date(Date.UTC(corteYear, m, 15));
+                    const index = indexIva.find(
+                        (i) =>
+                            i.contract_type === contractType &&
+                            refDate >= i.created_at &&
+                            (i.expires_at === null || refDate < i.expires_at)
+                    );
+
+                    if (index) {
+                        expectedIVA = expectedIVA.plus(index.base_amount);
+                    }
+                }
+                // Calcular todo el año actual
                 for (let m = 0; m <= currentMonthIdx; m++) {
                     const refDate = new Date(Date.UTC(currentYear, m, 15));
                     const index = indexIva.find(
@@ -2072,12 +2166,15 @@ export async function getTaxpayerCompliance(date?: Date) {
             }
 
             // Compliance: paid vs expected (capped at 100)
-            // Si no hay meses posteriores a la visita, estado "Indeterminado"
             let compliance: number | string;
             
             if (expectedIVA.equals(0)) {
-                // No hay meses posteriores a la visita o no hay índice definido
-                compliance = "Indeterminado";
+                // División por cero: Si no hay índice esperado
+                if (totalIVA.gt(0)) {
+                    compliance = "Indeterminado"; // Hay pagos pero no hay índice esperado
+                } else {
+                    compliance = "Indeterminado"; // Sin actividad
+                }
             } else {
                 compliance = totalIVA.div(expectedIVA).times(100).toDecimalPlaces(2).toNumber();
                 if (compliance > 100) compliance = 100;
@@ -2092,12 +2189,13 @@ export async function getTaxpayerCompliance(date?: Date) {
                 totalISLR: totalISLR.toNumber(),
                 totalFines: totalFines.toNumber(),
                 totalCollected: totalCollected.toNumber(),
+                fechaCorte: fechaCorte.toISOString(),
             };
 
-            // Clasificar solo si compliance es numérico
+            // Clasificar solo si compliance es numérico (rangos: >67% Alto, 34-66% Medio, <33% Bajo)
             if (typeof compliance === "number") {
-                if (compliance >= 67) high.push(taxpayerResult);
-                else if (compliance >= 34) medium.push(taxpayerResult);
+                if (compliance > 67) high.push(taxpayerResult);
+                else if (compliance >= 34 && compliance <= 66) medium.push(taxpayerResult);
                 else low.push(taxpayerResult);
             } else {
                 // Si es "Indeterminado", agregar a low para mantener compatibilidad
@@ -2105,9 +2203,9 @@ export async function getTaxpayerCompliance(date?: Date) {
             }
         }
 
-        high.sort((a, b) => b.compliance - a.compliance);
-        medium.sort((a, b) => b.compliance - a.compliance);
-        low.sort((a, b) => b.compliance - a.compliance);
+        high.sort((a, b) => (typeof b.compliance === "number" ? b.compliance : 0) - (typeof a.compliance === "number" ? a.compliance : 0));
+        medium.sort((a, b) => (typeof b.compliance === "number" ? b.compliance : 0) - (typeof a.compliance === "number" ? a.compliance : 0));
+        low.sort((a, b) => (typeof b.compliance === "number" ? b.compliance : 0) - (typeof a.compliance === "number" ? a.compliance : 0));
 
         return { high, medium, low };
     } catch (e) {
@@ -2953,29 +3051,16 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
                 officerId: fiscalId,
             },
             include: {
-                IVAReports: {
-                    where: {
-                        date: {
-                            gte: start,
-                            lt: end,
-                        },
-                    },
-                },
-                ISLRReports: {
-                    where: {
-                        emition_date: {
-                            gte: start,
-                            lt: end,
-                        },
-                    },
-                },
+                IVAReports: true, // Incluir todos para calcular fecha_corte
+                ISLRReports: true,
                 event: {
                     where: {
-                        date: {
-                            gte: start,
-                            lt: end,
-                        },
+                        type: { in: ["FINE", "WARNING"] },
+                        status: true,
                     },
+                },
+                payment: {
+                    where: { status: true },
                 },
             },
         });
@@ -2987,40 +3072,85 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
         const low: any[] = [];
 
         for (const taxpayer of taxpayers) {
-            // ✅ Fecha del procedimiento: usar emition_date como fecha_procedimiento
-            const fechaProcedimiento = new Date(taxpayer.emition_date);
+            // ✅ NUEVA LÓGICA: Determinar fecha_corte con prioridades
+            let fechaCorte: Date;
             
-            // Filtrar solo registros posteriores a la fecha del procedimiento
-            const ivaReportsPostProcedimiento = taxpayer.IVAReports.filter(
-                (report) => new Date(report.date) >= fechaProcedimiento
+            // Prioridad 1: Último Procedimiento/Fiscalización (eventos FINE/WARNING)
+            const relevantEvents = taxpayer.event.filter(
+                (ev) => ev.type === "FINE" || ev.type === "WARNING"
+            );
+            if (relevantEvents.length > 0) {
+                const lastEvent = relevantEvents.sort(
+                    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+                )[0];
+                fechaCorte = new Date(lastEvent.date);
+            } 
+            // Prioridad 2: Inicio de racha de pagos actual
+            else if (taxpayer.IVAReports.length > 0) {
+                const sortedReports = [...taxpayer.IVAReports].sort(
+                    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+                );
+                
+                let currentStreakStart: Date | null = null;
+                let previousHadPayment = false;
+                
+                for (const report of sortedReports) {
+                    const hasPayment = report.paid.gt(0);
+                    const reportDate = new Date(report.date);
+                    
+                    if (hasPayment && !previousHadPayment) {
+                        currentStreakStart = reportDate;
+                    } else if (!hasPayment && previousHadPayment) {
+                        currentStreakStart = null;
+                    }
+                    previousHadPayment = hasPayment;
+                }
+                
+                if (currentStreakStart) {
+                    fechaCorte = currentStreakStart;
+                } else {
+                    const firstReportWithPayment = sortedReports.find((r) => r.paid.gt(0));
+                    fechaCorte = firstReportWithPayment 
+                        ? new Date(firstReportWithPayment.date)
+                        : new Date(taxpayer.emition_date);
+                }
+            }
+            // Fallback: fecha de registro
+            else {
+                fechaCorte = new Date(taxpayer.emition_date);
+            }
+            
+            // Filtrar solo registros posteriores a fecha_corte
+            const ivaReportsPostCorte = taxpayer.IVAReports.filter(
+                (report) => new Date(report.date) >= fechaCorte
             );
             
-            const islrReportsPostProcedimiento = taxpayer.ISLRReports.filter(
-                (report) => new Date(report.emition_date) >= fechaProcedimiento
+            const islrReportsPostCorte = taxpayer.ISLRReports.filter(
+                (report) => new Date(report.emition_date) >= fechaCorte
             );
             
-            const eventsPostProcedimiento = taxpayer.event.filter(
-                (ev) => new Date(ev.date) >= fechaProcedimiento
+            const eventsPostCorte = taxpayer.event.filter(
+                (ev) => new Date(ev.date) >= fechaCorte
             );
 
             let totalIva = new Decimal(0);
             let totalIslr = new Decimal(0);
             let totalFines = new Decimal(0);
 
-            // Real IVA paid - solo después de fecha_procedimiento
-            for (const report of ivaReportsPostProcedimiento) {
+            // Real IVA paid - solo después de fecha_corte
+            for (const report of ivaReportsPostCorte) {
                 totalIva = totalIva.plus(report.paid || 0);
             }
 
-            // Expected IVA: calcular solo desde el mes de fecha_procedimiento hasta el mes actual
-            const procedimientoMonth = fechaProcedimiento.getUTCMonth();
-            const procedimientoYear = fechaProcedimiento.getUTCFullYear();
+            // Expected IVA: calcular solo desde fecha_corte hasta el mes actual
+            const corteMonth = fechaCorte.getUTCMonth();
+            const corteYear = fechaCorte.getUTCFullYear();
             
             let expectedIVA = new Decimal(0);
             
-            // Si el procedimiento es del año actual, calcular desde ese mes
-            if (procedimientoYear === currentYear) {
-                for (let m = procedimientoMonth; m <= currentMonthIdx; m++) {
+            // Si fecha_corte es del año actual
+            if (corteYear === currentYear) {
+                for (let m = corteMonth; m <= currentMonthIdx; m++) {
                     const refDate = new Date(Date.UTC(currentYear, m, 15));
                     const applicableIndex = indexIva.find(
                         (index) =>
@@ -3033,8 +3163,23 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
                         expectedIVA = expectedIVA.plus(applicableIndex.base_amount);
                     }
                 }
-            } else if (procedimientoYear < currentYear) {
-                // Si el procedimiento es de un año anterior, calcular todo el año actual
+            } else if (corteYear < currentYear) {
+                // Si fecha_corte es de un año anterior
+                // Calcular desde el mes de corte hasta fin de ese año
+                for (let m = corteMonth; m <= 11; m++) {
+                    const refDate = new Date(Date.UTC(corteYear, m, 15));
+                    const applicableIndex = indexIva.find(
+                        (index) =>
+                            index.contract_type === taxpayer.contract_type &&
+                            refDate >= index.created_at &&
+                            (!index.expires_at || refDate < index.expires_at)
+                    );
+
+                    if (applicableIndex) {
+                        expectedIVA = expectedIVA.plus(applicableIndex.base_amount);
+                    }
+                }
+                // Calcular todo el año actual
                 for (let m = 0; m <= currentMonthIdx; m++) {
                     const refDate = new Date(Date.UTC(currentYear, m, 15));
                     const applicableIndex = indexIva.find(
@@ -3050,11 +3195,11 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
                 }
             }
 
-            // ISLR + fines - solo después de fecha_procedimiento
-            for (const islr of islrReportsPostProcedimiento) {
+            // ISLR + fines - solo después de fecha_corte
+            for (const islr of islrReportsPostCorte) {
                 totalIslr = totalIslr.plus(islr.paid || 0);
             }
-            for (const ev of eventsPostProcedimiento) {
+            for (const ev of eventsPostCorte) {
                 if (ev.type === "FINE") {
                     totalFines = totalFines.plus(ev.amount || 0);
                 }
@@ -3085,11 +3230,11 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
                 totalFines: Number(totalFines.toFixed(2)),
             };
 
-            // Clasificar solo si complianceRate es numérico
+            // Clasificar solo si complianceRate es numérico (rangos: >67% Alto, 34-66% Medio, <33% Bajo)
             if (typeof complianceRate === "number") {
-                if (complianceRate >= 67) {
+                if (complianceRate > 67) {
                     high.push(taxpayerSummary);
-                } else if (complianceRate >= 34) {
+                } else if (complianceRate >= 34 && complianceRate <= 66) {
                     medium.push(taxpayerSummary);
                 } else {
                     low.push(taxpayerSummary);
@@ -3141,29 +3286,16 @@ export async function getCoordinationPerformance() {
                                 // No filtrar por culminated porque queremos todos los activos
                             },
                             include: {
-                                IVAReports: {
-                                    where: {
-                                        date: {
-                                            gte: startOfYear,
-                                            lt: endOfYear,
-                                        },
-                                    },
-                                },
-                                ISLRReports: {
-                                    where: {
-                                        emition_date: {
-                                            gte: startOfYear,
-                                            lt: endOfYear,
-                                        },
-                                    },
-                                },
+                                IVAReports: true, // Incluir todos para calcular fecha_corte
+                                ISLRReports: true,
                                 event: {
                                     where: {
-                                        date: {
-                                            gte: startOfYear,
-                                            lt: endOfYear,
-                                        },
+                                        type: { in: ["FINE", "WARNING"] },
+                                        status: true,
                                     },
+                                },
+                                payment: {
+                                    where: { status: true },
                                 },
                             },
                         },
@@ -3174,29 +3306,16 @@ export async function getCoordinationPerformance() {
                                         status: true,  // ✅ Solo contribuyentes activos
                                     },
                                     include: {
-                                        IVAReports: {
-                                            where: {
-                                                date: {
-                                                    gte: startOfYear,
-                                                    lt: endOfYear,
-                                                },
-                                            },
-                                        },
-                                        ISLRReports: {
-                                            where: {
-                                                emition_date: {
-                                                    gte: startOfYear,
-                                                    lt: endOfYear,
-                                                },
-                                            },
-                                        },
+                                        IVAReports: true, // Incluir todos para calcular fecha_corte
+                                        ISLRReports: true,
                                         event: {
                                             where: {
-                                                date: {
-                                                    gte: startOfYear,
-                                                    lt: endOfYear,
-                                                },
+                                                type: { in: ["FINE", "WARNING"] },
+                                                status: true,
                                             },
+                                        },
+                                        payment: {
+                                            where: { status: true },
                                         },
                                     },
                                 },
@@ -3235,26 +3354,71 @@ export async function getCoordinationPerformance() {
             let goodComplianceCount = 0;
 
             for (const taxpayer of allActiveTaxpayers) {
-                // ✅ Usar la misma lógica que en getTaxpayerCompliance (filtrar por fecha_procedimiento)
-                const fechaProcedimiento = new Date(taxpayer.emition_date);
+                // ✅ NUEVA LÓGICA: Determinar fecha_corte con prioridades
+                let fechaCorte: Date;
                 
-                const ivaReportsPostProcedimiento = taxpayer.IVAReports.filter(
-                    (report: any) => new Date(report.date) >= fechaProcedimiento
+                // Prioridad 1: Último Procedimiento/Fiscalización (eventos FINE/WARNING)
+                const relevantEvents = taxpayer.event.filter(
+                    (ev: any) => ev.type === "FINE" || ev.type === "WARNING"
+                );
+                if (relevantEvents.length > 0) {
+                    const lastEvent = relevantEvents.sort(
+                        (a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()
+                    )[0];
+                    fechaCorte = new Date(lastEvent.date);
+                } 
+                // Prioridad 2: Inicio de racha de pagos actual
+                else if (taxpayer.IVAReports.length > 0) {
+                    const sortedReports = [...taxpayer.IVAReports].sort(
+                        (a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()
+                    );
+                    
+                    let currentStreakStart: Date | null = null;
+                    let previousHadPayment = false;
+                    
+                    for (const report of sortedReports) {
+                        const hasPayment = report.paid.gt(0);
+                        const reportDate = new Date(report.date);
+                        
+                        if (hasPayment && !previousHadPayment) {
+                            currentStreakStart = reportDate;
+                        } else if (!hasPayment && previousHadPayment) {
+                            currentStreakStart = null;
+                        }
+                        previousHadPayment = hasPayment;
+                    }
+                    
+                    if (currentStreakStart) {
+                        fechaCorte = currentStreakStart;
+                    } else {
+                        const firstReportWithPayment = sortedReports.find((r: any) => r.paid.gt(0));
+                        fechaCorte = firstReportWithPayment 
+                            ? new Date(firstReportWithPayment.date)
+                            : new Date(taxpayer.emition_date);
+                    }
+                }
+                // Fallback: fecha de registro
+                else {
+                    fechaCorte = new Date(taxpayer.emition_date);
+                }
+                
+                const ivaReportsPostCorte = taxpayer.IVAReports.filter(
+                    (report: any) => new Date(report.date) >= fechaCorte
                 );
                 
-                const procedimientoMonth = fechaProcedimiento.getUTCMonth();
-                const procedimientoYear = fechaProcedimiento.getUTCFullYear();
+                const corteMonth = fechaCorte.getUTCMonth();
+                const corteYear = fechaCorte.getUTCFullYear();
                 
                 let totalIVA = new Decimal(0);
-                for (const report of ivaReportsPostProcedimiento) {
+                for (const report of ivaReportsPostCorte) {
                     totalIVA = totalIVA.plus(report.paid);
                 }
 
-                // Expected IVA: calcular solo desde el mes de fecha_procedimiento hasta el mes actual
+                // Expected IVA: calcular solo desde fecha_corte hasta el mes actual
                 let expectedIVA = new Decimal(0);
                 
-                if (procedimientoYear === currentYear) {
-                    for (let m = procedimientoMonth; m <= currentMonthIdx; m++) {
+                if (corteYear === currentYear) {
+                    for (let m = corteMonth; m <= currentMonthIdx; m++) {
                         const refDate = new Date(Date.UTC(currentYear, m, 15));
                         const index = indexIva.find(
                             (i) =>
@@ -3267,7 +3431,23 @@ export async function getCoordinationPerformance() {
                             expectedIVA = expectedIVA.plus(index.base_amount);
                         }
                     }
-                } else if (procedimientoYear < currentYear) {
+                } else if (corteYear < currentYear) {
+                    // Si fecha_corte es de un año anterior
+                    // Calcular desde el mes de corte hasta fin de ese año
+                    for (let m = corteMonth; m <= 11; m++) {
+                        const refDate = new Date(Date.UTC(corteYear, m, 15));
+                        const index = indexIva.find(
+                            (i) =>
+                                i.contract_type === taxpayer.contract_type &&
+                                refDate >= i.created_at &&
+                                (i.expires_at === null || refDate < i.expires_at)
+                        );
+
+                        if (index) {
+                            expectedIVA = expectedIVA.plus(index.base_amount);
+                        }
+                    }
+                    // Calcular todo el año actual
                     for (let m = 0; m <= currentMonthIdx; m++) {
                         const refDate = new Date(Date.UTC(currentYear, m, 15));
                         const index = indexIva.find(
@@ -3293,8 +3473,8 @@ export async function getCoordinationPerformance() {
                     if (compliance > 100) compliance = 100;
                 }
 
-                // Contar solo si tiene buen cumplimiento (>= 67) y es numérico
-                if (typeof compliance === "number" && compliance >= 67) {
+                // Contar solo si tiene buen cumplimiento (>67%) y es numérico
+                if (typeof compliance === "number" && compliance > 67) {
                     goodComplianceCount++;
                 }
             }
