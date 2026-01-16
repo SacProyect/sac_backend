@@ -10,6 +10,82 @@ import { formatInTimeZone } from 'date-fns-tz';
 
 dayjs.extend(isBetween);
 
+/**
+ * ✅ Helper: Verifica si un contribuyente tenía buen cumplimiento (>67%) ANTES del procedimiento
+ * Si ya venía pagando bien, NO se debe usar el procedimiento como punto de quiebre
+ * @returns true si tenía buen cumplimiento antes del procedimiento, false en caso contrario
+ */
+function hadGoodComplianceBeforeProcedure(
+    taxpayer: any,
+    procedureDate: Date,
+    indexIva: any[],
+    currentYear: number
+): boolean {
+    const procedureYear = procedureDate.getUTCFullYear();
+    const procedureMonth = procedureDate.getUTCMonth();
+    
+    // Si el procedimiento es antes del año actual, no hay datos previos para evaluar
+    if (procedureYear < currentYear) {
+        return false;
+    }
+    
+    // Calcular cumplimiento desde inicio del año hasta el mes anterior al procedimiento
+    const startOfYear = new Date(Date.UTC(currentYear, 0, 1));
+    const monthBeforeProcedure = procedureMonth === 0 
+        ? new Date(Date.UTC(currentYear - 1, 11, 31)) // Si el procedimiento es en enero, usar diciembre del año anterior
+        : new Date(Date.UTC(currentYear, procedureMonth - 1, 31));
+    
+    // Filtrar reportes previos al procedimiento
+    const ivaReportsBefore = taxpayer.IVAReports.filter(
+        (report: any) => {
+            const reportDate = new Date(report.date);
+            return reportDate >= startOfYear && reportDate <= monthBeforeProcedure;
+        }
+    );
+    
+    // Si no hay reportes previos, considerar que NO tenía buen cumplimiento
+    if (ivaReportsBefore.length === 0) {
+        return false;
+    }
+    
+    // Calcular total pagado antes del procedimiento
+    let totalPaidBefore = new Decimal(0);
+    for (const report of ivaReportsBefore) {
+        totalPaidBefore = totalPaidBefore.plus(report.paid || 0);
+    }
+    
+    // Calcular total esperado desde inicio del año hasta mes anterior al procedimiento
+    let expectedBefore = new Decimal(0);
+    const monthsToEvaluate = procedureYear === currentYear 
+        ? procedureMonth  // Del mes 0 (enero) al mes anterior al procedimiento
+        : 0;
+    
+    for (let m = 0; m < monthsToEvaluate; m++) {
+        const refDate = new Date(Date.UTC(currentYear, m, 15));
+        const index = indexIva.find(
+            (i: any) =>
+                i.contract_type === taxpayer.contract_type &&
+                refDate >= i.created_at &&
+                (i.expires_at === null || refDate < i.expires_at)
+        );
+        
+        if (index) {
+            expectedBefore = expectedBefore.plus(index.base_amount);
+        }
+    }
+    
+    // Si no hay índice esperado, no se puede determinar
+    if (expectedBefore.equals(0)) {
+        return false;
+    }
+    
+    // Calcular porcentaje de cumplimiento antes del procedimiento
+    const complianceBefore = totalPaidBefore.div(expectedBefore).times(100).toNumber();
+    
+    // Retornar true si el cumplimiento previo era bueno (>67%)
+    return complianceBefore > 67;
+}
+
 interface InputFiscalGroups {
     role: string,
     id?: string,
@@ -1903,17 +1979,22 @@ export async function getMonthlyCompliance(date?: Date) {
                 }
 
                 // Calcular compliance
-                let compliance: number | string;
+                // ✅ BUG FIX: Nunca retornar "Indeterminado", siempre retornar un número válido
+                let compliance: number;
                 
-                if (expectedIVA.equals(0)) {
-                    compliance = "Indeterminado";
+                if (expectedIVA.equals(0) || expectedIVA.isNaN()) {
+                    compliance = 0;
                 } else {
                     compliance = totalIVA.div(expectedIVA).times(100).toDecimalPlaces(2).toNumber();
-                    if (compliance > 100) compliance = 100;
+                    if (isNaN(compliance) || !isFinite(compliance)) {
+                        compliance = 0;
+                    } else if (compliance > 100) {
+                        compliance = 100;
+                    }
                 }
 
-                // Contar solo si tiene buen cumplimiento (>67%) y es numérico
-                if (typeof compliance === "number" && compliance > 67) {
+                // Contar solo si tiene buen cumplimiento (>67%)
+                if (compliance > 67) {
                     goodComplianceCount++;
                 }
             }
@@ -2034,14 +2115,71 @@ export async function getTaxpayerCompliance(date?: Date) {
             // ✅ NUEVA LÓGICA: Determinar fecha_corte con prioridades
             let fechaCorte: Date;
             
-            // Prioridad 1: Último Procedimiento/Fiscalización (eventos FINE/WARNING)
-            if (taxpayer.event.length > 0) {
-                const lastEvent = taxpayer.event.sort(
-                    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-                )[0];
-                fechaCorte = new Date(lastEvent.date);
+            // ✅ PRIORIDAD 1 (CRÍTICA): Procedimiento Administrativo en el año fiscal actual
+            // Si el contribuyente tiene un procedimiento (VDF, AF, FP) registrado en el año actual,
+            // usar la fecha de emisión del procedimiento como punto de quiebre para "rehabilitación"
+            // PERO solo si NO venía pagando bien antes del procedimiento
+            const emitionDate = new Date(taxpayer.emition_date);
+            const emitionYear = emitionDate.getUTCFullYear();
+            const hasProcedureThisYear = (taxpayer.process === "VDF" || taxpayer.process === "AF" || taxpayer.process === "FP") 
+                && emitionYear === currentYear;
+            
+            if (hasProcedureThisYear) {
+                // Verificar si ya venía pagando bien antes del procedimiento
+                const hadGoodCompliance = hadGoodComplianceBeforeProcedure(
+                    taxpayer,
+                    emitionDate,
+                    indexIva,
+                    currentYear
+                );
+                
+                // Solo usar el procedimiento como punto de quiebre si NO tenía buen cumplimiento previo
+                if (!hadGoodCompliance) {
+                    // Usar el mes siguiente al procedimiento como fecha de inicio
+                    // Si el procedimiento es en febrero, calcular desde marzo
+                    const procedureMonth = emitionDate.getUTCMonth();
+                    const procedureYear = emitionDate.getUTCFullYear();
+                    
+                    if (procedureMonth === 11) {
+                        // Si es diciembre, el mes siguiente es enero del año siguiente
+                        fechaCorte = new Date(Date.UTC(procedureYear + 1, 0, 1));
+                    } else {
+                        // Mes siguiente al procedimiento
+                        fechaCorte = new Date(Date.UTC(procedureYear, procedureMonth + 1, 1));
+                    }
+                }
+                // Si hadGoodCompliance es true, continuar con las siguientes prioridades
+            }
+            // Prioridad 2: Último Procedimiento/Fiscalización (eventos FINE/WARNING) del año actual
+            else if (taxpayer.event.length > 0) {
+                // Filtrar eventos del año fiscal actual
+                const eventsThisYear = taxpayer.event.filter(
+                    (ev) => new Date(ev.date).getUTCFullYear() === currentYear
+                );
+                
+                if (eventsThisYear.length > 0) {
+                    const lastEvent = eventsThisYear.sort(
+                        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+                    )[0];
+                    const eventDate = new Date(lastEvent.date);
+                    const eventMonth = eventDate.getUTCMonth();
+                    const eventYear = eventDate.getUTCFullYear();
+                    
+                    // Mes siguiente al evento
+                    if (eventMonth === 11) {
+                        fechaCorte = new Date(Date.UTC(eventYear + 1, 0, 1));
+                    } else {
+                        fechaCorte = new Date(Date.UTC(eventYear, eventMonth + 1, 1));
+                    }
+                } else {
+                    // Si no hay eventos del año actual, usar el más reciente de cualquier año
+                    const lastEvent = taxpayer.event.sort(
+                        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+                    )[0];
+                    fechaCorte = new Date(lastEvent.date);
+                }
             } 
-            // Prioridad 2: Inicio de racha de pagos actual
+            // Prioridad 3: Inicio de racha de pagos actual
             else if (taxpayer.IVAReports.length > 0) {
                 const sortedReports = [...taxpayer.IVAReports].sort(
                     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
@@ -2120,6 +2258,7 @@ export async function getTaxpayerCompliance(date?: Date) {
             
             // Si fecha_corte es del año actual
             if (corteYear === currentYear) {
+                // Calcular desde fecha_corte hasta el mes actual (incluyendo el mes de corte)
                 for (let m = corteMonth; m <= currentMonthIdx; m++) {
                     const refDate = new Date(Date.UTC(currentYear, m, 15));
                     const index = indexIva.find(
@@ -2163,21 +2302,39 @@ export async function getTaxpayerCompliance(date?: Date) {
                         expectedIVA = expectedIVA.plus(index.base_amount);
                     }
                 }
+            } else if (corteYear > currentYear) {
+                // Si fecha_corte es del futuro (caso improbable), solo calcular hasta el mes actual
+                for (let m = 0; m <= currentMonthIdx; m++) {
+                    const refDate = new Date(Date.UTC(currentYear, m, 15));
+                    const index = indexIva.find(
+                        (i) =>
+                            i.contract_type === contractType &&
+                            refDate >= i.created_at &&
+                            (i.expires_at === null || refDate < i.expires_at)
+                    );
+
+                    if (index) {
+                        expectedIVA = expectedIVA.plus(index.base_amount);
+                    }
+                }
             }
 
             // Compliance: paid vs expected (capped at 100)
-            let compliance: number | string;
+            // ✅ BUG FIX: Nunca retornar "Indeterminado", siempre retornar un número válido
+            let compliance: number;
             
-            if (expectedIVA.equals(0)) {
-                // División por cero: Si no hay índice esperado
-                if (totalIVA.gt(0)) {
-                    compliance = "Indeterminado"; // Hay pagos pero no hay índice esperado
-                } else {
-                    compliance = "Indeterminado"; // Sin actividad
-                }
+            if (expectedIVA.equals(0) || expectedIVA.isNaN()) {
+                // División por cero o índice inválido: Retornar 0% en lugar de "Indeterminado"
+                // Si hay pagos pero no hay índice esperado, es un contribuyente nuevo o sin índice configurado
+                compliance = 0;
             } else {
                 compliance = totalIVA.div(expectedIVA).times(100).toDecimalPlaces(2).toNumber();
-                if (compliance > 100) compliance = 100;
+                // Manejar casos especiales matemáticos
+                if (isNaN(compliance) || !isFinite(compliance)) {
+                    compliance = 0;
+                } else if (compliance > 100) {
+                    compliance = 100;
+                }
             }
 
             const taxpayerResult = {
@@ -2192,20 +2349,21 @@ export async function getTaxpayerCompliance(date?: Date) {
                 fechaCorte: fechaCorte.toISOString(),
             };
 
-            // Clasificar solo si compliance es numérico (rangos: >67% Alto, 34-66% Medio, <33% Bajo)
-            if (typeof compliance === "number") {
-                if (compliance > 67) high.push(taxpayerResult);
-                else if (compliance >= 34 && compliance <= 66) medium.push(taxpayerResult);
-                else low.push(taxpayerResult);
+            // Clasificar por rangos: >67% Alto, 34-67% Medio, <34% Bajo
+            // compliance siempre es numérico ahora (0 en lugar de "Indeterminado")
+            if (compliance > 67) {
+                high.push(taxpayerResult);
+            } else if (compliance >= 34 && compliance <= 67) {
+                medium.push(taxpayerResult);
             } else {
-                // Si es "Indeterminado", agregar a low para mantener compatibilidad
                 low.push(taxpayerResult);
             }
         }
 
-        high.sort((a, b) => (typeof b.compliance === "number" ? b.compliance : 0) - (typeof a.compliance === "number" ? a.compliance : 0));
-        medium.sort((a, b) => (typeof b.compliance === "number" ? b.compliance : 0) - (typeof a.compliance === "number" ? a.compliance : 0));
-        low.sort((a, b) => (typeof b.compliance === "number" ? b.compliance : 0) - (typeof a.compliance === "number" ? a.compliance : 0));
+        // Ordenar por compliance (siempre numérico ahora)
+        high.sort((a, b) => (b.compliance as number) - (a.compliance as number));
+        medium.sort((a, b) => (b.compliance as number) - (a.compliance as number));
+        low.sort((a, b) => (b.compliance as number) - (a.compliance as number));
 
         return { high, medium, low };
     } catch (e) {
@@ -3072,21 +3230,71 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
         const low: any[] = [];
 
         for (const taxpayer of taxpayers) {
+            const contractType = taxpayer.contract_type;
+            
             // ✅ NUEVA LÓGICA: Determinar fecha_corte con prioridades
             let fechaCorte: Date;
             
-            // Prioridad 1: Último Procedimiento/Fiscalización (eventos FINE/WARNING)
-            const relevantEvents = taxpayer.event.filter(
-                (ev) => ev.type === "FINE" || ev.type === "WARNING"
-            );
-            if (relevantEvents.length > 0) {
-                const lastEvent = relevantEvents.sort(
-                    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-                )[0];
-                fechaCorte = new Date(lastEvent.date);
+            // ✅ PRIORIDAD 1 (CRÍTICA): Procedimiento Administrativo en el año fiscal actual
+            // Solo si NO venía pagando bien antes del procedimiento
+            const emitionDate = new Date(taxpayer.emition_date);
+            const emitionYear = emitionDate.getUTCFullYear();
+            const hasProcedureThisYear = (taxpayer.process === "VDF" || taxpayer.process === "AF" || taxpayer.process === "FP") 
+                && emitionYear === currentYear;
+            
+            if (hasProcedureThisYear) {
+                const hadGoodCompliance = hadGoodComplianceBeforeProcedure(
+                    taxpayer,
+                    emitionDate,
+                    indexIva,
+                    currentYear
+                );
+                
+                if (!hadGoodCompliance) {
+                    const procedureMonth = emitionDate.getUTCMonth();
+                    const procedureYear = emitionDate.getUTCFullYear();
+                    
+                    if (procedureMonth === 11) {
+                        fechaCorte = new Date(Date.UTC(procedureYear + 1, 0, 1));
+                    } else {
+                        fechaCorte = new Date(Date.UTC(procedureYear, procedureMonth + 1, 1));
+                    }
+                }
+            }
+            
+            // Prioridad 2: Último Procedimiento/Fiscalización (eventos FINE/WARNING) del año actual
+            if (!fechaCorte && taxpayer.event.length > 0) {
+                const eventsThisYear = taxpayer.event.filter(
+                    (ev) => new Date(ev.date).getUTCFullYear() === currentYear
+                );
+                
+                if (eventsThisYear.length > 0) {
+                    const lastEvent = eventsThisYear.sort(
+                        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+                    )[0];
+                    const eventDate = new Date(lastEvent.date);
+                    const eventMonth = eventDate.getUTCMonth();
+                    const eventYear = eventDate.getUTCFullYear();
+                    
+                    if (eventMonth === 11) {
+                        fechaCorte = new Date(Date.UTC(eventYear + 1, 0, 1));
+                    } else {
+                        fechaCorte = new Date(Date.UTC(eventYear, eventMonth + 1, 1));
+                    }
+                } else {
+                    const relevantEvents = taxpayer.event.filter(
+                        (ev) => ev.type === "FINE" || ev.type === "WARNING"
+                    );
+                    if (relevantEvents.length > 0) {
+                        const lastEvent = relevantEvents.sort(
+                            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+                        )[0];
+                        fechaCorte = new Date(lastEvent.date);
+                    }
+                }
             } 
-            // Prioridad 2: Inicio de racha de pagos actual
-            else if (taxpayer.IVAReports.length > 0) {
+            // Prioridad 3: Inicio de racha de pagos actual
+            if (!fechaCorte && taxpayer.IVAReports.length > 0) {
                 const sortedReports = [...taxpayer.IVAReports].sort(
                     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
                 );
@@ -3208,15 +3416,20 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
             const totalCollected = totalIva.plus(totalIslr).plus(totalFines);
 
             // Compliance based on expected vs real IVA (capped at 100)
-            // Si no hay meses posteriores a la visita, estado "Indeterminado"
-            let complianceRate: number | string;
+            // ✅ BUG FIX: Nunca retornar "Indeterminado", siempre retornar un número válido
+            let complianceRate: number;
             
-            if (expectedIVA.equals(0)) {
-                // No hay meses posteriores a la visita o no hay índice definido
-                complianceRate = "Indeterminado";
+            if (expectedIVA.equals(0) || expectedIVA.isNaN()) {
+                // División por cero o índice inválido: Retornar 0% en lugar de "Indeterminado"
+                complianceRate = 0;
             } else {
                 complianceRate = totalIva.div(expectedIVA).times(100).toDecimalPlaces(2).toNumber();
-                if (complianceRate > 100) complianceRate = 100;
+                // Manejar casos especiales matemáticos
+                if (isNaN(complianceRate) || !isFinite(complianceRate)) {
+                    complianceRate = 0;
+                } else if (complianceRate > 100) {
+                    complianceRate = 100;
+                }
             }
 
             const taxpayerSummary = {
@@ -3230,25 +3443,22 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
                 totalFines: Number(totalFines.toFixed(2)),
             };
 
-            // Clasificar solo si complianceRate es numérico (rangos: >67% Alto, 34-66% Medio, <33% Bajo)
-            if (typeof complianceRate === "number") {
-                if (complianceRate > 67) {
-                    high.push(taxpayerSummary);
-                } else if (complianceRate >= 34 && complianceRate <= 66) {
-                    medium.push(taxpayerSummary);
-                } else {
-                    low.push(taxpayerSummary);
-                }
+            // Clasificar por rangos: >67% Alto, 34-67% Medio, <34% Bajo
+            // complianceRate siempre es numérico ahora (0 en lugar de "Indeterminado")
+            if (complianceRate > 67) {
+                high.push(taxpayerSummary);
+            } else if (complianceRate >= 34 && complianceRate <= 67) {
+                medium.push(taxpayerSummary);
             } else {
-                // Si es "Indeterminado", agregar a low para mantener compatibilidad
                 low.push(taxpayerSummary);
             }
         }
 
+        // Ordenar por complianceRate (siempre numérico ahora)
         return {
-            high: high.sort((a, b) => b.complianceRate - a.complianceRate),
-            medium: medium.sort((a, b) => b.complianceRate - a.complianceRate),
-            low: low.sort((a, b) => b.complianceRate - a.complianceRate),
+            high: high.sort((a, b) => (b.complianceRate as number) - (a.complianceRate as number)),
+            medium: medium.sort((a, b) => (b.complianceRate as number) - (a.complianceRate as number)),
+            low: low.sort((a, b) => (b.complianceRate as number) - (a.complianceRate as number)),
         };
     } catch (e) {
         console.error(e);
@@ -3464,17 +3674,22 @@ export async function getCoordinationPerformance() {
                 }
 
                 // Calcular compliance
-                let compliance: number | string;
+                // ✅ BUG FIX: Nunca retornar "Indeterminado", siempre retornar un número válido
+                let compliance: number;
                 
-                if (expectedIVA.equals(0)) {
-                    compliance = "Indeterminado";
+                if (expectedIVA.equals(0) || expectedIVA.isNaN()) {
+                    compliance = 0;
                 } else {
                     compliance = totalIVA.div(expectedIVA).times(100).toDecimalPlaces(2).toNumber();
-                    if (compliance > 100) compliance = 100;
+                    if (isNaN(compliance) || !isFinite(compliance)) {
+                        compliance = 0;
+                    } else if (compliance > 100) {
+                        compliance = 100;
+                    }
                 }
 
-                // Contar solo si tiene buen cumplimiento (>67%) y es numérico
-                if (typeof compliance === "number" && compliance > 67) {
+                // Contar solo si tiene buen cumplimiento (>67%)
+                if (compliance > 67) {
                     goodComplianceCount++;
                 }
             }
