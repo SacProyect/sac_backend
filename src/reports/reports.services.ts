@@ -11,17 +11,17 @@ import { formatInTimeZone } from 'date-fns-tz';
 dayjs.extend(isBetween);
 
 /**
- * ✅ NUEVA LÓGICA: Calcula el complianceScore basado en pagos vs meses exigibles
- * Regla de Negocio: La obligación tributaria nace estrictamente en fecha_fiscalizacion
- * @param taxpayer - Contribuyente con sus pagos incluidos
- * @param fechaFin - Fecha de corte del reporte (o fecha actual si no se especifica)
- * @param yearFilter - Año seleccionado para filtrar (opcional)
- * @returns Objeto con score, mesesExigibles, pagosValidos y clasificación
+ * ✅ LÓGICA PROFESIONAL (enfoque IVA mensual):
+ * Calcula el complianceScore como promedio mensual de (IVA pagado / IVA esperado) en el año seleccionado.
+ * - La obligación nace en `emition_date` (fecha_fiscalizacion).
+ * - Para cada mes exigible se calcula un esperado usando el índice IVA activo para el tipo de contrato.
+ * - Si en un mes no existe índice activo (esperado=0), ese mes no se penaliza (se excluye del denominador).
  */
 function calculateComplianceScore(
     taxpayer: any,
     fechaFin: Date,
-    yearFilter?: number
+    yearFilter: number | undefined,
+    indexIva: any[]
 ): {
     score: number;
     mesesExigibles: number;
@@ -30,7 +30,6 @@ function calculateComplianceScore(
     fechaInicio: Date;
 } {
     try {
-        // ✅ BLINDAJE CRÍTICO: Validar que taxpayer tenga datos básicos
         if (!taxpayer || !taxpayer.id) {
             console.error(`[COMPLIANCE_SCORE] Taxpayer inválido o sin ID`);
             return {
@@ -42,175 +41,162 @@ function calculateComplianceScore(
             };
         }
 
-        // 1. Definir fechaInicio: usar emition_date (fecha_fiscalizacion) o created_at como fallback
+        const safeNumber = (v: unknown): number => {
+            const n = typeof v === "number" ? v : Number(v);
+            return Number.isFinite(n) ? n : 0;
+        };
+
+        // 1) fechaInicio: emition_date (obligación) o created_at como fallback
         let fechaInicio: Date;
-        try {
-            if (taxpayer.emition_date) {
-                fechaInicio = new Date(taxpayer.emition_date);
-                // Validar que la fecha sea válida
-                if (isNaN(fechaInicio.getTime())) {
-                    throw new Error("emition_date inválida");
-                }
-            } else {
-                // Fallback de emergencia: usar created_at pero loguear advertencia
-                console.warn(
-                    `⚠️ [COMPLIANCE_SCORE] Contribuyente ${taxpayer.id} (${taxpayer.rif}) no tiene emition_date. Usando created_at como fallback.`
-                );
-                fechaInicio = new Date(taxpayer.created_at || new Date());
-                if (isNaN(fechaInicio.getTime())) {
-                    fechaInicio = new Date(); // Último fallback: fecha actual
-                }
+        if (taxpayer.emition_date) {
+            fechaInicio = new Date(taxpayer.emition_date);
+        } else {
+            console.warn(
+                `⚠️ [COMPLIANCE_SCORE] Contribuyente ${taxpayer.id} (${taxpayer.rif}) no tiene emition_date. Usando created_at como fallback.`
+            );
+            fechaInicio = new Date(taxpayer.created_at || new Date());
+        }
+        if (isNaN(fechaInicio.getTime())) fechaInicio = new Date();
+
+        // 2) fechaFin válida
+        const fechaFinValida = !fechaFin || isNaN(fechaFin.getTime()) ? new Date() : fechaFin;
+
+        // 3) Rango de cálculo dentro del año (si hay filtro)
+        const selectedYear = yearFilter ?? fechaFinValida.getUTCFullYear();
+        const startOfYear = new Date(Date.UTC(selectedYear, 0, 1, 0, 0, 0, 0));
+        const endOfYearExclusive = new Date(Date.UTC(selectedYear + 1, 0, 1, 0, 0, 0, 0));
+        const fechaInicioCalculo = fechaInicio < startOfYear ? startOfYear : fechaInicio;
+        const fechaFinCalculo =
+            fechaFinValida >= endOfYearExclusive
+                ? new Date(Date.UTC(selectedYear, 11, 31, 23, 59, 59, 999))
+                : fechaFinValida;
+
+        // 4) mesesExigibles (solo meses dentro de rango)
+        const yDiff = fechaFinCalculo.getUTCFullYear() - fechaInicioCalculo.getUTCFullYear();
+        const mDiff = fechaFinCalculo.getUTCMonth() - fechaInicioCalculo.getUTCMonth();
+        const mesesExigibles = Math.max(1, yDiff * 12 + mDiff + 1);
+
+        // Índices por contract_type (ordenados por created_at)
+        const contractType: string = taxpayer.contract_type || "UNKNOWN";
+        const indicesForContract = (Array.isArray(indexIva) ? indexIva : [])
+            .filter((i: any) => i?.contract_type === contractType)
+            .sort(
+                (a: any, b: any) =>
+                    new Date(a?.created_at).getTime() - new Date(b?.created_at).getTime()
+            );
+
+        const getActiveIndexBaseAmount = (refDate: Date): number => {
+            if (!indicesForContract.length) return 0;
+            const t = refDate.getTime();
+            const active = indicesForContract.filter((i: any) => {
+                const c = new Date(i?.created_at).getTime();
+                const e = i?.expires_at ? new Date(i.expires_at).getTime() : null;
+                return Number.isFinite(c) && c <= t && (e === null || t < e);
+            });
+            const chosen = active.length
+                ? active.reduce((latest: any, cur: any) =>
+                      new Date(cur.created_at).getTime() > new Date(latest.created_at).getTime()
+                          ? cur
+                          : latest
+                  )
+                : indicesForContract
+                      .filter((i: any) => i?.expires_at === null)
+                      .sort(
+                          (a: any, b: any) =>
+                              new Date(a?.created_at).getTime() - new Date(b?.created_at).getTime()
+                      )
+                      .at(-1);
+
+            return safeNumber(chosen?.base_amount);
+        };
+
+        // 5) Preparar IVAReports por mes
+        const ivaReports = Array.isArray(taxpayer.IVAReports) ? taxpayer.IVAReports : [];
+        const ivaPaidByMonth = new Map<string, number>(); // YYYY-MM -> sum(paid)
+        for (const r of ivaReports) {
+            if (!r?.date) continue;
+            const d = new Date(r.date);
+            if (isNaN(d.getTime())) continue;
+            if (d < fechaInicioCalculo || d > fechaFinCalculo) continue;
+            if (d < startOfYear || d >= endOfYearExclusive) continue;
+            const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+            ivaPaidByMonth.set(key, (ivaPaidByMonth.get(key) ?? 0) + safeNumber(r?.paid));
+        }
+
+        // 6) Score mensual: promedio de min(1, paid/expected)
+        let mesesEvaluables = 0;
+        let mesesConPago = 0;
+        let sumRatio = 0;
+        for (let i = 0; i < mesesExigibles; i++) {
+            const monthDate = new Date(
+                Date.UTC(
+                    fechaInicioCalculo.getUTCFullYear(),
+                    fechaInicioCalculo.getUTCMonth() + i,
+                    15,
+                    0,
+                    0,
+                    0,
+                    0
+                )
+            );
+            if (monthDate < startOfYear || monthDate >= endOfYearExclusive) continue;
+            if (monthDate > fechaFinCalculo) continue;
+
+            const expected = getActiveIndexBaseAmount(monthDate);
+            if (expected <= 0) {
+                // Sin índice activo => no penalizar (mes no evaluable)
+                continue;
             }
-        } catch (error) {
-            console.error(`[COMPLIANCE_SCORE] Error al procesar fechaInicio para ${taxpayer.id}:`, error);
-            fechaInicio = new Date();
+
+            const key = `${monthDate.getUTCFullYear()}-${String(monthDate.getUTCMonth() + 1).padStart(
+                2,
+                "0"
+            )}`;
+            const paid = safeNumber(ivaPaidByMonth.get(key) ?? 0);
+            if (paid > 0) mesesConPago++;
+            const ratio = Math.min(1, paid / expected);
+            sumRatio += ratio;
+            mesesEvaluables++;
         }
 
-        // Validar fechaFin
-        let fechaFinValida = fechaFin;
-        if (!fechaFin || isNaN(fechaFin.getTime())) {
-            console.warn(`[COMPLIANCE_SCORE] fechaFin inválida para ${taxpayer.id}, usando fecha actual`);
-            fechaFinValida = new Date();
-        }
-
-        // 2. Ajustar fechaInicio y fechaFin según filtro de año
-        // Si hay filtro de año, ajustar las fechas para calcular solo dentro de ese año
-        let fechaInicioCalculo = fechaInicio;
-        let fechaFinCalculo = fechaFinValida;
-        
-        try {
-            if (yearFilter !== undefined && !isNaN(yearFilter)) {
-                const startOfFilterYear = new Date(Date.UTC(yearFilter, 0, 1));
-                const endOfFilterYear = new Date(Date.UTC(yearFilter + 1, 0, 1));
-                
-                // Si fechaInicio es anterior al año filtrado, usar inicio del año filtrado
-                if (fechaInicio < startOfFilterYear) {
-                    fechaInicioCalculo = startOfFilterYear;
-                }
-                
-                // Si fechaFin es posterior al año filtrado, usar fin del año filtrado
-                if (fechaFinValida >= endOfFilterYear) {
-                    fechaFinCalculo = new Date(Date.UTC(yearFilter, 11, 31, 23, 59, 59));
-                }
-                
-                // Asegurar que fechaFinCalculo no sea anterior a fechaInicioCalculo
-                if (fechaFinCalculo < fechaInicioCalculo) {
-                    fechaFinCalculo = fechaInicioCalculo;
-                }
-            } else {
-                // Sin filtro de año: asegurar que fechaFin no sea anterior a fechaInicio
-                if (fechaFinCalculo < fechaInicioCalculo) {
-                    fechaFinCalculo = fechaInicioCalculo;
-                }
-            }
-        } catch (error) {
-            console.error(`[COMPLIANCE_SCORE] Error al ajustar fechas para ${taxpayer.id}:`, error);
-            // En caso de error, usar fechas seguras
-            fechaInicioCalculo = fechaInicio;
-            fechaFinCalculo = fechaFinValida;
-        }
-
-        // 3. Calcular mesesExigibles: diferencia de meses + 1 (incluir mes de inicio)
-        // Ejemplo: Si entró en Octubre y estamos en Octubre, debe 1 mes, no 0
-        let mesesExigibles = 1; // Valor por defecto seguro
-        try {
-            const yearDiff = fechaFinCalculo.getUTCFullYear() - fechaInicioCalculo.getUTCFullYear();
-            const monthDiff = fechaFinCalculo.getUTCMonth() - fechaInicioCalculo.getUTCMonth();
-            const mesesCalculados = yearDiff * 12 + monthDiff + 1;
-            mesesExigibles = Math.max(1, mesesCalculados);
-            
-            // Validar que no sea NaN o Infinity
-            if (isNaN(mesesExigibles) || !isFinite(mesesExigibles)) {
-                mesesExigibles = 1;
-            }
-        } catch (error) {
-            console.error(`[COMPLIANCE_SCORE] Error al calcular mesesExigibles para ${taxpayer.id}:`, error);
-            mesesExigibles = 1;
-        }
-
-        // 4. Filtrar pagos válidos: solo los que ocurrieron DESPUÉS de fechaInicioEvaluacion
-        // (fechaInicioCalculo = max(fecha_fiscalizacion, inicio del año filtrado)
-        // y si hay filtro de año, solo los del año seleccionado)
-        let pagosValidos = 0;
-        try {
-            const pagosArray = Array.isArray(taxpayer.payment) ? taxpayer.payment : [];
-            pagosValidos = pagosArray.filter((pago: any) => {
-                if (!pago || !pago.date) return false;
-                
-                try {
-                    const fechaPago = new Date(pago.date);
-                    if (isNaN(fechaPago.getTime())) return false;
-                    
-                    const cumpleFechaInicio = fechaPago >= fechaInicioCalculo;
-                    
-                    // Si hay filtro de año, verificar que el pago esté en ese año
-                    if (yearFilter !== undefined && !isNaN(yearFilter)) {
-                        const pagoYear = fechaPago.getUTCFullYear();
-                        return cumpleFechaInicio && pagoYear === yearFilter;
-                    }
-                    
-                    return cumpleFechaInicio;
-                } catch (error) {
-                    return false;
-                }
-            }).length;
-            
-            // Asegurar que sea un número válido
-            if (isNaN(pagosValidos) || !isFinite(pagosValidos)) {
-                pagosValidos = 0;
-            }
-        } catch (error) {
-            console.error(`[COMPLIANCE_SCORE] Error al filtrar pagos para ${taxpayer.id}:`, error);
-            pagosValidos = 0;
-        }
-
-        // 5. Calcular Score: (pagosValidos / mesesExigibles) * 100
+        // 7) Calcular score: promedio de ratios mensuales
+        // Si no hay meses evaluables (sin índice IVA activo), score = 0 (BAJO)
         let score = 0;
-        try {
-            if (mesesExigibles > 0) {
-                const scoreRaw = (pagosValidos / mesesExigibles) * 100;
-                score = Math.min(100, parseFloat(scoreRaw.toFixed(2)));
-                
-                // Validar que no sea NaN o Infinity
-                if (isNaN(score) || !isFinite(score)) {
-                    score = 0;
-                }
-            }
-        } catch (error) {
-            console.error(`[COMPLIANCE_SCORE] Error al calcular score para ${taxpayer.id}:`, error);
-            score = 0;
+        if (mesesEvaluables > 0) {
+            score = Number(((sumRatio / mesesEvaluables) * 100).toFixed(2));
+            // Asegurar que score esté entre 0 y 100
+            score = Math.max(0, Math.min(100, Number.isFinite(score) ? score : 0));
         }
 
-        // 6. Clasificación (Semáforo)
+        // 8) Clasificación (Semáforo) – umbrales más realistas para IVA mensual
         let clasificacion: "ALTO" | "MEDIO" | "BAJO" = "BAJO";
-        if (score >= 90) {
+        if (score >= 80) {
             clasificacion = "ALTO";
         } else if (score >= 50) {
             clasificacion = "MEDIO";
         }
 
-        // 7. Debug (OBLIGATORIO)
-        console.log(
-            `[COMPLIANCE_SCORE] ID: ${taxpayer.id} | RIF: ${taxpayer.rif || 'N/A'} | ` +
-            `Fecha Fiscalización: ${fechaInicio.toISOString().split('T')[0]} | ` +
-            `FechaInicio usada: ${fechaInicioCalculo.toISOString().split('T')[0]} | ` +
-            `Año Filtrado: ${yearFilter !== undefined ? yearFilter : 'Todos'} | ` +
-            `Meses Exigibles: ${mesesExigibles} | ` +
-            `Pagos Contados: ${pagosValidos} | ` +
-            `Score Final: ${score.toFixed(2)}% | ` +
-            `Clasificación: ${clasificacion}`
-        );
+        // Debug conciso (evitar spam por contribuyente en producción)
+        if (process.env.NODE_ENV !== "production") {
+            console.log(
+                `[COMPLIANCE_SCORE_IVA] ID:${taxpayer.id} RIF:${taxpayer.rif || "N/A"} ` +
+                    `Año:${selectedYear} MesesExigibles:${mesesExigibles} MesesEvaluables:${mesesEvaluables} ` +
+                    `MesesConPago:${mesesConPago} Score:${score}% Clasificación:${clasificacion}`
+            );
+        }
 
         return {
-            score,
+            score: Number.isFinite(score) ? score : 0,
             mesesExigibles,
-            pagosValidos,
+            pagosValidos: mesesConPago,
             clasificacion,
             fechaInicio,
         };
     } catch (error) {
-        // ✅ BLINDAJE CRÍTICO: Si algo falla, retornar valores seguros en lugar de romper
-        console.error(`[COMPLIANCE_SCORE] Error crítico al calcular complianceScore para ${taxpayer?.id || 'unknown'}:`, error);
+        console.error(
+            `[COMPLIANCE_SCORE_IVA] Error crítico al calcular complianceScore para ${taxpayer?.id || "unknown"}:`,
+            error
+        );
         return {
             score: 0,
             mesesExigibles: 1,
@@ -2350,10 +2336,8 @@ export async function getTaxpayerCompliance(date?: Date) {
         };
 
         for (const taxpayer of taxpayers) {
-            // ✅ NUEVA LÓGICA REFACTORIZADA: Calcular complianceScore basado en pagos vs meses exigibles
-            // La obligación tributaria nace estrictamente en fecha_fiscalizacion (emition_date)
-            // Calcular complianceScore usando la nueva función helper
-            const complianceData = calculateComplianceScore(taxpayer, fechaFin, selectedYear);
+            // ✅ LÓGICA IVA MENSUAL: Score promedio (pagado/esperado) por mes dentro del año y hasta fechaFin
+            const complianceData = calculateComplianceScore(taxpayer, fechaFin, selectedYear, indexIva);
             
             // ✅ Montos del año seleccionado (anti-null / anti-NaN)
             const totalIVA = safeNumber(
@@ -3298,8 +3282,8 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
                 ? baseDate 
                 : new Date(Date.UTC(currentYear, 11, 31, 23, 59, 59)); // Fin del año seleccionado
             
-            // Calcular complianceScore usando la nueva función helper
-            const complianceData = calculateComplianceScore(taxpayer, fechaFin, currentYear);
+            // ✅ LÓGICA IVA MENSUAL: Score promedio (pagado/esperado) por mes dentro del año y hasta fechaFin
+            const complianceData = calculateComplianceScore(taxpayer, fechaFin, currentYear, indexIva);
             
             // ✅ SANITIZACIÓN CRÍTICA: Asegurar que todos los valores sean válidos (no NaN, null, undefined)
             const taxpayerSummary = {
