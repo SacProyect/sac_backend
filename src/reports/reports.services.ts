@@ -2307,12 +2307,10 @@ export async function getTaxpayerCompliance(date?: Date) {
         const taxpayers = await db.taxpayer.findMany({
             where: {
                 status: true, // Solo contribuyentes activos (dashboard general)
-                // ✅ Solo contar contribuyentes que ya existían para la fechaFin (emition_date o created_at)
-                OR: [
-                    { emition_date: { lte: fechaFin } },
-                    // Prisma: comparar contra NULL debe hacerse con equals:null (no `emition_date: null`)
-                    { emition_date: { equals: null }, created_at: { lte: fechaFin } },
-                ],
+                // ✅ Solo contar contribuyentes que ya existían para la fechaFin
+                // Nota: en este esquema Prisma `emition_date` NO es nullable (no permite equals:null),
+                // por eso filtramos por `created_at` para excluir contribuyentes "futuros".
+                created_at: { lte: fechaFin },
             },
             include: {
                 IVAReports: true, // Incluir todos los reportes para calcular fecha_corte

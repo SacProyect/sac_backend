@@ -5,8 +5,8 @@
   "main": "index.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "postinstall": "prisma generate",
-    "build": "prisma generate && tsc",
+    "postinstall": "npm exec -- prisma generate",
+    "build": "npm exec -- prisma generate && tsc",
     "start": "node ./dist/index",
     "dev": "nodemon"
   },
