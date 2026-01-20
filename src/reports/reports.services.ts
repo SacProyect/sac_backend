@@ -1870,7 +1870,9 @@ export async function getMonthlyCompliance(date?: Date) {
 
             for (const taxpayer of allActiveTaxpayers) {
                 // ✅ NUEVA LÓGICA: Determinar fecha_corte con prioridades
-                let fechaCorte: Date;
+                // Inicializar con valor por defecto: 1 de Enero del año fiscal actual
+                // Esto garantiza que siempre tenga un valor válido antes de ser usado
+                let fechaCorte: Date = startOfYear;
                 
                 // Prioridad 1: Último Procedimiento/Fiscalización (eventos FINE/WARNING)
                 const relevantEvents = taxpayer.event.filter(
@@ -2113,7 +2115,9 @@ export async function getTaxpayerCompliance(date?: Date) {
             const contractType = taxpayer.contract_type;
             
             // ✅ NUEVA LÓGICA: Determinar fecha_corte con prioridades
-            let fechaCorte: Date;
+            // Inicializar con valor por defecto: 1 de Enero del año fiscal actual
+            // Esto garantiza que siempre tenga un valor válido antes de ser usado
+            let fechaCorte: Date = startOfYear;
             
             // ✅ PRIORIDAD 1 (CRÍTICA): Procedimiento Administrativo en el año fiscal actual
             // Si el contribuyente tiene un procedimiento (VDF, AF, FP) registrado en el año actual,
@@ -3250,7 +3254,9 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
             // Determinar fecha de corte: siempre usar emition_date como punto de inicio
             // Si el procedimiento es del año seleccionado, usar emition_date
             // Si el procedimiento es de un año anterior, calcular desde inicio del año seleccionado
-            let fechaCorte: Date;
+            // Inicializar con valor por defecto: 1 de Enero del año fiscal seleccionado
+            // Esto garantiza que siempre tenga un valor válido antes de ser usado
+            let fechaCorte: Date = start;
             
             if (emitionYear === currentYear) {
                 // Procedimiento del año actual: calcular cumplimiento desde fecha del procedimiento
@@ -3259,7 +3265,7 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
                 // Procedimiento de año anterior: calcular cumplimiento del año seleccionado completo
                 // (desde inicio del año hasta el mes actual)
                 fechaCorte = start; // Inicio del año fiscal seleccionado
-                    } else {
+            } else {
                 // Procedimiento futuro (caso improbable): usar inicio del año seleccionado
                 fechaCorte = start;
             }
@@ -3504,7 +3510,9 @@ export async function getCoordinationPerformance() {
 
             for (const taxpayer of allActiveTaxpayers) {
                 // ✅ NUEVA LÓGICA: Determinar fecha_corte con prioridades
-                let fechaCorte: Date;
+                // Inicializar con valor por defecto: 1 de Enero del año fiscal actual
+                // Esto garantiza que siempre tenga un valor válido antes de ser usado
+                let fechaCorte: Date = startOfYear;
                 
                 // Prioridad 1: Último Procedimiento/Fiscalización (eventos FINE/WARNING)
                 const relevantEvents = taxpayer.event.filter(
