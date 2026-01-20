@@ -11,6 +11,122 @@ import { formatInTimeZone } from 'date-fns-tz';
 dayjs.extend(isBetween);
 
 /**
+ * ✅ NUEVA LÓGICA: Calcula el complianceScore basado en pagos vs meses exigibles
+ * Regla de Negocio: La obligación tributaria nace estrictamente en fecha_fiscalizacion
+ * @param taxpayer - Contribuyente con sus pagos incluidos
+ * @param fechaFin - Fecha de corte del reporte (o fecha actual si no se especifica)
+ * @param yearFilter - Año seleccionado para filtrar (opcional)
+ * @returns Objeto con score, mesesExigibles, pagosValidos y clasificación
+ */
+function calculateComplianceScore(
+    taxpayer: any,
+    fechaFin: Date,
+    yearFilter?: number
+): {
+    score: number;
+    mesesExigibles: number;
+    pagosValidos: number;
+    clasificacion: "ALTO" | "MEDIO" | "BAJO";
+    fechaInicio: Date;
+} {
+    // 1. Definir fechaInicio: usar emition_date (fecha_fiscalizacion) o created_at como fallback
+    let fechaInicio: Date;
+    if (taxpayer.emition_date) {
+        fechaInicio = new Date(taxpayer.emition_date);
+    } else {
+        // Fallback de emergencia: usar created_at pero loguear advertencia
+        console.warn(
+            `⚠️ [COMPLIANCE_SCORE] Contribuyente ${taxpayer.id} (${taxpayer.rif}) no tiene emition_date. Usando created_at como fallback.`
+        );
+        fechaInicio = new Date(taxpayer.created_at);
+    }
+
+    // 2. Ajustar fechaInicio y fechaFin según filtro de año
+    // Si hay filtro de año, ajustar las fechas para calcular solo dentro de ese año
+    let fechaInicioCalculo = fechaInicio;
+    let fechaFinCalculo = fechaFin;
+    
+    if (yearFilter !== undefined) {
+        const startOfFilterYear = new Date(Date.UTC(yearFilter, 0, 1));
+        const endOfFilterYear = new Date(Date.UTC(yearFilter + 1, 0, 1));
+        
+        // Si fechaInicio es anterior al año filtrado, usar inicio del año filtrado
+        if (fechaInicio < startOfFilterYear) {
+            fechaInicioCalculo = startOfFilterYear;
+        }
+        
+        // Si fechaFin es posterior al año filtrado, usar fin del año filtrado
+        if (fechaFin >= endOfFilterYear) {
+            fechaFinCalculo = new Date(Date.UTC(yearFilter, 11, 31, 23, 59, 59));
+        }
+        
+        // Asegurar que fechaFinCalculo no sea anterior a fechaInicioCalculo
+        if (fechaFinCalculo < fechaInicioCalculo) {
+            fechaFinCalculo = fechaInicioCalculo;
+        }
+    } else {
+        // Sin filtro de año: asegurar que fechaFin no sea anterior a fechaInicio
+        if (fechaFinCalculo < fechaInicioCalculo) {
+            fechaFinCalculo = fechaInicioCalculo;
+        }
+    }
+
+    // 3. Calcular mesesExigibles: diferencia de meses + 1 (incluir mes de inicio)
+    // Ejemplo: Si entró en Octubre y estamos en Octubre, debe 1 mes, no 0
+    const yearDiff = fechaFinCalculo.getUTCFullYear() - fechaInicioCalculo.getUTCFullYear();
+    const monthDiff = fechaFinCalculo.getUTCMonth() - fechaInicioCalculo.getUTCMonth();
+    const mesesExigibles = Math.max(1, yearDiff * 12 + monthDiff + 1);
+
+    // 4. Filtrar pagos válidos: solo los que ocurrieron DESPUÉS de fechaInicio
+    // Y si hay filtro de año, solo los del año seleccionado
+    const pagosValidos = taxpayer.payment.filter((pago: any) => {
+        const fechaPago = new Date(pago.date);
+        const cumpleFechaInicio = fechaPago >= fechaInicio;
+        
+        // Si hay filtro de año, verificar que el pago esté en ese año
+        if (yearFilter !== undefined) {
+            const pagoYear = fechaPago.getUTCFullYear();
+            return cumpleFechaInicio && pagoYear === yearFilter;
+        }
+        
+        return cumpleFechaInicio;
+    }).length;
+
+    // 5. Calcular Score: (pagosValidos / mesesExigibles) * 100
+    const scoreRaw = (pagosValidos / mesesExigibles) * 100;
+    const score = Math.min(100, parseFloat(scoreRaw.toFixed(2)));
+
+    // 6. Clasificación (Semáforo)
+    let clasificacion: "ALTO" | "MEDIO" | "BAJO";
+    if (score >= 90) {
+        clasificacion = "ALTO";
+    } else if (score >= 50) {
+        clasificacion = "MEDIO";
+    } else {
+        clasificacion = "BAJO";
+    }
+
+    // 7. Debug (OBLIGATORIO)
+    console.log(
+        `[COMPLIANCE_SCORE] ID: ${taxpayer.id} | RIF: ${taxpayer.rif} | ` +
+        `Fecha Fiscalización: ${fechaInicio.toISOString().split('T')[0]} | ` +
+        `Año Filtrado: ${yearFilter !== undefined ? yearFilter : 'Todos'} | ` +
+        `Meses Exigibles: ${mesesExigibles} | ` +
+        `Pagos Contados: ${pagosValidos} | ` +
+        `Score Final: ${score.toFixed(2)}% | ` +
+        `Clasificación: ${clasificacion}`
+    );
+
+    return {
+        score,
+        mesesExigibles,
+        pagosValidos,
+        clasificacion,
+        fechaInicio,
+    };
+}
+
+/**
  * ✅ Helper: Verifica si un contribuyente tenía buen cumplimiento (>67%) ANTES del procedimiento
  * Si ya venía pagando bien, NO se debe usar el procedimiento como punto de quiebre
  * @returns true si tenía buen cumplimiento antes del procedimiento, false en caso contrario
@@ -2112,252 +2228,29 @@ export async function getTaxpayerCompliance(date?: Date) {
         const low: any[] = [];
 
         for (const taxpayer of taxpayers) {
-            const contractType = taxpayer.contract_type;
+            // ✅ NUEVA LÓGICA REFACTORIZADA: Calcular complianceScore basado en pagos vs meses exigibles
+            // La obligación tributaria nace estrictamente en fecha_fiscalizacion (emition_date)
+            // fechaFin: usar fecha de corte del reporte (baseDate) o fecha actual, respetando el año seleccionado
+            const fechaFin = baseDate;
             
-            // ✅ NUEVA LÓGICA: Determinar fecha_corte con prioridades
-            // Inicializar con valor por defecto: 1 de Enero del año fiscal actual
-            // Esto garantiza que siempre tenga un valor válido antes de ser usado
-            let fechaCorte: Date = startOfYear;
+            // Calcular complianceScore usando la nueva función helper
+            const complianceData = calculateComplianceScore(taxpayer, fechaFin, currentYear);
             
-            // ✅ PRIORIDAD 1 (CRÍTICA): Procedimiento Administrativo en el año fiscal actual
-            // Si el contribuyente tiene un procedimiento (VDF, AF, FP) registrado en el año actual,
-            // usar la fecha de emisión del procedimiento como punto de quiebre para "rehabilitación"
-            // PERO solo si NO venía pagando bien antes del procedimiento
-            const emitionDate = new Date(taxpayer.emition_date);
-            const emitionYear = emitionDate.getUTCFullYear();
-            const hasProcedureThisYear = (taxpayer.process === "VDF" || taxpayer.process === "AF" || taxpayer.process === "FP") 
-                && emitionYear === currentYear;
-            
-            if (hasProcedureThisYear) {
-                // Verificar si ya venía pagando bien antes del procedimiento
-                const hadGoodCompliance = hadGoodComplianceBeforeProcedure(
-                    taxpayer,
-                    emitionDate,
-                    indexIva,
-                    currentYear
-                );
-                
-                // Solo usar el procedimiento como punto de quiebre si NO tenía buen cumplimiento previo
-                if (!hadGoodCompliance) {
-                    // Usar el mes siguiente al procedimiento como fecha de inicio
-                    // Si el procedimiento es en febrero, calcular desde marzo
-                    const procedureMonth = emitionDate.getUTCMonth();
-                    const procedureYear = emitionDate.getUTCFullYear();
-                    
-                    if (procedureMonth === 11) {
-                        // Si es diciembre, el mes siguiente es enero del año siguiente
-                        fechaCorte = new Date(Date.UTC(procedureYear + 1, 0, 1));
-                    } else {
-                        // Mes siguiente al procedimiento
-                        fechaCorte = new Date(Date.UTC(procedureYear, procedureMonth + 1, 1));
-                    }
-                }
-                // Si hadGoodCompliance es true, continuar con las siguientes prioridades
-            }
-            // Prioridad 2: Último Procedimiento/Fiscalización (eventos FINE/WARNING) del año actual
-            else if (taxpayer.event.length > 0) {
-                // Filtrar eventos del año fiscal actual
-                const eventsThisYear = taxpayer.event.filter(
-                    (ev) => new Date(ev.date).getUTCFullYear() === currentYear
-                );
-                
-                if (eventsThisYear.length > 0) {
-                    const lastEvent = eventsThisYear.sort(
-                        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-                    )[0];
-                    const eventDate = new Date(lastEvent.date);
-                    const eventMonth = eventDate.getUTCMonth();
-                    const eventYear = eventDate.getUTCFullYear();
-                    
-                    // Mes siguiente al evento
-                    if (eventMonth === 11) {
-                        fechaCorte = new Date(Date.UTC(eventYear + 1, 0, 1));
-                    } else {
-                        fechaCorte = new Date(Date.UTC(eventYear, eventMonth + 1, 1));
-                    }
-                } else {
-                    // Si no hay eventos del año actual, usar el más reciente de cualquier año
-                    const lastEvent = taxpayer.event.sort(
-                        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-                    )[0];
-                    fechaCorte = new Date(lastEvent.date);
-                }
-            } 
-            // Prioridad 3: Inicio de racha de pagos actual
-            else if (taxpayer.IVAReports.length > 0) {
-                const sortedReports = [...taxpayer.IVAReports].sort(
-                    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-                );
-                
-                let currentStreakStart: Date | null = null;
-                let previousHadPayment = false;
-                
-                for (const report of sortedReports) {
-                    const hasPayment = report.paid.gt(0);
-                    const reportDate = new Date(report.date);
-                    
-                    if (hasPayment && !previousHadPayment) {
-                        currentStreakStart = reportDate;
-                    } else if (!hasPayment && previousHadPayment) {
-                        currentStreakStart = null;
-                    }
-                    previousHadPayment = hasPayment;
-                }
-                
-                if (currentStreakStart) {
-                    fechaCorte = currentStreakStart;
-                } else {
-                    const firstReportWithPayment = sortedReports.find((r) => r.paid.gt(0));
-                    fechaCorte = firstReportWithPayment 
-                        ? new Date(firstReportWithPayment.date)
-                        : new Date(taxpayer.emition_date);
-                }
-            }
-            // Fallback: fecha de registro
-            else {
-                fechaCorte = new Date(taxpayer.emition_date);
-            }
-            
-            // Filtrar solo registros posteriores a fecha_corte
-            const ivaReportsPostCorte = taxpayer.IVAReports.filter(
-                (report) => new Date(report.date) >= fechaCorte
-            );
-            
-            const islrReportsPostCorte = taxpayer.ISLRReports.filter(
-                (report) => new Date(report.emition_date) >= fechaCorte
-            );
-            
-            const eventsPostCorte = taxpayer.event.filter(
-                (ev) => new Date(ev.date) >= fechaCorte
-            );
-
-            let totalIVA = new Decimal(0);
-            let totalISLR = new Decimal(0);
-            let totalFines = new Decimal(0);
-            let totalCollected = new Decimal(0);
-
-            // Real IVA collected - solo después de fecha_corte
-            for (const report of ivaReportsPostCorte) {
-                totalIVA = totalIVA.plus(report.paid);
-                totalCollected = totalCollected.plus(report.paid);
-            }
-
-            // ISLR + fines - solo después de fecha_corte
-            for (const rep of islrReportsPostCorte) {
-                totalISLR = totalISLR.plus(rep.paid);
-                totalCollected = totalCollected.plus(rep.paid);
-            }
-            for (const ev of eventsPostCorte) {
-                if (ev.type === "FINE") {
-                    totalFines = totalFines.plus(ev.amount);
-                    totalCollected = totalCollected.plus(ev.amount);
-                }
-            }
-
-            // Expected IVA: calcular solo desde fecha_corte hasta el mes actual
-            const corteMonth = fechaCorte.getUTCMonth();
-            const corteYear = fechaCorte.getUTCFullYear();
-            
-            let expectedIVA = new Decimal(0);
-            
-            // Si fecha_corte es del año actual
-            if (corteYear === currentYear) {
-                // Calcular desde fecha_corte hasta el mes actual (incluyendo el mes de corte)
-                for (let m = corteMonth; m <= currentMonthIdx; m++) {
-                    const refDate = new Date(Date.UTC(currentYear, m, 15));
-                    const index = indexIva.find(
-                        (i) =>
-                            i.contract_type === contractType &&
-                            refDate >= i.created_at &&
-                            (i.expires_at === null || refDate < i.expires_at)
-                    );
-
-                    if (index) {
-                        expectedIVA = expectedIVA.plus(index.base_amount);
-                    }
-                }
-            } else if (corteYear < currentYear) {
-                // Si fecha_corte es de un año anterior
-                // Calcular desde el mes de corte hasta fin de ese año
-                for (let m = corteMonth; m <= 11; m++) {
-                    const refDate = new Date(Date.UTC(corteYear, m, 15));
-                    const index = indexIva.find(
-                        (i) =>
-                            i.contract_type === contractType &&
-                            refDate >= i.created_at &&
-                            (i.expires_at === null || refDate < i.expires_at)
-                    );
-
-                    if (index) {
-                        expectedIVA = expectedIVA.plus(index.base_amount);
-                    }
-                }
-                // Calcular todo el año actual
-                for (let m = 0; m <= currentMonthIdx; m++) {
-                    const refDate = new Date(Date.UTC(currentYear, m, 15));
-                    const index = indexIva.find(
-                        (i) =>
-                            i.contract_type === contractType &&
-                            refDate >= i.created_at &&
-                            (i.expires_at === null || refDate < i.expires_at)
-                    );
-
-                    if (index) {
-                        expectedIVA = expectedIVA.plus(index.base_amount);
-                    }
-                }
-            } else if (corteYear > currentYear) {
-                // Si fecha_corte es del futuro (caso improbable), solo calcular hasta el mes actual
-                for (let m = 0; m <= currentMonthIdx; m++) {
-                    const refDate = new Date(Date.UTC(currentYear, m, 15));
-                    const index = indexIva.find(
-                        (i) =>
-                            i.contract_type === contractType &&
-                            refDate >= i.created_at &&
-                            (i.expires_at === null || refDate < i.expires_at)
-                    );
-
-                    if (index) {
-                        expectedIVA = expectedIVA.plus(index.base_amount);
-                    }
-                }
-            }
-
-            // Compliance: paid vs expected (capped at 100)
-            // ✅ BUG FIX: Nunca retornar "Indeterminado", siempre retornar un número válido
-            let compliance: number;
-            
-            if (expectedIVA.equals(0) || expectedIVA.isNaN()) {
-                // División por cero o índice inválido: Retornar 0% en lugar de "Indeterminado"
-                // Si hay pagos pero no hay índice esperado, es un contribuyente nuevo o sin índice configurado
-                compliance = 0;
-            } else {
-                compliance = totalIVA.div(expectedIVA).times(100).toDecimalPlaces(2).toNumber();
-                // Manejar casos especiales matemáticos
-                if (isNaN(compliance) || !isFinite(compliance)) {
-                    compliance = 0;
-                } else if (compliance > 100) {
-                    compliance = 100;
-                }
-            }
-
             const taxpayerResult = {
                 name: taxpayer.name,
                 rif: taxpayer.rif,
-                compliance,
-                expectedIVA: expectedIVA.toNumber(),
-                totalIVA: totalIVA.toNumber(),
-                totalISLR: totalISLR.toNumber(),
-                totalFines: totalFines.toNumber(),
-                totalCollected: totalCollected.toNumber(),
-                fechaCorte: fechaCorte.toISOString(),
+                compliance: complianceData.score,
+                complianceScore: complianceData.score, // Mantener compatibilidad
+                mesesExigibles: complianceData.mesesExigibles,
+                pagosValidos: complianceData.pagosValidos,
+                clasificacion: complianceData.clasificacion,
+                fechaFiscalizacion: complianceData.fechaInicio.toISOString(),
             };
 
-            // Clasificar por rangos: >67% Alto, 34-67% Medio, <34% Bajo
-            // compliance siempre es numérico ahora (0 en lugar de "Indeterminado")
-            if (compliance > 67) {
+            // Clasificación por rangos según nueva lógica: >=90% ALTO, >=50% MEDIO, <50% BAJO
+            if (complianceData.clasificacion === "ALTO") {
                 high.push(taxpayerResult);
-            } else if (compliance >= 34 && compliance <= 67) {
+            } else if (complianceData.clasificacion === "MEDIO") {
                 medium.push(taxpayerResult);
             } else {
                 low.push(taxpayerResult);
@@ -3242,157 +3135,32 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
         const low: any[] = [];
 
         for (const taxpayer of taxpayers) {
-            const contractType = taxpayer.contract_type;
+            // ✅ NUEVA LÓGICA REFACTORIZADA: Calcular complianceScore basado en pagos vs meses exigibles
+            // La obligación tributaria nace estrictamente en fecha_fiscalizacion (emition_date)
+            // fechaFin: usar fecha de corte del reporte (baseDate) o fecha actual, respetando el año seleccionado
+            // Si el año seleccionado es anterior, usar fin de ese año (31 de diciembre)
+            const fechaFin = currentYear === nowYear 
+                ? baseDate 
+                : new Date(Date.UTC(currentYear, 11, 31, 23, 59, 59)); // Fin del año seleccionado
             
-            // ✅ LÓGICA REFACTORIZADA: Todos los contribuyentes tienen procedimiento (VDF, AF, FP)
-            // Lo importante es calcular el cumplimiento DESPUÉS del procedimiento para determinar
-            // si empezó a pagar bien y asignarlo a mejores rendimientos o no
+            // Calcular complianceScore usando la nueva función helper
+            const complianceData = calculateComplianceScore(taxpayer, fechaFin, currentYear);
             
-            const emitionDate = new Date(taxpayer.emition_date);
-            const emitionYear = emitionDate.getUTCFullYear();
-            
-            // Determinar fecha de corte: siempre usar emition_date como punto de inicio
-            // Si el procedimiento es del año seleccionado, usar emition_date
-            // Si el procedimiento es de un año anterior, calcular desde inicio del año seleccionado
-            // Inicializar con valor por defecto: 1 de Enero del año fiscal seleccionado
-            // Esto garantiza que siempre tenga un valor válido antes de ser usado
-            let fechaCorte: Date = start;
-            
-            if (emitionYear === currentYear) {
-                // Procedimiento del año actual: calcular cumplimiento desde fecha del procedimiento
-                fechaCorte = emitionDate;
-            } else if (emitionYear < currentYear) {
-                // Procedimiento de año anterior: calcular cumplimiento del año seleccionado completo
-                // (desde inicio del año hasta el mes actual)
-                fechaCorte = start; // Inicio del año fiscal seleccionado
-            } else {
-                // Procedimiento futuro (caso improbable): usar inicio del año seleccionado
-                fechaCorte = start;
-            }
-            
-            // Filtrar registros: solo los que ocurrieron DESPUÉS del procedimiento y dentro del año fiscal seleccionado
-            // Esto mide el cumplimiento POST-procedimiento para determinar si empezó a pagar bien
-            const ivaReportsFiltered = taxpayer.IVAReports.filter(
-                (report) => {
-                    const reportDate = new Date(report.date);
-                    return reportDate >= fechaCorte && reportDate >= start && reportDate < end;
-                }
-            );
-            
-            const islrReportsFiltered = taxpayer.ISLRReports.filter(
-                (report) => {
-                    const reportDate = new Date(report.emition_date);
-                    return reportDate >= fechaCorte && reportDate >= start && reportDate < end;
-                }
-            );
-            
-            const eventsFiltered = taxpayer.event.filter(
-                (ev) => {
-                    const eventDate = new Date(ev.date);
-                    return eventDate >= fechaCorte && eventDate >= start && eventDate < end;
-                }
-            );
-
-            let totalIva = new Decimal(0);
-            let totalIslr = new Decimal(0);
-            let totalFines = new Decimal(0);
-
-            // Calcular totales pagados DESPUÉS del procedimiento
-            for (const report of ivaReportsFiltered) {
-                totalIva = totalIva.plus(report.paid || 0);
-            }
-
-            // Calcular IVA esperado desde fecha_corte hasta el mes actual del año fiscal seleccionado
-            const corteMonth = fechaCorte.getUTCMonth();
-            const corteYear = fechaCorte.getUTCFullYear();
-            
-            let expectedIVA = new Decimal(0);
-            
-            if (corteYear === currentYear) {
-                // Procedimiento del año seleccionado: calcular desde el mes del procedimiento hasta el mes actual
-                for (let m = corteMonth; m <= currentMonthIdx; m++) {
-                    const refDate = new Date(Date.UTC(currentYear, m, 15));
-                    const applicableIndex = indexIva.find(
-                        (index) =>
-                            index.contract_type === taxpayer.contract_type &&
-                            refDate >= index.created_at &&
-                            (!index.expires_at || refDate < index.expires_at)
-                    );
-
-                    if (applicableIndex) {
-                        expectedIVA = expectedIVA.plus(applicableIndex.base_amount);
-                    }
-                }
-            } else {
-                // Procedimiento de año anterior: calcular todo el año fiscal seleccionado
-                // (desde enero hasta el mes actual del año seleccionado)
-                for (let m = 0; m <= currentMonthIdx; m++) {
-                    const refDate = new Date(Date.UTC(currentYear, m, 15));
-                    const applicableIndex = indexIva.find(
-                        (index) =>
-                            index.contract_type === taxpayer.contract_type &&
-                            refDate >= index.created_at &&
-                            (!index.expires_at || refDate < index.expires_at)
-                    );
-
-                    if (applicableIndex) {
-                        expectedIVA = expectedIVA.plus(applicableIndex.base_amount);
-                    }
-                }
-            }
-
-            // ISLR + fines - solo registros filtrados
-            for (const islr of islrReportsFiltered) {
-                totalIslr = totalIslr.plus(islr.paid || 0);
-            }
-            for (const ev of eventsFiltered) {
-                if (ev.type === "FINE") {
-                    totalFines = totalFines.plus(ev.amount || 0);
-                }
-            }
-
-            const totalCollected = totalIva.plus(totalIslr).plus(totalFines);
-
-            // Calcular cumplimiento: porcentaje de IVA pagado vs IVA esperado (post-procedimiento)
-            // Este cumplimiento determina si el contribuyente empezó a pagar bien después del procedimiento
-            // y por tanto se asigna a mejores rendimientos (>67%) o no
-            let complianceRate: number;
-            
-            if (expectedIVA.equals(0) || expectedIVA.isNaN() || !expectedIVA.isFinite()) {
-                // Sin índice esperado configurado: asignar 0% (no se puede medir cumplimiento)
-                complianceRate = 0;
-            } else {
-                complianceRate = totalIva.div(expectedIVA).times(100).toDecimalPlaces(2).toNumber();
-                
-                // Validaciones matemáticas
-                if (isNaN(complianceRate) || !isFinite(complianceRate)) {
-                    complianceRate = 0;
-                } else if (complianceRate > 100) {
-                    // Si pagó más de lo esperado, capar en 100%
-                    complianceRate = 100;
-                } else if (complianceRate < 0) {
-                    complianceRate = 0;
-                }
-            }
-
             const taxpayerSummary = {
                 name: taxpayer.name,
                 rif: taxpayer.rif,
-                complianceRate,
-                expectedIVA: expectedIVA.toNumber(),
-                totalCollected: Number(totalCollected.toFixed(2)),
-                totalIva: Number(totalIva.toFixed(2)),
-                totalIslr: Number(totalIslr.toFixed(2)),
-                totalFines: Number(totalFines.toFixed(2)),
+                complianceRate: complianceData.score, // Mantener compatibilidad con nombre anterior
+                complianceScore: complianceData.score,
+                mesesExigibles: complianceData.mesesExigibles,
+                pagosValidos: complianceData.pagosValidos,
+                clasificacion: complianceData.clasificacion,
+                fechaFiscalizacion: complianceData.fechaInicio.toISOString(),
             };
 
-            // Clasificación por cumplimiento POST-procedimiento:
-            // >67% = Alto Cumplimiento (empezó a pagar bien, mejores rendimientos)
-            // 34-67% = Medio Cumplimiento
-            // <34% = Bajo Cumplimiento (no mejoró después del procedimiento)
-            if (complianceRate > 67) {
+            // Clasificación por rangos según nueva lógica: >=90% ALTO, >=50% MEDIO, <50% BAJO
+            if (complianceData.clasificacion === "ALTO") {
                 high.push(taxpayerSummary);
-            } else if (complianceRate >= 34 && complianceRate <= 67) {
+            } else if (complianceData.clasificacion === "MEDIO") {
                 medium.push(taxpayerSummary);
             } else {
                 low.push(taxpayerSummary);
