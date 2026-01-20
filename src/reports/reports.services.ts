@@ -2310,7 +2310,8 @@ export async function getTaxpayerCompliance(date?: Date) {
                 // ✅ Solo contar contribuyentes que ya existían para la fechaFin (emition_date o created_at)
                 OR: [
                     { emition_date: { lte: fechaFin } },
-                    { emition_date: null, created_at: { lte: fechaFin } },
+                    // Prisma: comparar contra NULL debe hacerse con equals:null (no `emition_date: null`)
+                    { emition_date: { equals: null }, created_at: { lte: fechaFin } },
                 ],
             },
             include: {
