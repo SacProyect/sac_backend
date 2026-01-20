@@ -29,101 +29,194 @@ function calculateComplianceScore(
     clasificacion: "ALTO" | "MEDIO" | "BAJO";
     fechaInicio: Date;
 } {
-    // 1. Definir fechaInicio: usar emition_date (fecha_fiscalizacion) o created_at como fallback
-    let fechaInicio: Date;
-    if (taxpayer.emition_date) {
-        fechaInicio = new Date(taxpayer.emition_date);
-    } else {
-        // Fallback de emergencia: usar created_at pero loguear advertencia
-        console.warn(
-            `⚠️ [COMPLIANCE_SCORE] Contribuyente ${taxpayer.id} (${taxpayer.rif}) no tiene emition_date. Usando created_at como fallback.`
+    try {
+        // ✅ BLINDAJE CRÍTICO: Validar que taxpayer tenga datos básicos
+        if (!taxpayer || !taxpayer.id) {
+            console.error(`[COMPLIANCE_SCORE] Taxpayer inválido o sin ID`);
+            return {
+                score: 0,
+                mesesExigibles: 1,
+                pagosValidos: 0,
+                clasificacion: "BAJO",
+                fechaInicio: new Date(),
+            };
+        }
+
+        // 1. Definir fechaInicio: usar emition_date (fecha_fiscalizacion) o created_at como fallback
+        let fechaInicio: Date;
+        try {
+            if (taxpayer.emition_date) {
+                fechaInicio = new Date(taxpayer.emition_date);
+                // Validar que la fecha sea válida
+                if (isNaN(fechaInicio.getTime())) {
+                    throw new Error("emition_date inválida");
+                }
+            } else {
+                // Fallback de emergencia: usar created_at pero loguear advertencia
+                console.warn(
+                    `⚠️ [COMPLIANCE_SCORE] Contribuyente ${taxpayer.id} (${taxpayer.rif}) no tiene emition_date. Usando created_at como fallback.`
+                );
+                fechaInicio = new Date(taxpayer.created_at || new Date());
+                if (isNaN(fechaInicio.getTime())) {
+                    fechaInicio = new Date(); // Último fallback: fecha actual
+                }
+            }
+        } catch (error) {
+            console.error(`[COMPLIANCE_SCORE] Error al procesar fechaInicio para ${taxpayer.id}:`, error);
+            fechaInicio = new Date();
+        }
+
+        // Validar fechaFin
+        let fechaFinValida = fechaFin;
+        if (!fechaFin || isNaN(fechaFin.getTime())) {
+            console.warn(`[COMPLIANCE_SCORE] fechaFin inválida para ${taxpayer.id}, usando fecha actual`);
+            fechaFinValida = new Date();
+        }
+
+        // 2. Ajustar fechaInicio y fechaFin según filtro de año
+        // Si hay filtro de año, ajustar las fechas para calcular solo dentro de ese año
+        let fechaInicioCalculo = fechaInicio;
+        let fechaFinCalculo = fechaFinValida;
+        
+        try {
+            if (yearFilter !== undefined && !isNaN(yearFilter)) {
+                const startOfFilterYear = new Date(Date.UTC(yearFilter, 0, 1));
+                const endOfFilterYear = new Date(Date.UTC(yearFilter + 1, 0, 1));
+                
+                // Si fechaInicio es anterior al año filtrado, usar inicio del año filtrado
+                if (fechaInicio < startOfFilterYear) {
+                    fechaInicioCalculo = startOfFilterYear;
+                }
+                
+                // Si fechaFin es posterior al año filtrado, usar fin del año filtrado
+                if (fechaFinValida >= endOfFilterYear) {
+                    fechaFinCalculo = new Date(Date.UTC(yearFilter, 11, 31, 23, 59, 59));
+                }
+                
+                // Asegurar que fechaFinCalculo no sea anterior a fechaInicioCalculo
+                if (fechaFinCalculo < fechaInicioCalculo) {
+                    fechaFinCalculo = fechaInicioCalculo;
+                }
+            } else {
+                // Sin filtro de año: asegurar que fechaFin no sea anterior a fechaInicio
+                if (fechaFinCalculo < fechaInicioCalculo) {
+                    fechaFinCalculo = fechaInicioCalculo;
+                }
+            }
+        } catch (error) {
+            console.error(`[COMPLIANCE_SCORE] Error al ajustar fechas para ${taxpayer.id}:`, error);
+            // En caso de error, usar fechas seguras
+            fechaInicioCalculo = fechaInicio;
+            fechaFinCalculo = fechaFinValida;
+        }
+
+        // 3. Calcular mesesExigibles: diferencia de meses + 1 (incluir mes de inicio)
+        // Ejemplo: Si entró en Octubre y estamos en Octubre, debe 1 mes, no 0
+        let mesesExigibles = 1; // Valor por defecto seguro
+        try {
+            const yearDiff = fechaFinCalculo.getUTCFullYear() - fechaInicioCalculo.getUTCFullYear();
+            const monthDiff = fechaFinCalculo.getUTCMonth() - fechaInicioCalculo.getUTCMonth();
+            const mesesCalculados = yearDiff * 12 + monthDiff + 1;
+            mesesExigibles = Math.max(1, mesesCalculados);
+            
+            // Validar que no sea NaN o Infinity
+            if (isNaN(mesesExigibles) || !isFinite(mesesExigibles)) {
+                mesesExigibles = 1;
+            }
+        } catch (error) {
+            console.error(`[COMPLIANCE_SCORE] Error al calcular mesesExigibles para ${taxpayer.id}:`, error);
+            mesesExigibles = 1;
+        }
+
+        // 4. Filtrar pagos válidos: solo los que ocurrieron DESPUÉS de fechaInicio
+        // Y si hay filtro de año, solo los del año seleccionado
+        let pagosValidos = 0;
+        try {
+            const pagosArray = Array.isArray(taxpayer.payment) ? taxpayer.payment : [];
+            pagosValidos = pagosArray.filter((pago: any) => {
+                if (!pago || !pago.date) return false;
+                
+                try {
+                    const fechaPago = new Date(pago.date);
+                    if (isNaN(fechaPago.getTime())) return false;
+                    
+                    const cumpleFechaInicio = fechaPago >= fechaInicio;
+                    
+                    // Si hay filtro de año, verificar que el pago esté en ese año
+                    if (yearFilter !== undefined && !isNaN(yearFilter)) {
+                        const pagoYear = fechaPago.getUTCFullYear();
+                        return cumpleFechaInicio && pagoYear === yearFilter;
+                    }
+                    
+                    return cumpleFechaInicio;
+                } catch (error) {
+                    return false;
+                }
+            }).length;
+            
+            // Asegurar que sea un número válido
+            if (isNaN(pagosValidos) || !isFinite(pagosValidos)) {
+                pagosValidos = 0;
+            }
+        } catch (error) {
+            console.error(`[COMPLIANCE_SCORE] Error al filtrar pagos para ${taxpayer.id}:`, error);
+            pagosValidos = 0;
+        }
+
+        // 5. Calcular Score: (pagosValidos / mesesExigibles) * 100
+        let score = 0;
+        try {
+            if (mesesExigibles > 0) {
+                const scoreRaw = (pagosValidos / mesesExigibles) * 100;
+                score = Math.min(100, parseFloat(scoreRaw.toFixed(2)));
+                
+                // Validar que no sea NaN o Infinity
+                if (isNaN(score) || !isFinite(score)) {
+                    score = 0;
+                }
+            }
+        } catch (error) {
+            console.error(`[COMPLIANCE_SCORE] Error al calcular score para ${taxpayer.id}:`, error);
+            score = 0;
+        }
+
+        // 6. Clasificación (Semáforo)
+        let clasificacion: "ALTO" | "MEDIO" | "BAJO" = "BAJO";
+        if (score >= 90) {
+            clasificacion = "ALTO";
+        } else if (score >= 50) {
+            clasificacion = "MEDIO";
+        }
+
+        // 7. Debug (OBLIGATORIO)
+        console.log(
+            `[COMPLIANCE_SCORE] ID: ${taxpayer.id} | RIF: ${taxpayer.rif || 'N/A'} | ` +
+            `Fecha Fiscalización: ${fechaInicio.toISOString().split('T')[0]} | ` +
+            `Año Filtrado: ${yearFilter !== undefined ? yearFilter : 'Todos'} | ` +
+            `Meses Exigibles: ${mesesExigibles} | ` +
+            `Pagos Contados: ${pagosValidos} | ` +
+            `Score Final: ${score.toFixed(2)}% | ` +
+            `Clasificación: ${clasificacion}`
         );
-        fechaInicio = new Date(taxpayer.created_at);
+
+        return {
+            score,
+            mesesExigibles,
+            pagosValidos,
+            clasificacion,
+            fechaInicio,
+        };
+    } catch (error) {
+        // ✅ BLINDAJE CRÍTICO: Si algo falla, retornar valores seguros en lugar de romper
+        console.error(`[COMPLIANCE_SCORE] Error crítico al calcular complianceScore para ${taxpayer?.id || 'unknown'}:`, error);
+        return {
+            score: 0,
+            mesesExigibles: 1,
+            pagosValidos: 0,
+            clasificacion: "BAJO",
+            fechaInicio: new Date(),
+        };
     }
-
-    // 2. Ajustar fechaInicio y fechaFin según filtro de año
-    // Si hay filtro de año, ajustar las fechas para calcular solo dentro de ese año
-    let fechaInicioCalculo = fechaInicio;
-    let fechaFinCalculo = fechaFin;
-    
-    if (yearFilter !== undefined) {
-        const startOfFilterYear = new Date(Date.UTC(yearFilter, 0, 1));
-        const endOfFilterYear = new Date(Date.UTC(yearFilter + 1, 0, 1));
-        
-        // Si fechaInicio es anterior al año filtrado, usar inicio del año filtrado
-        if (fechaInicio < startOfFilterYear) {
-            fechaInicioCalculo = startOfFilterYear;
-        }
-        
-        // Si fechaFin es posterior al año filtrado, usar fin del año filtrado
-        if (fechaFin >= endOfFilterYear) {
-            fechaFinCalculo = new Date(Date.UTC(yearFilter, 11, 31, 23, 59, 59));
-        }
-        
-        // Asegurar que fechaFinCalculo no sea anterior a fechaInicioCalculo
-        if (fechaFinCalculo < fechaInicioCalculo) {
-            fechaFinCalculo = fechaInicioCalculo;
-        }
-    } else {
-        // Sin filtro de año: asegurar que fechaFin no sea anterior a fechaInicio
-        if (fechaFinCalculo < fechaInicioCalculo) {
-            fechaFinCalculo = fechaInicioCalculo;
-        }
-    }
-
-    // 3. Calcular mesesExigibles: diferencia de meses + 1 (incluir mes de inicio)
-    // Ejemplo: Si entró en Octubre y estamos en Octubre, debe 1 mes, no 0
-    const yearDiff = fechaFinCalculo.getUTCFullYear() - fechaInicioCalculo.getUTCFullYear();
-    const monthDiff = fechaFinCalculo.getUTCMonth() - fechaInicioCalculo.getUTCMonth();
-    const mesesExigibles = Math.max(1, yearDiff * 12 + monthDiff + 1);
-
-    // 4. Filtrar pagos válidos: solo los que ocurrieron DESPUÉS de fechaInicio
-    // Y si hay filtro de año, solo los del año seleccionado
-    const pagosValidos = taxpayer.payment.filter((pago: any) => {
-        const fechaPago = new Date(pago.date);
-        const cumpleFechaInicio = fechaPago >= fechaInicio;
-        
-        // Si hay filtro de año, verificar que el pago esté en ese año
-        if (yearFilter !== undefined) {
-            const pagoYear = fechaPago.getUTCFullYear();
-            return cumpleFechaInicio && pagoYear === yearFilter;
-        }
-        
-        return cumpleFechaInicio;
-    }).length;
-
-    // 5. Calcular Score: (pagosValidos / mesesExigibles) * 100
-    const scoreRaw = (pagosValidos / mesesExigibles) * 100;
-    const score = Math.min(100, parseFloat(scoreRaw.toFixed(2)));
-
-    // 6. Clasificación (Semáforo)
-    let clasificacion: "ALTO" | "MEDIO" | "BAJO";
-    if (score >= 90) {
-        clasificacion = "ALTO";
-    } else if (score >= 50) {
-        clasificacion = "MEDIO";
-    } else {
-        clasificacion = "BAJO";
-    }
-
-    // 7. Debug (OBLIGATORIO)
-    console.log(
-        `[COMPLIANCE_SCORE] ID: ${taxpayer.id} | RIF: ${taxpayer.rif} | ` +
-        `Fecha Fiscalización: ${fechaInicio.toISOString().split('T')[0]} | ` +
-        `Año Filtrado: ${yearFilter !== undefined ? yearFilter : 'Todos'} | ` +
-        `Meses Exigibles: ${mesesExigibles} | ` +
-        `Pagos Contados: ${pagosValidos} | ` +
-        `Score Final: ${score.toFixed(2)}% | ` +
-        `Clasificación: ${clasificacion}`
-    );
-
-    return {
-        score,
-        mesesExigibles,
-        pagosValidos,
-        clasificacion,
-        fechaInicio,
-    };
 }
 
 /**
@@ -2236,15 +2329,16 @@ export async function getTaxpayerCompliance(date?: Date) {
             // Calcular complianceScore usando la nueva función helper
             const complianceData = calculateComplianceScore(taxpayer, fechaFin, currentYear);
             
+            // ✅ SANITIZACIÓN CRÍTICA: Asegurar que todos los valores sean válidos (no NaN, null, undefined)
             const taxpayerResult = {
-                name: taxpayer.name,
-                rif: taxpayer.rif,
-                compliance: complianceData.score,
-                complianceScore: complianceData.score, // Mantener compatibilidad
-                mesesExigibles: complianceData.mesesExigibles,
-                pagosValidos: complianceData.pagosValidos,
-                clasificacion: complianceData.clasificacion,
-                fechaFiscalizacion: complianceData.fechaInicio.toISOString(),
+                name: taxpayer.name || "",
+                rif: taxpayer.rif || "",
+                compliance: complianceData.score || 0,
+                complianceScore: complianceData.score || 0,
+                mesesExigibles: complianceData.mesesExigibles || 1,
+                pagosValidos: complianceData.pagosValidos || 0,
+                clasificacion: complianceData.clasificacion || "BAJO",
+                fechaFiscalizacion: complianceData.fechaInicio ? complianceData.fechaInicio.toISOString() : new Date().toISOString(),
             };
 
             // Clasificación por rangos según nueva lógica: >=90% ALTO, >=50% MEDIO, <50% BAJO
@@ -3146,15 +3240,16 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
             // Calcular complianceScore usando la nueva función helper
             const complianceData = calculateComplianceScore(taxpayer, fechaFin, currentYear);
             
+            // ✅ SANITIZACIÓN CRÍTICA: Asegurar que todos los valores sean válidos (no NaN, null, undefined)
             const taxpayerSummary = {
-                name: taxpayer.name,
-                rif: taxpayer.rif,
-                complianceRate: complianceData.score, // Mantener compatibilidad con nombre anterior
-                complianceScore: complianceData.score,
-                mesesExigibles: complianceData.mesesExigibles,
-                pagosValidos: complianceData.pagosValidos,
-                clasificacion: complianceData.clasificacion,
-                fechaFiscalizacion: complianceData.fechaInicio.toISOString(),
+                name: taxpayer.name || "",
+                rif: taxpayer.rif || "",
+                complianceRate: complianceData.score || 0,
+                complianceScore: complianceData.score || 0,
+                mesesExigibles: complianceData.mesesExigibles || 1,
+                pagosValidos: complianceData.pagosValidos || 0,
+                clasificacion: complianceData.clasificacion || "BAJO",
+                fechaFiscalizacion: complianceData.fechaInicio ? complianceData.fechaInicio.toISOString() : new Date().toISOString(),
             };
 
             // Clasificación por rangos según nueva lógica: >=90% ALTO, >=50% MEDIO, <50% BAJO
@@ -3503,20 +3598,39 @@ export async function getFiscalCollectAnalisis(fiscalId: string, date?: Date) {
 
         const totalTaxpayers = taxpayers.length || 1;
 
-        const avgIva = totalIva.dividedBy(totalTaxpayers);
-        const avgIslr = totalIslr.dividedBy(totalTaxpayers);
-        const avgFines = totalFines.dividedBy(totalTaxpayers);
+        // ✅ SANITIZACIÓN CRÍTICA: Calcular promedios con validación
+        let avgIva = new Decimal(0);
+        let avgIslr = new Decimal(0);
+        let avgFines = new Decimal(0);
+        
+        try {
+            if (totalTaxpayers > 0) {
+                avgIva = totalIva.dividedBy(totalTaxpayers);
+                avgIslr = totalIslr.dividedBy(totalTaxpayers);
+                avgFines = totalFines.dividedBy(totalTaxpayers);
+            }
+        } catch (error) {
+            console.error(`[FISCAL_COLLECT_ANALISIS] Error al calcular promedios:`, error);
+        }
+
+        // ✅ SANITIZACIÓN CRÍTICA: Asegurar que todos los valores monetarios sean válidos
+        const sanitizeNumber = (value: number): number => {
+            if (value === null || value === undefined || isNaN(value) || !isFinite(value)) {
+                return 0;
+            }
+            return value;
+        };
 
         return {
-            taxpayerWithMostCollected,
-            totalCollected: Number(totalCollected.toFixed(2)),
-            totalIva: Number(totalIva.toFixed(2)),
-            totalIslr: Number(totalIslr.toFixed(2)),
-            totalFines: Number(totalFines.toFixed(2)),
-            avgIva: Number(avgIva.toFixed(2)),
-            avgIslr: Number(avgIslr.toFixed(2)),
-            avgFines: Number(avgFines.toFixed(2)),
-            taxpayersWithFines,
+            taxpayerWithMostCollected: taxpayerWithMostCollected || null,
+            totalCollected: sanitizeNumber(Number(totalCollected.toFixed(2))),
+            totalIva: sanitizeNumber(Number(totalIva.toFixed(2))),
+            totalIslr: sanitizeNumber(Number(totalIslr.toFixed(2))),
+            totalFines: sanitizeNumber(Number(totalFines.toFixed(2))),
+            avgIva: sanitizeNumber(Number(avgIva.toFixed(2))),
+            avgIslr: sanitizeNumber(Number(avgIslr.toFixed(2))),
+            avgFines: sanitizeNumber(Number(avgFines.toFixed(2))),
+            taxpayersWithFines: taxpayersWithFines || 0,
         };
 
     } catch (e) {
