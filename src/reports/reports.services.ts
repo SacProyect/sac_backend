@@ -128,8 +128,9 @@ function calculateComplianceScore(
             mesesExigibles = 1;
         }
 
-        // 4. Filtrar pagos válidos: solo los que ocurrieron DESPUÉS de fechaInicio
-        // Y si hay filtro de año, solo los del año seleccionado
+        // 4. Filtrar pagos válidos: solo los que ocurrieron DESPUÉS de fechaInicioEvaluacion
+        // (fechaInicioCalculo = max(fecha_fiscalizacion, inicio del año filtrado)
+        // y si hay filtro de año, solo los del año seleccionado)
         let pagosValidos = 0;
         try {
             const pagosArray = Array.isArray(taxpayer.payment) ? taxpayer.payment : [];
@@ -140,7 +141,7 @@ function calculateComplianceScore(
                     const fechaPago = new Date(pago.date);
                     if (isNaN(fechaPago.getTime())) return false;
                     
-                    const cumpleFechaInicio = fechaPago >= fechaInicio;
+                    const cumpleFechaInicio = fechaPago >= fechaInicioCalculo;
                     
                     // Si hay filtro de año, verificar que el pago esté en ese año
                     if (yearFilter !== undefined && !isNaN(yearFilter)) {
@@ -192,6 +193,7 @@ function calculateComplianceScore(
         console.log(
             `[COMPLIANCE_SCORE] ID: ${taxpayer.id} | RIF: ${taxpayer.rif || 'N/A'} | ` +
             `Fecha Fiscalización: ${fechaInicio.toISOString().split('T')[0]} | ` +
+            `FechaInicio usada: ${fechaInicioCalculo.toISOString().split('T')[0]} | ` +
             `Año Filtrado: ${yearFilter !== undefined ? yearFilter : 'Todos'} | ` +
             `Meses Exigibles: ${mesesExigibles} | ` +
             `Pagos Contados: ${pagosValidos} | ` +
@@ -2333,12 +2335,47 @@ export async function getTaxpayerCompliance(date?: Date) {
         const medium: any[] = [];
         const low: any[] = [];
 
+        const startOfYear = new Date(Date.UTC(selectedYear, 0, 1, 0, 0, 0, 0));
+        const endOfYearExclusive = new Date(Date.UTC(selectedYear + 1, 0, 1, 0, 0, 0, 0));
+        const inSelectedYearToCutoff = (d: Date | string | null | undefined): boolean => {
+            if (!d) return false;
+            const dt = new Date(d);
+            if (isNaN(dt.getTime())) return false;
+            return dt >= startOfYear && dt < endOfYearExclusive && dt <= fechaFin;
+        };
+
+        const safeNumber = (v: unknown): number => {
+            const n = typeof v === "number" ? v : Number(v);
+            return Number.isFinite(n) ? n : 0;
+        };
+
         for (const taxpayer of taxpayers) {
             // ✅ NUEVA LÓGICA REFACTORIZADA: Calcular complianceScore basado en pagos vs meses exigibles
             // La obligación tributaria nace estrictamente en fecha_fiscalizacion (emition_date)
             // Calcular complianceScore usando la nueva función helper
             const complianceData = calculateComplianceScore(taxpayer, fechaFin, selectedYear);
             
+            // ✅ Montos del año seleccionado (anti-null / anti-NaN)
+            const totalIVA = safeNumber(
+                (Array.isArray(taxpayer.IVAReports) ? taxpayer.IVAReports : [])
+                    .filter((r: any) => inSelectedYearToCutoff(r?.date))
+                    .reduce((acc: number, r: any) => acc + safeNumber(r?.paid), 0)
+            );
+
+            const totalISLR = safeNumber(
+                (Array.isArray(taxpayer.ISLRReports) ? taxpayer.ISLRReports : [])
+                    .filter((r: any) => inSelectedYearToCutoff(r?.emition_date ?? r?.date))
+                    .reduce((acc: number, r: any) => acc + safeNumber(r?.paid), 0)
+            );
+
+            const totalFines = safeNumber(
+                (Array.isArray(taxpayer.event) ? taxpayer.event : [])
+                    .filter((e: any) => e?.type === "FINE" && (safeNumber(e?.debt) === 0) && inSelectedYearToCutoff(e?.date))
+                    .reduce((acc: number, e: any) => acc + safeNumber(e?.amount), 0)
+            );
+
+            const totalCollected = safeNumber(totalIVA + totalISLR + totalFines);
+
             // ✅ SANITIZACIÓN CRÍTICA: Asegurar que todos los valores sean válidos (no NaN, null, undefined)
             const taxpayerResult = {
                 name: taxpayer.name || "",
@@ -2349,6 +2386,11 @@ export async function getTaxpayerCompliance(date?: Date) {
                 pagosValidos: complianceData.pagosValidos || 0,
                 clasificacion: complianceData.clasificacion || "BAJO",
                 fechaFiscalizacion: complianceData.fechaInicio ? complianceData.fechaInicio.toISOString() : new Date().toISOString(),
+                // Montos para cards/tablas (siempre numéricos)
+                totalIVA: Number(totalIVA.toFixed(2)),
+                totalISLR: Number(totalISLR.toFixed(2)),
+                totalFines: Number(totalFines.toFixed(2)),
+                totalCollected: Number(totalCollected.toFixed(2)),
             };
 
             // Clasificación por rangos según nueva lógica: >=90% ALTO, >=50% MEDIO, <50% BAJO
