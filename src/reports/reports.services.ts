@@ -1462,25 +1462,25 @@ export async function getGlobalKPI(date?: Date) {
 
         let lastYearCollection = 0;
         taxpayersLastYear.forEach(tp => {
-            tp.IVAReports.forEach(r => lastYearCollection += Number(r.paid));
-            tp.ISLRReports.forEach(r => lastYearCollection += Number(r.paid));
-            tp.event.forEach(e => lastYearCollection += Number(e.amount));
+            tp.IVAReports.forEach(r => lastYearCollection += Number((r as any)?.paid ?? 0));
+            tp.ISLRReports.forEach(r => lastYearCollection += Number((r as any)?.paid ?? 0));
+            tp.event.forEach(e => lastYearCollection += Number((e as any)?.amount ?? 0));
         });
 
         // Recabar datos de cada contribuyente
         for (const tp of taxpayers) {
             // a) Recaudación IVA e ISLR
-            tp.IVAReports.forEach(r => totalCollection += Number(r.paid));
-            tp.ISLRReports.forEach(r => totalCollection += Number(r.paid));
+            tp.IVAReports.forEach(r => totalCollection += Number((r as any)?.paid ?? 0));
+            tp.ISLRReports.forEach(r => totalCollection += Number((r as any)?.paid ?? 0));
 
             // b) Multas pagadas (event.type === 'FINE' && debt === 0)
             const fines = tp.event.filter(e => e.type === "FINE");
             if (fines.length > 0) withFineCount++;
             fines.forEach(e => {
                 if (e.debt.toString() === "0") {
-                    totalCollection += Number(e.amount);
+                    totalCollection += Number((e as any)?.amount ?? 0);
                 } else {
-                    totalDebt += Number(e.debt);
+                    totalDebt += Number((e as any)?.debt ?? 0);
                 }
             });
 
@@ -1524,13 +1524,24 @@ export async function getGlobalKPI(date?: Date) {
             ? (totalDebt / totalCollection) * 100
             : 0;
 
+        const safeNum = (value: unknown): number => {
+            const n = typeof value === "number" ? value : Number(value);
+            return Number.isFinite(n) ? n : 0;
+        };
+
+        const round2 = (value: unknown): number => {
+            const n = safeNum(value);
+            return Math.round(n * 100) / 100;
+        };
+
         return {
             totalTaxpayers: totalTaxpayers,
-            totalTaxCollection: Number(totalTaxCollection).toFixed(2),     // Bs.
-            averageCreditSurplus: Number(averageCreditSurplus).toFixed(2),   // Bs.
-            finePercentage: Number(finePercentage).toFixed(2),         // %
-            growthRate: Number(growthRate).toFixed(2),             // %
-            delinquencyRate: Number(delinquencyRate).toFixed(2),        // %
+            // ✅ Anti-NaN: siempre números finitos (no null/undefined/NaN) y redondeados a 2 decimales
+            totalTaxCollection: round2(totalTaxCollection),     // Bs.
+            averageCreditSurplus: round2(averageCreditSurplus), // Bs.
+            finePercentage: round2(finePercentage),             // %
+            growthRate: round2(growthRate),                     // %
+            delinquencyRate: round2(delinquencyRate),           // %
         };
     } catch (e) {
         console.error("Error in getGlobalKPI:", e);
@@ -2285,19 +2296,22 @@ export async function getMonthlyCompliance(date?: Date) {
 
 export async function getTaxpayerCompliance(date?: Date) {
     try {
-        const baseDate = date || new Date();
-        const currentYear = baseDate.getUTCFullYear();
-        const startOfYear = new Date(Date.UTC(currentYear, 0, 1));
-        const endOfYear = new Date(Date.UTC(currentYear + 1, 0, 1));
-        const currentMonthIdx = baseDate.getUTCMonth(); // 0..11
+        const now = new Date();
+        const selectedYear = (date || now).getUTCFullYear();
+        // ✅ Si el año seleccionado no es el actual, usamos el cierre de ese año como fechaFin.
+        // Si es el año actual, usamos "hoy" (fecha real) para incluir el mes actual.
+        const fechaFin = selectedYear < now.getUTCFullYear()
+            ? new Date(Date.UTC(selectedYear, 11, 31, 23, 59, 59, 999))
+            : now;
 
         const taxpayers = await db.taxpayer.findMany({
             where: {
-                emition_date: {
-                    gte: startOfYear,
-                    lt: endOfYear,
-                },
-                status: true, // Solo contribuyentes activos
+                status: true, // Solo contribuyentes activos (dashboard general)
+                // ✅ Solo contar contribuyentes que ya existían para la fechaFin (emition_date o created_at)
+                OR: [
+                    { emition_date: { lte: fechaFin } },
+                    { emition_date: null, created_at: { lte: fechaFin } },
+                ],
             },
             include: {
                 IVAReports: true, // Incluir todos los reportes para calcular fecha_corte
@@ -2323,11 +2337,8 @@ export async function getTaxpayerCompliance(date?: Date) {
         for (const taxpayer of taxpayers) {
             // ✅ NUEVA LÓGICA REFACTORIZADA: Calcular complianceScore basado en pagos vs meses exigibles
             // La obligación tributaria nace estrictamente en fecha_fiscalizacion (emition_date)
-            // fechaFin: usar fecha de corte del reporte (baseDate) o fecha actual, respetando el año seleccionado
-            const fechaFin = baseDate;
-            
             // Calcular complianceScore usando la nueva función helper
-            const complianceData = calculateComplianceScore(taxpayer, fechaFin, currentYear);
+            const complianceData = calculateComplianceScore(taxpayer, fechaFin, selectedYear);
             
             // ✅ SANITIZACIÓN CRÍTICA: Asegurar que todos los valores sean válidos (no NaN, null, undefined)
             const taxpayerResult = {
@@ -2356,7 +2367,16 @@ export async function getTaxpayerCompliance(date?: Date) {
         medium.sort((a, b) => (b.compliance as number) - (a.compliance as number));
         low.sort((a, b) => (b.compliance as number) - (a.compliance as number));
 
-        return { high, medium, low };
+        return {
+            high,
+            medium,
+            low,
+            // ✅ Para dashboards/gráficos: counts directos, sin recalcular en Front
+            highComplianceCount: high.length,
+            mediumComplianceCount: medium.length,
+            lowComplianceCount: low.length,
+            totalTaxpayers: taxpayers.length,
+        };
     } catch (e) {
         console.error(e);
         throw new Error("Error al calcular el cumplimiento de IVA.");
