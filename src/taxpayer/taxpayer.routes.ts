@@ -417,9 +417,16 @@ taxpayerRouter.put("/:id",
             return res.status(400).json({ errors: errors.array() });
         }
         try {
+            const { user } = req as AuthRequest;
             const input = req.body
             const id: string = (req.params.id);
-            const updatedTaxpayer = await TaxpayerServices.updateTaxpayer(id, input)
+            // ✅ Pasar userId y userRole para validación de acceso de fiscales rotados
+            const updatedTaxpayer = await TaxpayerServices.updateTaxpayer(
+                id, 
+                input,
+                user?.id,
+                user?.role
+            )
             return res.status(200).json(updatedTaxpayer)
         } catch (error: any) {
             console.error(error);
@@ -846,7 +853,8 @@ taxpayerRouter.post('/createIVA',
         console.log("Received IVA data:", req.body);
 
         try {
-            const response = await TaxpayerServices.createIVA(data)
+            // ✅ Pasar userId y userRole para validación de acceso de fiscales rotados
+            const response = await TaxpayerServices.createIVA(data, user.id, user.role)
 
             return res.status(200).json(response);
 
@@ -891,8 +899,8 @@ taxpayerRouter.post('/create-islr-report',
 
         const emitionYear = new Date(input.emition_date).getFullYear();
         try {
-
-            const report = await TaxpayerServices.createISLR(input);
+            // ✅ Pasar userId y userRole para validación de acceso de fiscales rotados
+            const report = await TaxpayerServices.createISLR(input, user.id, user.role);
 
             return res.status(200).json(report);
 
@@ -1034,9 +1042,11 @@ taxpayerRouter.put('/updateIva/:ivaId',
     // Agrega validaciones opcionales si deseas (date, iva, etc.)
     async (req: Request, res: Response) => {
         try {
+            const { user } = req as AuthRequest;
             const ivaId = req.params.ivaId;
             const input = { ...req.body };
-            const updated = await TaxpayerServices.updateIvaReport(ivaId, input);
+            // ✅ Pasar userId y userRole para validación de acceso de fiscales rotados
+            const updated = await TaxpayerServices.updateIvaReport(ivaId, input, user?.id, user?.role);
             return res.status(200).json(updated);
         } catch (error: any) {
             console.error(error);
@@ -1098,7 +1108,8 @@ taxpayerRouter.put(
         const id = req.params.id;
 
         try {
-            const updated = await TaxpayerServices.updateTaxpayer(id, data);
+            // ✅ Pasar userId y userRole para validación de acceso de fiscales rotados
+            const updated = await TaxpayerServices.updateTaxpayer(id, data, user.id, user.role);
 
             return res.status(201).json(updated);
         } catch (err) {
@@ -1108,39 +1119,45 @@ taxpayerRouter.put(
     }
 );
 
-// taxpayerRouter.put('/update-culminated/:id',
-//     authenticateToken,
-//     body("culminated").isBoolean().notEmpty(), 
+/**
+ * ✅ REFACTORIZACIÓN 2026: Ruta reactivada para permitir culminar casos 2025
+ * - Permite acceso a fiscales rotados
+ * - No valida restricciones de año fiscal
+ */
+taxpayerRouter.put('/update-culminated/:id',
+    authenticateToken,
+    body("culminated").isBoolean().notEmpty(), 
 
-//     async (req: Request, res: Response) => {
-//         const errors = validationResult(req);
-//         if (!errors.isEmpty()) {
-//             return res.status(400).json({ errors: errors.array() });
-//         }
+    async (req: Request, res: Response) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
 
-//         const { user } = req as AuthRequest
+        const { user } = req as AuthRequest
 
-//         if (!user) return res.status(401).json("Unauthorized access")
-//         if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
-
-
-//         try {
-
-//             const id: string = req.params.id;
-//             const culminated = req.body
-
-//             const culminatedSuccesfully = await TaxpayerServices.updateCulminated(id, culminated);
-
-//             return res.status(201).json(culminatedSuccesfully);
-
-//         } catch (e) {
-//             console.error(e);
-//             return res.status(500).json({ message: e });
-//         }
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
 
 
-//     }
-// )
+        try {
+
+            const id: string = req.params.id;
+            const culminated = req.body.culminated;
+
+            // ✅ Pasar userId y userRole para validación de acceso de fiscales rotados
+            const culminatedSuccesfully = await TaxpayerServices.updateCulminated(id, culminated, user.id, user.role);
+
+            return res.status(201).json(culminatedSuccesfully);
+
+        } catch (e: any) {
+            console.error(e);
+            return res.status(500).json({ message: e.message || "Error al culminar el caso" });
+        }
+
+
+    }
+)
 
 taxpayerRouter.put('/payment_compromise/:eventId',
     authenticateToken,
@@ -1189,7 +1206,8 @@ taxpayerRouter.put("/update-islr/:id",
             const id: string = req.params.id;
             const input = req.body;
 
-            const updatedIslr = await TaxpayerServices.updateIslr(id, input)
+            // ✅ Pasar userId y userRole para validación de acceso de fiscales rotados
+            const updatedIslr = await TaxpayerServices.updateIslr(id, input, user.id, user.role)
 
             return res.status(201).json(updatedIslr);
 

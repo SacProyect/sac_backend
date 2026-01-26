@@ -2780,12 +2780,48 @@ export async function getCompleteReport(data?: CompleteReportInput) {
     }
 }
 
+/**
+ * ✅ REFACTORIZACIÓN 2026: Permite ver información de fiscales incluyendo casos del año anterior (2025)
+ * - Si no se especifica fecha, incluye casos del año actual Y del año anterior si no están culminados
+ */
 export async function getFiscalInfo(fiscalId: string, date?: Date) {
 
     try {
-        const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+        const currentYear = new Date().getUTCFullYear();
+        const year = date ? date.getUTCFullYear() : currentYear;
         const start = new Date(Date.UTC(year, 0, 1));
         const end = new Date(Date.UTC(year + 1, 0, 1));
+
+        // Si no se especifica fecha y estamos en el año actual, incluir también casos 2025 no culminados
+        const taxpayerWhere: any = {};
+        
+        if (!date && year === currentYear) {
+            // Incluir casos del año actual Y casos del año anterior no culminados
+            const previousYearStart = new Date(Date.UTC(year - 1, 0, 1));
+            taxpayerWhere.OR = [
+                {
+                    emition_date: {
+                        gte: start,
+                        lt: end,
+                    }
+                },
+                {
+                    // Casos del año anterior que no están culminados (trabajo pendiente)
+                    emition_date: {
+                        gte: previousYearStart,
+                        lt: start,
+                    },
+                    culminated: false, // Solo casos pendientes
+                    status: true, // Solo casos activos
+                }
+            ];
+        } else {
+            // Si se especifica fecha o es año diferente, usar filtro normal
+            taxpayerWhere.emition_date = {
+                gte: start,
+                lte: end,
+            };
+        }
 
         const fiscal = await db.user.findFirst({
             where: {
@@ -2793,12 +2829,7 @@ export async function getFiscalInfo(fiscalId: string, date?: Date) {
             },
             include: {
                 taxpayer: {
-                    where: {
-                        emition_date: {
-                            gte: start,
-                            lte: end,
-                        }
-                    }
+                    where: taxpayerWhere
                 },
             }
         })
@@ -2840,22 +2871,54 @@ export async function getFiscalInfo(fiscalId: string, date?: Date) {
     }
 }
 
+/**
+ * ✅ REFACTORIZACIÓN 2026: Permite ver contribuyentes de años anteriores (2025)
+ * - Si no se especifica fecha, incluye casos del año actual Y del año anterior si no están culminados
+ * - Permite visualizar casos pendientes para completar trabajo
+ */
 export async function getFiscalTaxpayers(fiscalId: string, date?: Date) {
 
     try {
-
-        const year = date ? date.getUTCFullYear() : new Date().getUTCFullYear();
+        const currentYear = new Date().getUTCFullYear();
+        const year = date ? date.getUTCFullYear() : currentYear;
         const start = new Date(Date.UTC(year, 0, 1));
         const end = new Date(Date.UTC(year + 1, 0, 1));
 
-        const taxpayers = await db.taxpayer.findMany({
-            where: {
-                officerId: fiscalId,
-                emition_date: {
-                    gte: start,
-                    lte: end,
+        // Si no se especifica fecha y estamos en el año actual, incluir también casos 2025 no culminados
+        const whereClause: any = {
+            officerId: fiscalId,
+        };
+
+        if (!date && year === currentYear) {
+            // Incluir casos del año actual Y casos del año anterior no culminados
+            const previousYearStart = new Date(Date.UTC(year - 1, 0, 1));
+            whereClause.OR = [
+                {
+                    emition_date: {
+                        gte: start,
+                        lt: end,
+                    }
+                },
+                {
+                    // Casos del año anterior que no están culminados (trabajo pendiente)
+                    emition_date: {
+                        gte: previousYearStart,
+                        lt: start,
+                    },
+                    culminated: false, // Solo casos pendientes
+                    status: true, // Solo casos activos
                 }
-            },
+            ];
+        } else {
+            // Si se especifica fecha o es año diferente, usar filtro normal
+            whereClause.emition_date = {
+                gte: start,
+                lte: end,
+            };
+        }
+
+        const taxpayers = await db.taxpayer.findMany({
+            where: whereClause,
             include: {
                 IVAReports: true,
                 ISLRReports: true,

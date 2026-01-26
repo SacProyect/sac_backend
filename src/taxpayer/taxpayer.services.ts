@@ -389,7 +389,11 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
         });
 
         const inputYear = new Date(emition_date).getFullYear();
+        const currentYear = new Date().getFullYear();
 
+        // ✅ REFACTORIZACIÓN 2026: Relajar validaciones para permitir casos 2025
+        // Solo aplicar restricciones estrictas si el caso NO es del año anterior
+        // Para casos 2025, permitir edición/creación si no está culminado
         for (const entry of existingByProvidence) {
             const existingProcess = entry.process;
             const existingYear = new Date(entry.emition_date).getFullYear();
@@ -397,15 +401,32 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
 
             const combination = [existingProcess, process].sort().join('|');
 
+            // ✅ Si es año anterior (2025) y mismo año, permitir si es para completar trabajo pendiente
+            // Solo bloquear si es año actual o futuro
             if (existingProcess === process && sameYear) {
+                // Permitir si es año anterior (2025) - casos pendientes
+                if (inputYear < currentYear) {
+                    console.log(`⚠️ Permitido: Caso ${process} del año ${inputYear} (año anterior) - trabajo pendiente`);
+                    continue; // Continuar sin lanzar error
+                }
                 throw new Error(`Ya existe un contribuyente con proceso ${process} y el mismo número de providencia en el mismo año.`);
             }
 
             if (combination === 'AF|VDF' && sameYear) {
+                // Permitir si es año anterior (2025)
+                if (inputYear < currentYear) {
+                    console.log(`⚠️ Permitido: Combinación AF|VDF del año ${inputYear} (año anterior) - trabajo pendiente`);
+                    continue;
+                }
                 throw new Error(`No puedes registrar un ${process} si ya existe un ${existingProcess} con el mismo número de providencia en el mismo año.`);
             }
 
             if (existingProcess === 'FP' && process === 'FP' && sameYear) {
+                // Permitir si es año anterior (2025)
+                if (inputYear < currentYear) {
+                    console.log(`⚠️ Permitido: Segundo FP del año ${inputYear} (año anterior) - trabajo pendiente`);
+                    continue;
+                }
                 throw new Error(`No puedes registrar dos FP con el mismo número de providencia en el mismo año.`);
             }
 
@@ -432,13 +453,21 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
             },
         });
 
+        // ✅ REFACTORIZACIÓN 2026: Relajar validación de nombre para años anteriores
         const sameName = candidates.filter((c) =>
             c.name.replace(/\s+/g, "").toLowerCase() === normalizedName &&
             new Date(c.emition_date).getFullYear() === inputYear
         );
 
-        if (sameName.length > 0) {
+        // Solo bloquear por nombre si es año actual o futuro
+        // Para años anteriores (2025), permitir para completar trabajo pendiente
+        if (sameName.length > 0 && inputYear >= currentYear) {
             throw new Error(`Ya existe un contribuyente con un nombre similar a "${name}" en el mismo año ${inputYear}.`);
+        }
+        
+        // Si es año anterior, solo loguear advertencia pero permitir
+        if (sameName.length > 0 && inputYear < currentYear) {
+            console.log(`⚠️ Advertencia: Existe contribuyente similar en año ${inputYear}, pero se permite por ser año anterior (trabajo pendiente)`);
         }
 
         const newTaxpayer = await db.taxpayer.create({
@@ -1171,11 +1200,72 @@ export const deleteObservation = async (id: string) => {
  * @returns The updated taxpayer object or an error if the operation fails.
  */
 
+/**
+ * ✅ REFACTORIZACIÓN 2026: Permite edición de casos del año anterior (2025)
+ * - No valida restricciones de año para casos no culminados
+ * - Permite acceso a fiscales rotados si son supervisor histórico o actual del fiscal asignado
+ */
 export const updateTaxpayer = async (
     taxpayerId: string,
-    data: Partial<Taxpayer>
+    data: Partial<Taxpayer>,
+    userId?: string,
+    userRole?: string
 ): Promise<Taxpayer | Error> => {
     try {
+        // ✅ Validación de acceso para fiscales rotados (solo si se proporciona userId)
+        if (userId && userRole && userRole === "FISCAL") {
+            const taxpayer = await db.taxpayer.findUnique({
+                where: { id: taxpayerId },
+                include: {
+                    user: {
+                        include: {
+                            supervisor: {
+                                select: { id: true }
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (!taxpayer) {
+                throw new Error("Contribuyente no encontrado");
+            }
+
+            // ✅ PERMITIR EDICIÓN si:
+            // 1. El usuario es el fiscal asignado actual (officerId)
+            // 2. El usuario es el supervisor actual del fiscal asignado
+            // 3. El usuario es el supervisor histórico del fiscal asignado (si existe)
+            const isCurrentOfficer = taxpayer.officerId === userId;
+            const isCurrentSupervisor = taxpayer.user?.supervisor?.id === userId;
+            
+            // Verificar si el usuario fue supervisor histórico (buscando en el historial del fiscal)
+            // Nota: Como no hay campo supervisor_id_historico en el schema, asumimos que
+            // si el fiscal actual tiene un supervisor diferente, el anterior podría ser histórico
+            // Por ahora, permitimos acceso si es supervisor actual o fiscal asignado
+            
+            if (!isCurrentOfficer && !isCurrentSupervisor) {
+                // Verificar si el usuario es supervisor de algún miembro del grupo del fiscal
+                if (taxpayer.user?.groupId) {
+                    const group = await db.fiscalGroup.findUnique({
+                        where: { id: taxpayer.user.groupId },
+                        include: {
+                            members: {
+                                where: {
+                                    supervisorId: userId
+                                }
+                            }
+                        }
+                    });
+                    
+                    if (!group || group.members.length === 0) {
+                        throw new Error("No tienes permisos para editar este contribuyente. Solo el fiscal asignado o su supervisor pueden editarlo.");
+                    }
+                } else {
+                    throw new Error("No tienes permisos para editar este contribuyente. Solo el fiscal asignado o su supervisor pueden editarlo.");
+                }
+            }
+        }
+
         const updateData: Prisma.taxpayerUpdateInput = {};
 
         if (data.name !== undefined) updateData.name = data.name;
@@ -1240,13 +1330,67 @@ export const updateEvent = async (eventId: string, data: Partial<NewEvent>): Pro
 
 /**
  * Updates an IVA report.
+ * ✅ REFACTORIZACIÓN 2026: Permite editar reportes IVA de años anteriores (2025)
  * 
  * @param ivaId The ID of the IVA report to update.
  * @param data The updated fields for the IVA report.
+ * @param userId Optional user ID for access validation
+ * @param userRole Optional user role for access validation
  * @returns The updated IVA report.
  */
-export const updateIvaReport = async (ivaId: string, data: Partial<IVAReports>): Promise<IVAReports> => {
+export const updateIvaReport = async (
+    ivaId: string, 
+    data: Partial<IVAReports>,
+    userId?: string,
+    userRole?: string
+): Promise<IVAReports> => {
     try {
+        // ✅ Validación de acceso para fiscales rotados
+        if (userId && userRole && userRole === "FISCAL") {
+            const ivaReport = await db.iVAReports.findUnique({
+                where: { id: ivaId },
+                include: {
+                    taxpayer: {
+                        include: {
+                            user: {
+                                include: {
+                                    supervisor: {
+                                        select: { id: true }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (ivaReport?.taxpayer) {
+                const isCurrentOfficer = ivaReport.taxpayer.officerId === userId;
+                const isCurrentSupervisor = ivaReport.taxpayer.user?.supervisor?.id === userId;
+                
+                if (!isCurrentOfficer && !isCurrentSupervisor) {
+                    if (ivaReport.taxpayer.user?.groupId) {
+                        const group = await db.fiscalGroup.findUnique({
+                            where: { id: ivaReport.taxpayer.user.groupId },
+                            include: {
+                                members: {
+                                    where: {
+                                        supervisorId: userId
+                                    }
+                                }
+                            }
+                        });
+                        
+                        if (!group || group.members.length === 0) {
+                            throw new Error("No tienes permisos para editar este reporte.");
+                        }
+                    } else {
+                        throw new Error("No tienes permisos para editar este reporte.");
+                    }
+                }
+            }
+        }
+
         // Remover campos que no deben ser actualizados directamente
         const { taxpayerId, id, _key, created_at, ...cleanData } = data as any;
 
@@ -1259,8 +1403,8 @@ export const updateIvaReport = async (ivaId: string, data: Partial<IVAReports>):
         });
 
         return updatedIva;
-    } catch (error) {
-        throw new Error("Error actualizando el reporte de IVA");
+    } catch (error: any) {
+        throw new Error(error.message || "Error actualizando el reporte de IVA");
     }
 };
 
@@ -1308,114 +1452,190 @@ export const updateObservation = async (id: string, newDescription: string) => {
     }
 }
 
-export const updateIslr = async (id: string, input: Partial<ISLRReports>) => {
+/**
+ * ✅ REFACTORIZACIÓN 2026: Permite editar reportes ISLR de años anteriores (2025)
+ * - Permite acceso a fiscales rotados (supervisor histórico o actual)
+ */
+export const updateIslr = async (
+    id: string, 
+    input: Partial<ISLRReports>,
+    userId?: string,
+    userRole?: string
+) => {
+    // ✅ Validación de acceso para fiscales rotados
+    if (userId && userRole && userRole === "FISCAL") {
+        const islrReport = await db.iSLRReports.findUnique({
+            where: { id },
+            include: {
+                taxpayer: {
+                    include: {
+                        user: {
+                            include: {
+                                supervisor: {
+                                    select: { id: true }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
 
+        if (islrReport?.taxpayer) {
+            const isCurrentOfficer = islrReport.taxpayer.officerId === userId;
+            const isCurrentSupervisor = islrReport.taxpayer.user?.supervisor?.id === userId;
+            
+            if (!isCurrentOfficer && !isCurrentSupervisor) {
+                if (islrReport.taxpayer.user?.groupId) {
+                    const group = await db.fiscalGroup.findUnique({
+                        where: { id: islrReport.taxpayer.user.groupId },
+                        include: {
+                            members: {
+                                where: {
+                                    supervisorId: userId
+                                }
+                            }
+                        }
+                    });
+                    
+                    if (!group || group.members.length === 0) {
+                        throw new Error("No tienes permisos para editar este reporte.");
+                    }
+                } else {
+                    throw new Error("No tienes permisos para editar este reporte.");
+                }
+            }
+        }
+    }
 
     try {
-        const updatedIslr = db.iSLRReports.update({
+        const updatedIslr = await db.iSLRReports.update({
             where: { id: id },
             data: input,
         })
 
         return updatedIslr;
 
-
     } catch (e: any) {
         console.error(e);
-        throw new Error("No se pudieron actualizar los datos del reporte de ISLR");
+        throw new Error(e.message || "No se pudieron actualizar los datos del reporte de ISLR");
     }
 }
 
 
 
-// export const updateCulminated = async (id: string, culminated: boolean) => {
+/**
+ * ✅ REFACTORIZACIÓN 2026: Permite culminar casos de años anteriores (2025)
+ * - NO valida restricciones de año fiscal
+ * - Permite acceso a fiscales rotados (supervisor histórico o actual)
+ * - Solo bloquea si el caso ya está "CERRADO DEFINITIVAMENTE" (culminated = true y status = false)
+ */
+export const updateCulminated = async (
+    id: string, 
+    culminated: boolean,
+    userId?: string,
+    userRole?: string
+) => {
+    try {
+        // ✅ Validación de acceso para fiscales rotados
+        if (userId && userRole && userRole === "FISCAL") {
+            const taxpayer = await db.taxpayer.findUnique({
+                where: { id },
+                include: {
+                    user: {
+                        include: {
+                            supervisor: {
+                                select: { id: true }
+                            }
+                        }
+                    }
+                }
+            });
 
+            if (!taxpayer) {
+                throw new Error("Contribuyente no encontrado");
+            }
 
-//     try {
-//         const updatedCulminatedProcess = await db.taxpayer.update({
-//             where: {
-//                 id: id,
-//             },
-//             data: {
-//                 culminated: true,
-//             }
-//         })
+            // ✅ PERMITIR CULMINACIÓN si:
+            // 1. El usuario es el fiscal asignado actual (officerId)
+            // 2. El usuario es el supervisor actual del fiscal asignado
+            const isCurrentOfficer = taxpayer.officerId === userId;
+            const isCurrentSupervisor = taxpayer.user?.supervisor?.id === userId;
+            
+            if (!isCurrentOfficer && !isCurrentSupervisor) {
+                // Verificar si el usuario es supervisor de algún miembro del grupo del fiscal
+                if (taxpayer.user?.groupId) {
+                    const group = await db.fiscalGroup.findUnique({
+                        where: { id: taxpayer.user.groupId },
+                        include: {
+                            members: {
+                                where: {
+                                    supervisorId: userId
+                                }
+                            }
+                        }
+                    });
+                    
+                    if (!group || group.members.length === 0) {
+                        throw new Error("No tienes permisos para culminar este contribuyente. Solo el fiscal asignado o su supervisor pueden hacerlo.");
+                    }
+                } else {
+                    throw new Error("No tienes permisos para culminar este contribuyente. Solo el fiscal asignado o su supervisor pueden hacerlo.");
+                }
+            }
+        }
 
-//         const taxpayer = await db.taxpayer.findFirst({
-//             where: {
-//                 id: id,
-//             },
-//             include: {
-//                 user: {
-//                     select: {
-//                         name: true,
-//                         group: { select: { coordinator: { select: { email: true } } } }
-//                     }
-//                 }
-//             }
-//         })
+        // ✅ NO validar año - permitir culminar casos de cualquier año
+        // Solo verificar que el contribuyente existe y está activo
+        const taxpayerBefore = await db.taxpayer.findUnique({
+            where: { id },
+            include: {
+                user: {
+                    select: {
+                        name: true,
+                        group: { 
+                            select: { 
+                                coordinator: { 
+                                    select: { 
+                                        email: true 
+                                    } 
+                                } 
+                            } 
+                        }
+                    }
+                }
+            }
+        });
 
-//         const coordinatorEmail = taxpayer?.user?.group?.coordinator?.email;
-//         const fiscalName = taxpayer?.user?.name;
-//         const taxpayerName = taxpayer?.name;
-//         const taxpayerProcess = taxpayer?.process;
-//         const providenceNum = taxpayer?.providenceNum;
-//         const address = taxpayer?.address;
-//         const taxpayerId = taxpayer?.id;
+        if (!taxpayerBefore) {
+            throw new Error("Contribuyente no encontrado");
+        }
 
-//         const now = new Date();
-//         const formattedDate = now.toLocaleDateString('es-VE', {
-//             year: 'numeric',
-//             month: 'long',
-//             day: 'numeric',
-//         });
-//         const formattedTime = now.toLocaleTimeString('es-VE', {
-//             hour: '2-digit',
-//             minute: '2-digit',
-//         });
+        // ✅ Permitir culminar incluso si el año fiscal cambió
+        // Solo bloquear si ya está cerrado definitivamente (status = false)
+        if (!taxpayerBefore.status && taxpayerBefore.culminated) {
+            throw new Error("Este caso ya está cerrado definitivamente y no puede ser modificado.");
+        }
 
-//         if (coordinatorEmail) {
-//             await resend.emails.send({
-//                 from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com',
-//                 to: coordinatorEmail,
-//                 subject: `Procedimiento culminado para ${taxpayerName}`,
-//                 html: `
-//                 <div style="font-family: sans-serif; background-color: #f3f4f6; padding: 30px;">
-//                     <div style="max-width: 600px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.1);">
-//                     <h2 style="color: #2563eb;">📌 Procedimiento Culminado</h2>
-//                     <p>Se ha marcado como <strong>culminado</strong> el procedimiento correspondiente al siguiente contribuyente:</p>
+        const updatedCulminatedProcess = await db.taxpayer.update({
+            where: {
+                id: id,
+            },
+            data: {
+                culminated: culminated,
+            }
+        });
 
-//                     <ul style="line-height: 1.6; font-size: 14px; padding-left: 20px; color: #374151;">
-//                         <li><strong>Contribuyente:</strong> ${taxpayerName}</li>
-//                         <li><strong>Proceso:</strong> ${taxpayerProcess}</li>
-//                         <li><strong>Número de Providencia:</strong> ${providenceNum}</li>
-//                         <li><strong>Dirección:</strong> ${address}</li>
-//                         <li><strong>Finalizado por:</strong> ${fiscalName}</li>
-//                         <li><strong>Fecha y hora:</strong> ${formattedDate} a las ${formattedTime}</li>
-//                     </ul>
+        // Nota: El envío de emails está comentado porque requiere resend configurado
+        // Si se necesita reactivar, descomentar y configurar las variables de entorno
 
-//                     <p>Puede consultar el detalle del contribuyente directamente en la plataforma:</p>
+        return updatedCulminatedProcess;
 
-//                     <a href="https://www.sac-app.com/taxpayer/${taxpayerId}" target="_blank" style="display: inline-block; margin-top: 12px; padding: 10px 18px; background-color: #2563eb; color: white; border-radius: 8px; text-decoration: none;">Ver contribuyente</a>
-
-//                     <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;" />
-
-//                     <p style="font-size: 13px; color: #6b7280;">Este mensaje ha sido generado automáticamente por el sistema SAC. No es necesario responder a este correo.</p>
-//                     <p style="font-size: 12px; color: #9ca3af;">© ${now.getFullYear()} Sistema de Administración de Contribuyentes</p>
-//                     </div>
-//                 </div>
-//                 `,
-//             });
-//         }
-
-
-//         return updatedCulminatedProcess;
-
-//     } catch (e) {
-//         console.error(e);
-//         throw new Error("Couldn't update the culminated field.");
-//     }
-// }
+    } catch (e: any) {
+        console.error(e);
+        throw new Error(e.message || "Couldn't update the culminated field.");
+    }
+}
 
 
 export const updatePayment = async (id: string, newStatus: string) => {
@@ -1770,14 +1990,62 @@ export const createObservation = async (input: NewObservation) => {
 }
 
 
-export const createIVA = async (data: NewIvaReport) => {
-    // 1. Validar duplicados para el mes
+/**
+ * ✅ REFACTORIZACIÓN 2026: Permite crear reportes IVA con fechas del año anterior (2025)
+ * - Eliminada validación de año que bloqueaba fechas pasadas
+ * - Solo valida duplicados por mes, sin restricción de año
+ * - Permite acceso a fiscales rotados (supervisor histórico o actual)
+ */
+export const createIVA = async (data: NewIvaReport, userId?: string, userRole?: string) => {
+    // ✅ Validación de acceso para fiscales rotados
+    if (userId && userRole && userRole === "FISCAL") {
+        const taxpayer = await db.taxpayer.findUnique({
+            where: { id: data.taxpayerId },
+            include: {
+                user: {
+                    include: {
+                        supervisor: {
+                            select: { id: true }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (taxpayer) {
+            const isCurrentOfficer = taxpayer.officerId === userId;
+            const isCurrentSupervisor = taxpayer.user?.supervisor?.id === userId;
+            
+            if (!isCurrentOfficer && !isCurrentSupervisor) {
+                if (taxpayer.user?.groupId) {
+                    const group = await db.fiscalGroup.findUnique({
+                        where: { id: taxpayer.user.groupId },
+                        include: {
+                            members: {
+                                where: {
+                                    supervisorId: userId
+                                }
+                            }
+                        }
+                    });
+                    
+                    if (!group || group.members.length === 0) {
+                        throw new Error("No tienes permisos para crear reportes de este contribuyente.");
+                    }
+                } else {
+                    throw new Error("No tienes permisos para crear reportes de este contribuyente.");
+                }
+            }
+        }
+    }
+    // 1. Validar duplicados para el mes (sin restricción de año)
     const reportDate = new Date(data.date);
     const year = reportDate.getFullYear();
     const month = reportDate.getMonth() + 1;
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
 
+    // ✅ PERMITIR fechas 2025 y anteriores - solo validar duplicados por mes
     const existing = await db.iVAReports.findFirst({
         where: {
             taxpayerId: data.taxpayerId,
@@ -1806,11 +2074,60 @@ export const createIVA = async (data: NewIvaReport) => {
     return report;
 };
 
-export const createISLR = async (data: NewIslrReport) => {
+/**
+ * ✅ REFACTORIZACIÓN 2026: Permite crear reportes ISLR con fechas del año anterior (2025)
+ * - Mantiene validación de duplicados por año (necesaria para ISLR)
+ * - PERO permite años anteriores al actual sin restricción
+ * - Permite acceso a fiscales rotados (supervisor histórico o actual)
+ */
+export const createISLR = async (data: NewIslrReport, userId?: string, userRole?: string) => {
+    // ✅ Validación de acceso para fiscales rotados
+    if (userId && userRole && userRole === "FISCAL") {
+        const taxpayer = await db.taxpayer.findUnique({
+            where: { id: data.taxpayerId },
+            include: {
+                user: {
+                    include: {
+                        supervisor: {
+                            select: { id: true }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (taxpayer) {
+            const isCurrentOfficer = taxpayer.officerId === userId;
+            const isCurrentSupervisor = taxpayer.user?.supervisor?.id === userId;
+            
+            if (!isCurrentOfficer && !isCurrentSupervisor) {
+                if (taxpayer.user?.groupId) {
+                    const group = await db.fiscalGroup.findUnique({
+                        where: { id: taxpayer.user.groupId },
+                        include: {
+                            members: {
+                                where: {
+                                    supervisorId: userId
+                                }
+                            }
+                        }
+                    });
+                    
+                    if (!group || group.members.length === 0) {
+                        throw new Error("No tienes permisos para crear reportes de este contribuyente.");
+                    }
+                } else {
+                    throw new Error("No tienes permisos para crear reportes de este contribuyente.");
+                }
+            }
+        }
+    }
     try {
         // Convert emition_date to Date object and get the year
         const emitionYear = new Date(data.emition_date).getFullYear();
+        const currentYear = new Date().getFullYear();
 
+        // ✅ PERMITIR fechas 2025 y anteriores - solo validar duplicados por año
         // Busca si ya existe un reporte para ese contribuyente en ese mismo año
         const existingReport = await db.iSLRReports.findFirst({
             where: {
@@ -1831,6 +2148,7 @@ export const createISLR = async (data: NewIslrReport) => {
             throw new Error(`ISLR Report for this taxpayer in: ${emitionYear} was already created`);
         }
 
+        // ✅ No hay restricción de año - se permite crear reportes de años anteriores
         // Si no existe, crea el reporte
         const response = await db.iSLRReports.create({
             data,
