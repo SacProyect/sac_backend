@@ -390,10 +390,21 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
 
         const inputYear = new Date(emition_date).getFullYear();
         const currentYear = new Date().getFullYear();
+        const inputDate = new Date(emition_date);
 
-        // ✅ REFACTORIZACIÓN 2026: Relajar validaciones para permitir casos 2025
-        // Solo aplicar restricciones estrictas si el caso NO es del año anterior
-        // Para casos 2025, permitir edición/creación si no está culminado
+        // ✅ CORRECCIÓN 2026: Validar que la fecha no sea futura (más de 1 mes adelante)
+        // Permite fechas del año actual y anteriores, pero bloquea fechas muy futuras
+        const maxAllowedDate = new Date();
+        maxAllowedDate.setMonth(maxAllowedDate.getMonth() + 1); // Permitir hasta 1 mes en el futuro
+        
+        if (inputDate > maxAllowedDate) {
+            throw new Error(`La fecha de emisión no puede ser más de un mes en el futuro. Fecha recibida: ${inputDate.toLocaleDateString()}`);
+        }
+
+        // ✅ REFACTORIZACIÓN 2026: Relajar validaciones para permitir casos 2025 Y casos 2026
+        // Solo aplicar restricciones estrictas para duplicados en el mismo año
+        // Para casos 2025, permitir edición/creación si no está culminado (trabajo pendiente)
+        // Para casos 2026, aplicar validaciones normales de duplicados
         for (const entry of existingByProvidence) {
             const existingProcess = entry.process;
             const existingYear = new Date(entry.emition_date).getFullYear();
@@ -401,33 +412,36 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
 
             const combination = [existingProcess, process].sort().join('|');
 
-            // ✅ Si es año anterior (2025) y mismo año, permitir si es para completar trabajo pendiente
-            // Solo bloquear si es año actual o futuro
+            // ✅ Validación de duplicados: Solo bloquear si es el mismo proceso en el mismo año
+            // PERO permitir si es año anterior (2025) para completar trabajo pendiente
             if (existingProcess === process && sameYear) {
                 // Permitir si es año anterior (2025) - casos pendientes
                 if (inputYear < currentYear) {
                     console.log(`⚠️ Permitido: Caso ${process} del año ${inputYear} (año anterior) - trabajo pendiente`);
                     continue; // Continuar sin lanzar error
                 }
-                throw new Error(`Ya existe un contribuyente con proceso ${process} y el mismo número de providencia en el mismo año.`);
+                // Para año actual (2026) o futuro, bloquear duplicados (comportamiento normal)
+                throw new Error(`Ya existe un contribuyente con proceso ${process} y el mismo número de providencia en el mismo año ${inputYear}.`);
             }
 
             if (combination === 'AF|VDF' && sameYear) {
-                // Permitir si es año anterior (2025)
+                // Permitir si es año anterior (2025) - trabajo pendiente
                 if (inputYear < currentYear) {
                     console.log(`⚠️ Permitido: Combinación AF|VDF del año ${inputYear} (año anterior) - trabajo pendiente`);
                     continue;
                 }
-                throw new Error(`No puedes registrar un ${process} si ya existe un ${existingProcess} con el mismo número de providencia en el mismo año.`);
+                // Para año actual (2026), bloquear combinación (comportamiento normal)
+                throw new Error(`No puedes registrar un ${process} si ya existe un ${existingProcess} con el mismo número de providencia en el mismo año ${inputYear}.`);
             }
 
             if (existingProcess === 'FP' && process === 'FP' && sameYear) {
-                // Permitir si es año anterior (2025)
+                // Permitir si es año anterior (2025) - trabajo pendiente
                 if (inputYear < currentYear) {
                     console.log(`⚠️ Permitido: Segundo FP del año ${inputYear} (año anterior) - trabajo pendiente`);
                     continue;
                 }
-                throw new Error(`No puedes registrar dos FP con el mismo número de providencia en el mismo año.`);
+                // Para año actual (2026), bloquear duplicado (comportamiento normal)
+                throw new Error(`No puedes registrar dos FP con el mismo número de providencia en el mismo año ${inputYear}.`);
             }
 
             // // Para restricciones por meses
@@ -453,21 +467,24 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
             },
         });
 
-        // ✅ REFACTORIZACIÓN 2026: Relajar validación de nombre para años anteriores
+        // ✅ CORRECCIÓN 2026: Validación de nombre similar - solo bloquear duplicados exactos en mismo año
+        // Permitir casos 2025 (trabajo pendiente) y casos 2026 (año actual)
         const sameName = candidates.filter((c) =>
             c.name.replace(/\s+/g, "").toLowerCase() === normalizedName &&
             new Date(c.emition_date).getFullYear() === inputYear
         );
 
-        // Solo bloquear por nombre si es año actual o futuro
+        // Solo bloquear por nombre si es duplicado exacto en el mismo año
         // Para años anteriores (2025), permitir para completar trabajo pendiente
-        if (sameName.length > 0 && inputYear >= currentYear) {
-            throw new Error(`Ya existe un contribuyente con un nombre similar a "${name}" en el mismo año ${inputYear}.`);
-        }
-        
-        // Si es año anterior, solo loguear advertencia pero permitir
-        if (sameName.length > 0 && inputYear < currentYear) {
-            console.log(`⚠️ Advertencia: Existe contribuyente similar en año ${inputYear}, pero se permite por ser año anterior (trabajo pendiente)`);
+        // Para año actual (2026), bloquear solo si es duplicado exacto (comportamiento normal)
+        if (sameName.length > 0) {
+            if (inputYear < currentYear) {
+                // Año anterior: solo advertencia, permitir
+                console.log(`⚠️ Advertencia: Existe contribuyente similar en año ${inputYear}, pero se permite por ser año anterior (trabajo pendiente)`);
+            } else {
+                // Año actual o futuro: bloquear duplicado exacto
+                throw new Error(`Ya existe un contribuyente con un nombre similar a "${name}" en el mismo año ${inputYear}.`);
+            }
         }
 
         const newTaxpayer = await db.taxpayer.create({
