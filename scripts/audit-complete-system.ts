@@ -291,6 +291,7 @@ async function auditSystem() {
                     select: {
                         id: true,
                         name: true,
+                        role: true,
                         groupId: true,
                         supervisorId: true,
                         group: {
