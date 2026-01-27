@@ -378,17 +378,29 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
             throw new Error(`No officer found with name similar to "${officerName}"`);
         }
 
+        // ✅ CORRECCIÓN 2026: Verificación mejorada de duplicados
+        // Buscar duplicados activos del mismo año ANTES de crear
+        const inputYear = new Date(emition_date).getFullYear();
+        const startOfYear = new Date(Date.UTC(inputYear, 0, 1, 0, 0, 0, 0));
+        const endOfYear = new Date(Date.UTC(inputYear + 1, 0, 1, 0, 0, 0, 0));
+        
         const existingByProvidence = await db.taxpayer.findMany({
             where: {
                 providenceNum,
+                status: true, // Solo activos
+                emition_date: {
+                    gte: startOfYear,
+                    lt: endOfYear,
+                }
             },
             select: {
+                id: true,
                 process: true,
-                emition_date: true
+                emition_date: true,
+                status: true
             }
         });
 
-        const inputYear = new Date(emition_date).getFullYear();
         const currentYear = new Date().getFullYear();
         const inputDate = new Date(emition_date);
 
@@ -560,32 +572,67 @@ function normalize(str: string): string {
  */
 export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
     try {
-
-        // console.log("INPUT: " + JSON.stringify(input))
-
-        if (input.type == "PAYMENT_COMPROMISE") {
-            const verifyEvent = await db.event.findUnique({
-                where: { id: input.fineEventId }
-            })
-
-            if (verifyEvent) {
-                if (input.amount !== undefined && input.amount > verifyEvent.debt) {
-                    throw BadRequestError("AmountError", "Amount can't be greater than the debt of the fine")
-                }
+        // ✅ CORRECCIÓN 2026: Validación mejorada para prevenir errores 500
+        
+        // Validar que el contribuyente existe
+        if (input.taxpayerId) {
+            const taxpayer = await db.taxpayer.findUnique({
+                where: { id: input.taxpayerId },
+                select: { id: true, status: true }
+            });
+            
+            if (!taxpayer) {
+                throw new Error(`Contribuyente con ID ${input.taxpayerId} no encontrado.`);
+            }
+            
+            if (!taxpayer.status) {
+                throw new Error(`No se pueden crear eventos para contribuyentes inactivos.`);
             }
         }
 
-        // Set expires_at to 25 days from now if it's not provided
-        const expiresAt = input.expires_at ?? new Date(new Date(input.date).getTime() + 15 * 24 * 60 * 60 * 1000);
+        // Validar PAYMENT_COMPROMISE
+        if (input.type == "PAYMENT_COMPROMISE") {
+            if (!input.fineEventId) {
+                throw new Error("fineEventId es requerido para eventos de tipo PAYMENT_COMPROMISE.");
+            }
+            
+            const verifyEvent = await db.event.findUnique({
+                where: { id: input.fineEventId }
+            });
 
+            if (!verifyEvent) {
+                throw new Error(`Evento de multa con ID ${input.fineEventId} no encontrado.`);
+            }
+
+            if (input.amount !== undefined && input.amount > verifyEvent.debt) {
+                throw BadRequestError("AmountError", "El monto no puede ser mayor que la deuda de la multa.");
+            }
+        }
+
+        // Validar campos requeridos según el tipo
+        if (!input.date) {
+            throw new Error("La fecha es requerida para crear un evento.");
+        }
+        
+        if (!input.taxpayerId) {
+            throw new Error("El ID del contribuyente es requerido.");
+        }
+
+        // Validar que la fecha sea válida
+        const eventDate = new Date(input.date);
+        if (isNaN(eventDate.getTime())) {
+            throw new Error(`Fecha inválida: ${input.date}`);
+        }
+
+        // Set expires_at to 15 days from now if it's not provided
+        const expiresAt = input.expires_at ?? new Date(new Date(input.date).getTime() + 15 * 24 * 60 * 60 * 1000);
 
         const event = await db.event.create({
             data: {
                 ...input,
                 expires_at: expiresAt,
             }
-        })
-
+        });
 
         return event;
 

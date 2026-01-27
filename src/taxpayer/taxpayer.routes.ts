@@ -735,8 +735,8 @@ taxpayerRouter.post('/fine',
     authenticateToken,
     body("date").isISO8601().toDate(),
     body("amount").isDecimal(),
-    body("taxpayerId").isString(),
-    body("description").isString(),
+    body("taxpayerId").isString().notEmpty(),
+    body("description").isString().notEmpty(),
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -748,7 +748,13 @@ taxpayerRouter.post('/fine',
             const fine = await TaxpayerServices.createEvent(input)
             return res.status(200).json(fine)
         } catch (error: any) {
-            return res.status(500).json(error.message)
+            console.error("Error en fine:", error);
+            const errorMessage = error.message || "Error al crear la multa";
+            // Retornar 400 para errores de validación, 500 solo para errores del servidor
+            const statusCode = errorMessage.includes("no encontrado") || 
+                              errorMessage.includes("requerido") || 
+                              errorMessage.includes("inválida") ? 400 : 500;
+            return res.status(statusCode).json({ error: errorMessage })
         }
     }
 )
@@ -971,22 +977,30 @@ taxpayerRouter.post("/observations",
 
 taxpayerRouter.post('/payment_compromise',
     authenticateToken,
-    body("date").toDate(),
+    body("date").isISO8601().toDate(),
     body("amount").isDecimal(),
-    body("taxpayerId").isNumeric(),
+    body("taxpayerId").isString().notEmpty(),
+    body("fineEventId").isString().notEmpty(),
     async (req: Request, res: Response) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        
         try {
             const input = { ...req.body, type: EventType.PAYMENT_COMPROMISE }
             const payment_compromise = await TaxpayerServices.createEvent(input)
             return res.status(200).json(payment_compromise)
         } catch (error: any) {
-
+            console.error("Error en payment_compromise:", error);
+            
             if (error.name === "AmountError") {
                 return res.status(400).json({ error: error.message })
             }
-
-            console.error(error)
-            return res.status(500).json(error.message)
+            
+            // Retornar mensaje de error más descriptivo
+            const errorMessage = error.message || "Error al crear el compromiso de pago";
+            return res.status(400).json({ error: errorMessage })
         }
     }
 )
@@ -999,15 +1013,22 @@ taxpayerRouter.post('/warning',
     authenticateToken,
     body("date").isISO8601().toDate(),
     body("amount").isNumeric(),
-    body("taxpayerId").isString(),
-    body("fineEventId").isString(),
+    body("taxpayerId").isString().notEmpty(),
+    body("fineEventId").isString().notEmpty(),
     async (req: Request, res: Response) => {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+        
         try {
             const input = { ...req.body, type: EventType.WARNING }
             const warning = await TaxpayerServices.createEvent(input)
             return res.status(200).json(warning)
         } catch (error: any) {
-            return res.status(500).json(error.message)
+            console.error("Error en warning:", error);
+            const errorMessage = error.message || "Error al crear el aviso";
+            return res.status(400).json({ error: errorMessage })
         }
     }
 )
