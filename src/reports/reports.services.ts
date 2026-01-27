@@ -85,7 +85,20 @@ function calculateComplianceScore(
                     new Date(a?.created_at).getTime() - new Date(b?.created_at).getTime()
             );
 
+        // ✅ CORRECCIÓN 2026: Lógica de IVA mejorada
+        // 1. Si el contribuyente tiene un índice específico (index_iva), usarlo
+        // 2. Si no, usar el índice general (IndexIva) para su tipo de contrato
+        // 3. Si no hay índice general, usar 0
         const getActiveIndexBaseAmount = (refDate: Date): number => {
+            // Prioridad 1: Índice específico del contribuyente (si existe y es válido)
+            if (taxpayer.index_iva !== null && taxpayer.index_iva !== undefined) {
+                const specificIndex = safeNumber(taxpayer.index_iva);
+                if (specificIndex > 0) {
+                    return specificIndex;
+                }
+            }
+            
+            // Prioridad 2: Índice general para el tipo de contrato
             if (!indicesForContract.length) return 0;
             const t = refDate.getTime();
             const active = indicesForContract.filter((i: any) => {
@@ -1403,8 +1416,16 @@ export async function getGlobalKPI(date?: Date) {
         const startOfYear = new Date(Date.UTC(year, 0, 1));
         const endOfYear = new Date(Date.UTC(year + 1, 0, 1));
 
-        // 1) Cargar todos los contribuyentes con sus reportes y eventos
+        // ✅ CORRECCIÓN CRÍTICA 2026: Filtrar contribuyentes por emition_date (año fiscal)
+        // Solo incluir contribuyentes cuyo año fiscal coincide con el año seleccionado
         const taxpayers = await db.taxpayer.findMany({
+            where: {
+                status: true, // Solo activos
+                emition_date: {
+                    gte: startOfYear,
+                    lt: endOfYear,
+                },
+            },
             include: {
                 IVAReports: {
                     where: { date: { gte: startOfYear, lt: endOfYear } }
@@ -1430,7 +1451,15 @@ export async function getGlobalKPI(date?: Date) {
         const endLastYear = baseDate.subtract(1, "year").endOf("year").toDate();
 
         // Necesitamos cargar datos del año pasado para el crecimiento
+        // ✅ CORRECCIÓN CRÍTICA 2026: Filtrar también por emition_date del contribuyente
         const taxpayersLastYear = await db.taxpayer.findMany({
+            where: {
+                status: true,
+                emition_date: {
+                    gte: startLastYear,
+                    lt: new Date(Date.UTC(year, 0, 1)), // Hasta inicio del año actual
+                },
+            },
             include: {
                 IVAReports: {
                     where: { date: { gte: startLastYear, lte: endLastYear } }
@@ -2292,13 +2321,20 @@ export async function getTaxpayerCompliance(date?: Date) {
             ? new Date(Date.UTC(selectedYear, 11, 31, 23, 59, 59, 999))
             : now;
 
+        // ✅ CORRECCIÓN CRÍTICA 2026: Filtrar por emition_date (año fiscal) NO por created_at
+        // El año fiscal es el año de operación, no el año de creación del registro
+        const startOfSelectedYear = new Date(Date.UTC(selectedYear, 0, 1, 0, 0, 0, 0));
+        const endOfSelectedYear = new Date(Date.UTC(selectedYear + 1, 0, 1, 0, 0, 0, 0));
+        
         const taxpayers = await db.taxpayer.findMany({
             where: {
                 status: true, // Solo contribuyentes activos (dashboard general)
-                // ✅ Solo contar contribuyentes que ya existían para la fechaFin
-                // Nota: en este esquema Prisma `emition_date` NO es nullable (no permite equals:null),
-                // por eso filtramos por `created_at` para excluir contribuyentes "futuros".
-                created_at: { lte: fechaFin },
+                // ✅ CRÍTICO: Filtrar por emition_date (año fiscal) no por created_at
+                // Esto asegura que solo se muestren contribuyentes del año fiscal seleccionado
+                emition_date: {
+                    gte: startOfSelectedYear,
+                    lt: endOfSelectedYear,
+                },
             },
             include: {
                 IVAReports: true, // Incluir todos los reportes para calcular fecha_corte
