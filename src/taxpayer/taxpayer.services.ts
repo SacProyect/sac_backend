@@ -380,7 +380,18 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
 
         // ✅ CORRECCIÓN 2026: Verificación mejorada de duplicados
         // Buscar duplicados activos del mismo año ANTES de crear
-        const inputYear = new Date(emition_date).getFullYear();
+        // Validar fecha primero para evitar errores
+        let inputYear: number;
+        try {
+            const inputDate = new Date(emition_date);
+            if (isNaN(inputDate.getTime())) {
+                throw new Error(`Fecha de emisión inválida: "${emition_date}". Por favor verifica el formato de la fecha.`);
+            }
+            inputYear = inputDate.getFullYear();
+        } catch (dateError: any) {
+            throw new Error(`Error al procesar la fecha de emisión: ${dateError.message}`);
+        }
+        
         const startOfYear = new Date(Date.UTC(inputYear, 0, 1, 0, 0, 0, 0));
         const endOfYear = new Date(Date.UTC(inputYear + 1, 0, 1, 0, 0, 0, 0));
         
@@ -402,10 +413,15 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
         });
 
         const currentYear = new Date().getFullYear();
-        const inputDate = new Date(emition_date);
-
+        
         // ✅ CORRECCIÓN 2026: Permitir cualquier fecha del año actual o anterior
         // Solo bloquear fechas muy futuras (más de 1 año adelante) para prevenir errores
+        // Validar que la fecha es válida antes de continuar
+        const inputDate = new Date(emition_date);
+        if (isNaN(inputDate.getTime())) {
+            throw new Error(`Fecha de emisión inválida: "${emition_date}". Por favor verifica el formato de la fecha (debe ser YYYY-MM-DD o formato ISO).`);
+        }
+        
         const maxAllowedDate = new Date();
         maxAllowedDate.setFullYear(maxAllowedDate.getFullYear() + 1); // Permitir hasta 1 año en el futuro
         
@@ -502,22 +518,44 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
             }
         }
 
-        // ✅ CORRECCIÓN 2026: Asegurar que la fecha se guarde correctamente como 2026-01-01
-        // Usar UTC para evitar problemas de zona horaria
+        // ✅ CORRECCIÓN 2026: Permitir fechas progresivas del calendario y fechas pasadas del mismo mes/año
+        // Usar mediodía UTC para evitar problemas de zona horaria, pero mantener la fecha que el fiscal ingresa
         let finalEmitionDate: Date;
-        if (inputYear === 2026) {
-            // Si es 2026, forzar fecha a 2026-01-01 en UTC
-            finalEmitionDate = new Date(Date.UTC(2026, 0, 1, 0, 0, 0, 0));
-        } else {
-            // Para otros años, usar la fecha proporcionada pero normalizada
-            const providedDate = new Date(emition_date);
-            finalEmitionDate = new Date(Date.UTC(
-                providedDate.getUTCFullYear(),
-                providedDate.getUTCMonth(),
-                providedDate.getUTCDate(),
-                0, 0, 0, 0
-            ));
+        const providedDate = new Date(emition_date);
+        
+        // Validar que la fecha es válida
+        if (isNaN(providedDate.getTime())) {
+            throw new Error(`Fecha de emisión inválida: "${emition_date}". Por favor verifica el formato de la fecha.`);
         }
+        
+        // ✅ PERMITIR cualquier fecha del año actual (2026) progresivamente
+        // ✅ PERMITIR fechas pasadas del mismo mes/año (si es día 20 y quiere cargar algo del día 16)
+        // Solo usar mediodía UTC para evitar problemas de zona horaria, pero mantener la fecha ingresada
+        const inputYear = providedDate.getUTCFullYear();
+        const inputMonth = providedDate.getUTCMonth();
+        const inputDay = providedDate.getUTCDate();
+        
+        // Usar mediodía UTC para evitar problemas de zona horaria, pero mantener año, mes y día ingresados
+        finalEmitionDate = new Date(Date.UTC(
+            inputYear,
+            inputMonth,
+            inputDay,
+            12, 0, 0, 0 // Mediodía UTC para evitar problemas de zona horaria
+        ));
+        
+        // ✅ Validación: Permitir fechas del año actual y anteriores
+        // Permitir fechas hasta 1 mes en el futuro para casos anticipados
+        const today = new Date();
+        const maxFutureDate = new Date(today);
+        maxFutureDate.setMonth(maxFutureDate.getMonth() + 1); // Permitir hasta 1 mes en el futuro
+        
+        if (finalEmitionDate > maxFutureDate) {
+            throw new Error(`La fecha de emisión no puede ser más de un mes en el futuro. Fecha recibida: ${providedDate.toLocaleDateString()}`);
+        }
+        
+        // ✅ PERMITIR fechas pasadas sin restricción (el fiscal puede registrar cosas que se olvidó)
+        // Ejemplo: Si es día 20 y quiere cargar algo del día 16 → PERMITIDO
+        // No hay validación de fecha mínima - se permite cualquier fecha pasada
         
         const newTaxpayer = await db.taxpayer.create({
             data: {
@@ -550,7 +588,16 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
             throw new Error(`Invalid data sent to database: ${error.message}`);
         }
 
-        throw new Error(error.message || "Unknown error creating taxpayer");
+        // ✅ CORRECCIÓN: Mensaje de error más claro para los fiscales
+        const errorMessage = error.message || "Error desconocido al crear el contribuyente";
+        console.error("Error detallado en createTaxpayerExcel:", {
+            error: error.message,
+            stack: error.stack,
+            code: error.code,
+            name: error.name,
+            data: { providenceNum, process, name, rif, emition_date }
+        });
+        throw new Error(errorMessage);
     }
 }
 
@@ -2122,14 +2169,22 @@ export const createIVA = async (data: NewIvaReport, userId?: string, userRole?: 
             }
         }
     }
-    // 1. Validar duplicados para el mes (sin restricción de año)
+    // ✅ CORRECCIÓN 2026: Permitir fechas progresivas y fechas pasadas del mismo mes/año
+    // Validar duplicados para el mes (sin restricción de año o fecha mínima)
     const reportDate = new Date(data.date);
+    
+    // Validar que la fecha es válida
+    if (isNaN(reportDate.getTime())) {
+        throw new Error(`Fecha de reporte inválida: "${data.date}". Por favor verifica el formato de la fecha.`);
+    }
+    
     const year = reportDate.getFullYear();
     const month = reportDate.getMonth() + 1;
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
 
-    // ✅ PERMITIR fechas 2025 y anteriores - solo validar duplicados por mes
+    // ✅ PERMITIR cualquier fecha del año (progresiva o pasada del mismo mes)
+    // Solo validar duplicados por mes - no hay restricción de fecha mínima
     const existing = await db.iVAReports.findFirst({
         where: {
             taxpayerId: data.taxpayerId,
@@ -2137,7 +2192,7 @@ export const createIVA = async (data: NewIvaReport, userId?: string, userRole?: 
         },
     });
     if (existing) {
-        throw new Error("IVA report for this taxpayer and month already exists.");
+        throw new Error(`Ya existe un reporte IVA para este contribuyente en ${month}/${year}.`);
     }
 
     // 3. Construir el objeto de creación
@@ -2207,12 +2262,19 @@ export const createISLR = async (data: NewIslrReport, userId?: string, userRole?
         }
     }
     try {
+        // ✅ CORRECCIÓN 2026: Permitir fechas progresivas y fechas pasadas
         // Convert emition_date to Date object and get the year
-        const emitionYear = new Date(data.emition_date).getFullYear();
-        const currentYear = new Date().getFullYear();
+        const reportDate = new Date(data.emition_date);
+        
+        // Validar que la fecha es válida
+        if (isNaN(reportDate.getTime())) {
+            throw new Error(`Fecha de emisión inválida: "${data.emition_date}". Por favor verifica el formato de la fecha.`);
+        }
+        
+        const emitionYear = reportDate.getFullYear();
 
-        // ✅ PERMITIR fechas 2025 y anteriores - solo validar duplicados por año
-        // Busca si ya existe un reporte para ese contribuyente en ese mismo año
+        // ✅ PERMITIR cualquier fecha del año (progresiva o pasada)
+        // Solo validar duplicados por año - no hay restricción de fecha mínima
         const existingReport = await db.iSLRReports.findFirst({
             where: {
                 taxpayerId: data.taxpayerId,
@@ -2229,7 +2291,7 @@ export const createISLR = async (data: NewIslrReport, userId?: string, userRole?
 
         // Si ya existe, lanza error
         if (existingReport) {
-            throw new Error(`ISLR Report for this taxpayer in: ${emitionYear} was already created`);
+            throw new Error(`Ya existe un reporte ISLR para este contribuyente en el año ${emitionYear}.`);
         }
 
         // ✅ No hay restricción de año - se permite crear reportes de años anteriores

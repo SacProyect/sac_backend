@@ -1274,6 +1274,7 @@ export async function getGroupPerformance(date?: Date) {
         const start = new Date(Date.UTC(year, 0, 1));
         const end = new Date(Date.UTC(year + 1, 0, 1));
 
+        // ✅ CORRECCIÓN CRÍTICA 2026: Filtrar contribuyentes por emition_date (año fiscal)
         const groupPerformance = await db.fiscalGroup.findMany({
             select: {
                 id: true,
@@ -1281,6 +1282,13 @@ export async function getGroupPerformance(date?: Date) {
                 members: {
                     select: {
                         taxpayer: {
+                            where: {
+                                status: true,
+                                emition_date: {
+                                    gte: start,
+                                    lt: end,
+                                }
+                            },
                             select: {
                                 event: {
                                     where: { 
@@ -2025,6 +2033,13 @@ export async function getMonthlyCompliance(date?: Date) {
                 members: {
                     include: {
                         taxpayer: {
+                            where: {
+                                status: true,
+                                emition_date: {
+                                    gte: startOfYear,
+                                    lt: endOfYear,
+                                }
+                            },
                             include: {
                                 ISLRReports: {
                                     where: {
@@ -3694,8 +3709,16 @@ export async function getFiscalCollectAnalisis(fiscalId: string, date?: Date) {
     const end = new Date(Date.UTC(year + 1, 0, 1));
 
     try {
+        // ✅ CORRECCIÓN CRÍTICA 2026: Filtrar contribuyentes por emition_date (año fiscal)
         const taxpayers = await db.taxpayer.findMany({
-            where: { officerId: fiscalId },
+            where: {
+                officerId: fiscalId,
+                status: true,
+                emition_date: {
+                    gte: start,
+                    lt: end,
+                }
+            },
             include: {
                 IVAReports: {
                     where: { date: { gte: start, lte: end } },

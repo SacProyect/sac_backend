@@ -266,17 +266,15 @@ export async function getFiscalsForReview(userId: string, userRole: string, year
             });
             fiscals = users;
         } else if (userRole === "COORDINATOR") {
+            // ✅ CORRECCIÓN: Obtener todos los miembros primero, luego filtrar por año fiscal
             const group = await db.fiscalGroup.findUnique({
                 where: {
                     coordinatorId: userId,
                 },
-                select: {
+                include: {
                     members: {
                         where: {
-                            // ✅ Filtrar por miembros que tienen casos del año especificado
-                            ...(taxpayerYearFilter ? {
-                                taxpayer: taxpayerYearFilter
-                            } : {}),
+                            role: "FISCAL",
                         },
                         select: {
                             id: true,
@@ -293,12 +291,31 @@ export async function getFiscalsForReview(userId: string, userRole: string, year
                                     name: true,
                                 }
                             },
+                            taxpayer: {
+                                where: {
+                                    status: true,
+                                    ...(year !== undefined ? {
+                                        emition_date: {
+                                            gte: new Date(year, 0, 1, 0, 0, 0, 0),
+                                            lt: new Date(year + 1, 0, 1, 0, 0, 0, 0),
+                                        }
+                                    } : {}),
+                                },
+                                select: {
+                                    id: true,
+                                }
+                            }
                         }
                     },
                 }
             });
 
-            fiscals = group?.members || [];
+            // ✅ Filtrar fiscales que tienen casos del año especificado
+            if (year !== undefined && group?.members) {
+                fiscals = group.members.filter(member => member.taxpayer.length > 0);
+            } else {
+                fiscals = group?.members || [];
+            }
         } else if (userRole === "SUPERVISOR") {
             const supervisor = await db.user.findUnique({
                 where: {

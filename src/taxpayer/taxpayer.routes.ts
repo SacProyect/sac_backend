@@ -11,6 +11,7 @@ import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3
 import { createLocalUpload } from "../utils/multer.local";
 import { uploadMemory } from "../utils/multer.memory";
 import { Decimal } from "@prisma/client/runtime/library";
+import { db } from "../utils/db.server";
 // import { commonParams } from "@aws-sdk/client-s3/dist-types/endpoint/EndpointParameters";
 
 const s3 = new S3Client({ region: "us-east-2" }); // Replace "your-region" with your AWS region
@@ -215,32 +216,90 @@ taxpayerRouter.post(
     authenticateToken,
     uploadMemory.single("repairReport"),
     async (req: Request, res: Response) => {
+        const { user } = req as AuthRequest;
+        
+        if (!user) {
+            return res.status(401).json({ error: "Unauthorized access" });
+        }
+
         const taxpayerId = req.params.id;
 
+        // ✅ CORRECCIÓN: Validar acceso del fiscal al contribuyente
+        if (user.role === "FISCAL") {
+            try {
+                const taxpayer = await db.taxpayer.findUnique({
+                    where: { id: taxpayerId },
+                    include: {
+                        user: {
+                            include: {
+                                supervisor: {
+                                    select: { id: true }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                if (!taxpayer) {
+                    return res.status(404).json({ error: "Contribuyente no encontrado" });
+                }
+
+                // ✅ PERMITIR si:
+                // 1. El usuario es el fiscal asignado (officerId)
+                // 2. El usuario es el supervisor del fiscal asignado
+                const isCurrentOfficer = taxpayer.officerId === user.id;
+                const isCurrentSupervisor = taxpayer.user?.supervisor?.id === user.id;
+                
+                if (!isCurrentOfficer && !isCurrentSupervisor) {
+                    // Verificar si el usuario es supervisor de algún miembro del grupo del fiscal
+                    if (taxpayer.user?.groupId) {
+                        const group = await db.fiscalGroup.findUnique({
+                            where: { id: taxpayer.user.groupId },
+                            include: {
+                                members: {
+                                    where: {
+                                        supervisorId: user.id
+                                    }
+                                }
+                            }
+                        });
+                        
+                        if (!group || group.members.length === 0) {
+                            return res.status(403).json({ error: "No tienes permisos para subir actas de reparo de este contribuyente." });
+                        }
+                    } else {
+                        return res.status(403).json({ error: "No tienes permisos para subir actas de reparo de este contribuyente." });
+                    }
+                }
+            } catch (accessError: any) {
+                console.error("Error verificando acceso:", accessError);
+                return res.status(500).json({ error: "Error al verificar permisos de acceso" });
+            }
+        }
+
         if (!req.file) {
-            return res.status(400).json({ error: "PDF file is required" });
+            return res.status(400).json({ error: "Se requiere un archivo PDF" });
         }
 
         const file = req.file;
+        
+        // Validar que sea PDF
+        if (file.mimetype !== 'application/pdf') {
+            return res.status(400).json({ error: "El archivo debe ser un PDF" });
+        }
+
         const s3Key = `repair-reports/${Date.now()}-${file.originalname}`;
         const pdf_url = `https://sacbucketgeneral.s3.amazonaws.com/${s3Key}`;
 
-        let repairReportId: string | null | undefined; 
-        if (!repairReportId) {
-            return res.status(400).json({ error: "Repair report ID is required" });
-        }
-
-        if (!pdf_url) {
-            return res.status(400).json({ error: "PDF URL is required" });
-        }
+        let repairReportId: string | null = null;
 
         try {
-            // Paso 1: Crear el registro sin el PDF
+            // Paso 1: Crear el registro sin el PDF (se actualizará después)
             const newRepairReport = await TaxpayerServices.uploadRepairReport(taxpayerId, "");
 
             if (!newRepairReport || !newRepairReport.id) {
                 console.error("❌ Failed to create RepairReport record for taxpayer:", taxpayerId);
-                return res.status(500).json({ error: "Could not create RepairReport record" });
+                return res.status(500).json({ error: "No se pudo crear el registro del acta de reparo" });
             }
 
             repairReportId = newRepairReport.id;
@@ -272,9 +331,11 @@ taxpayerRouter.post(
                 }
             }
 
+            // ✅ CORRECCIÓN: Mensaje de error más claro
+            const errorMessage = error.message || "Error desconocido al subir el acta de reparo";
             return res.status(500).json({
-                error: "An error occurred while uploading the file or saving the repair report",
-                details: error?.message || "Unknown error",
+                error: errorMessage,
+                details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
             });
         }
     }
@@ -362,8 +423,13 @@ taxpayerRouter.post(
             return res.status(201).json(response);
 
         } catch (error: any) {
-            console.error("API Error:", error);
-            return res.status(500).json({ error: error.message || "Internal Server Error" });
+            console.error("API Error en create-taxpayer:", error);
+            // ✅ CORRECCIÓN: Mensaje de error más claro y útil para los fiscales
+            const errorMessage = error.message || "Error desconocido al crear el contribuyente";
+            return res.status(500).json({ 
+                error: errorMessage,
+                details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            });
         }
     }
 );
