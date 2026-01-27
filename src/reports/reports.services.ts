@@ -1809,12 +1809,21 @@ export async function getTopFiscals(date?: Date) {
         const startOfYear = new Date(Date.UTC(year, 0, 1));
         const endOfYear = new Date(Date.UTC(year + 1, 0, 1));
 
+        // ✅ CORRECCIÓN CRÍTICA 2026: Filtrar contribuyentes por emition_date (año fiscal)
+        // Solo incluir contribuyentes cuyo año fiscal coincide con el año seleccionado
         const fiscals = await db.user.findMany({
             where: {
                 role: "FISCAL",
             },
             include: {
                 taxpayer: {
+                    where: {
+                        status: true,
+                        emition_date: {
+                            gte: startOfYear,
+                            lt: endOfYear,
+                        }
+                    },
                     include: {
                         ISLRReports: {
                             where: {
@@ -1905,12 +1914,20 @@ export async function getTopFiveByGroup(date?: Date) {
         const startOfYear = new Date(Date.UTC(year, 0, 1));
         const endOfYear = new Date(Date.UTC(year + 1, 0, 1));
 
+        // ✅ CORRECCIÓN CRÍTICA 2026: Filtrar contribuyentes por emition_date (año fiscal)
         const groups = await db.fiscalGroup.findMany({
             include: {
                 members: {
                     where: { role: "FISCAL" },
                     include: {
                         taxpayer: {
+                            where: {
+                                status: true,
+                                emition_date: {
+                                    gte: startOfYear,
+                                    lt: endOfYear,
+                                }
+                            },
                             include: {
                                 ISLRReports: {
                                     where: {
