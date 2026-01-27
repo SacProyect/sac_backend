@@ -312,9 +312,9 @@ export async function getFiscalsForReview(userId: string, userRole: string, year
 
             // ✅ Filtrar fiscales que tienen casos del año especificado
             if (year !== undefined && group?.members) {
-                fiscals = group.members.filter(member => member.taxpayer.length > 0) as User[];
+                fiscals = group.members.filter(member => member.taxpayer.length > 0) as unknown as User[];
             } else {
-                fiscals = (group?.members || []) as User[];
+                fiscals = (group?.members || []) as unknown as User[];
             }
         } else if (userRole === "SUPERVISOR") {
             const supervisor = await db.user.findUnique({
