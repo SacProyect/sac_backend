@@ -209,20 +209,42 @@ export async function updatePassword(userId: string, password: string) {
 }
 
 /**
- * ✅ CORRECCIÓN 2026: Agregado filtro de año para supervisores
- * - Permite filtrar fiscales por año (2025 o 2026)
- * - Si no se especifica año, retorna todos los fiscales (sin filtro de casos)
- * - El filtro de año se aplica en el frontend al obtener estadísticas de cada fiscal
+ * ✅ CORRECCIÓN 2026: Filtro de año implementado correctamente
+ * - Si se especifica año, solo retorna fiscales que tienen casos (taxpayers) de ese año
+ * - Si no se especifica año, retorna todos los fiscales
  */
 export async function getFiscalsForReview(userId: string, userRole: string, year?: number) {
 
 
     try {
+        // ✅ Construir filtro de año para taxpayers si se especifica
+        let taxpayerYearFilter: any = undefined;
+        if (year !== undefined) {
+            const startOfYear = new Date(Date.UTC(year, 0, 1));
+            const endOfYear = new Date(Date.UTC(year + 1, 0, 1));
+            
+            taxpayerYearFilter = {
+                some: {
+                    emition_date: {
+                        gte: startOfYear,
+                        lt: endOfYear,
+                    },
+                    status: true, // Solo casos activos
+                }
+            };
+        }
 
         let fiscals: User[] = [];
 
         if (userRole === "ADMIN") {
             const users = await db.user.findMany({
+                where: {
+                    role: { in: ["SUPERVISOR", "FISCAL"] },
+                    // ✅ Filtrar por fiscales que tienen casos del año especificado
+                    ...(taxpayerYearFilter ? {
+                        taxpayer: taxpayerYearFilter
+                    } : {}),
+                },
                 select: {
                     id: true,
                     name: true,
@@ -240,7 +262,7 @@ export async function getFiscalsForReview(userId: string, userRole: string, year
                     },
                 },
             });
-            fiscals = users.filter((u) => u.role === "SUPERVISOR" || u.role === "FISCAL");
+            fiscals = users;
         } else if (userRole === "COORDINATOR") {
             const group = await db.fiscalGroup.findUnique({
                 where: {
@@ -248,6 +270,12 @@ export async function getFiscalsForReview(userId: string, userRole: string, year
                 },
                 select: {
                     members: {
+                        where: {
+                            // ✅ Filtrar por miembros que tienen casos del año especificado
+                            ...(taxpayerYearFilter ? {
+                                taxpayer: taxpayerYearFilter
+                            } : {}),
+                        },
                         select: {
                             id: true,
                             name: true,
@@ -276,6 +304,12 @@ export async function getFiscalsForReview(userId: string, userRole: string, year
                 },
                 select: {
                     supervised_members: {
+                        where: {
+                            // ✅ Filtrar por miembros supervisados que tienen casos del año especificado
+                            ...(taxpayerYearFilter ? {
+                                taxpayer: taxpayerYearFilter
+                            } : {}),
+                        },
                         select: {
                             id: true,
                             name: true,
@@ -302,7 +336,6 @@ export async function getFiscalsForReview(userId: string, userRole: string, year
         if (!fiscals) throw new Error("No se obtuvieron fiscales.")
 
         // ✅ Agregar información del año filtrado si se especifica
-        // Esto permite al frontend saber qué año está siendo filtrado
         const fiscalsWithYear = fiscals.map(fiscal => ({
             ...fiscal,
             filterYear: year || null, // Añadir el año del filtro si existe
