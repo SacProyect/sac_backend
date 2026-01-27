@@ -208,7 +208,13 @@ export async function updatePassword(userId: string, password: string) {
     }
 }
 
-export async function getFiscalsForReview(userId: string, userRole: string) {
+/**
+ * ✅ CORRECCIÓN 2026: Agregado filtro de año para supervisores
+ * - Permite filtrar fiscales por año (2025 o 2026)
+ * - Si no se especifica año, retorna todos los fiscales (sin filtro de casos)
+ * - El filtro de año se aplica en el frontend al obtener estadísticas de cada fiscal
+ */
+export async function getFiscalsForReview(userId: string, userRole: string, year?: number) {
 
 
     try {
@@ -295,7 +301,14 @@ export async function getFiscalsForReview(userId: string, userRole: string) {
 
         if (!fiscals) throw new Error("No se obtuvieron fiscales.")
 
-        return fiscals;
+        // ✅ Agregar información del año filtrado si se especifica
+        // Esto permite al frontend saber qué año está siendo filtrado
+        const fiscalsWithYear = fiscals.map(fiscal => ({
+            ...fiscal,
+            filterYear: year || null, // Añadir el año del filtro si existe
+        }));
+
+        return fiscalsWithYear;
 
 
     } catch (e) {

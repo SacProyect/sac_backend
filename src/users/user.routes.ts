@@ -1,7 +1,7 @@
 import express from "express";
 import type { Request, Response } from "express";
 import * as UserService from "./user.services"
-import { body, validationResult } from 'express-validator';
+import { body, validationResult, query } from 'express-validator';
 import { authenticateToken, AuthRequest } from "./user.utils";
 
 export const userRouter = express.Router();
@@ -100,8 +100,16 @@ userRouter.get("/me",
     }
 )
 
+/**
+ * ✅ CORRECCIÓN 2026: Agregado parámetro opcional de año para filtrar fiscales
+ * Query params:
+ * - year (opcional): Año para filtrar (2025 o 2026). Si no se especifica, retorna todos los fiscales.
+ * 
+ * Ejemplo: GET /users/get-fiscals-for-review?year=2025
+ */
 userRouter.get('/get-fiscals-for-review',
     authenticateToken,
+    query("year").optional().isInt().withMessage("Year must be an integer"),
 
     async (req: Request, res: Response) => {
 
@@ -110,13 +118,26 @@ userRouter.get('/get-fiscals-for-review',
         if (!user) return res.status(401).json("Unauthorized access");
         if (user.role === "FISCAL") return res.status(403).json("Forbidden");
 
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
 
         try {
 
             const userId = user.id;
             const userRole = user.role;
+            
+            // ✅ Obtener parámetro de año opcional
+            const yearParam = req.query.year;
+            const year = yearParam ? parseInt(yearParam as string, 10) : undefined;
+            
+            // Validar que el año sea razonable (2020-2030)
+            if (year !== undefined && (year < 2020 || year > 2030)) {
+                return res.status(400).json({ error: "El año debe estar entre 2020 y 2030" });
+            }
 
-            const response = await UserService.getFiscalsForReview(userId, userRole);
+            const response = await UserService.getFiscalsForReview(userId, userRole, year);
 
             return res.status(200).json(response);
 
