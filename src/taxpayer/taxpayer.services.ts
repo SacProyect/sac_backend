@@ -531,13 +531,14 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
         // ✅ PERMITIR cualquier fecha del año actual (2026) progresivamente
         // ✅ PERMITIR fechas pasadas del mismo mes/año (si es día 20 y quiere cargar algo del día 16)
         // Solo usar mediodía UTC para evitar problemas de zona horaria, pero mantener la fecha ingresada
-        const inputYear = providedDate.getUTCFullYear();
+        // Reutilizar inputYear ya declarado arriba (línea 384) - no redeclarar
+        const finalInputYear = providedDate.getUTCFullYear();
         const inputMonth = providedDate.getUTCMonth();
         const inputDay = providedDate.getUTCDate();
         
         // Usar mediodía UTC para evitar problemas de zona horaria, pero mantener año, mes y día ingresados
         finalEmitionDate = new Date(Date.UTC(
-            inputYear,
+            finalInputYear,
             inputMonth,
             inputDay,
             12, 0, 0, 0 // Mediodía UTC para evitar problemas de zona horaria
