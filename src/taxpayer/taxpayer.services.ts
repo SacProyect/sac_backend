@@ -490,6 +490,23 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
             }
         }
 
+        // ✅ CORRECCIÓN 2026: Asegurar que la fecha se guarde correctamente como 2026-01-01
+        // Usar UTC para evitar problemas de zona horaria
+        let finalEmitionDate: Date;
+        if (inputYear === 2026) {
+            // Si es 2026, forzar fecha a 2026-01-01 en UTC
+            finalEmitionDate = new Date(Date.UTC(2026, 0, 1, 0, 0, 0, 0));
+        } else {
+            // Para otros años, usar la fecha proporcionada pero normalizada
+            const providedDate = new Date(emition_date);
+            finalEmitionDate = new Date(Date.UTC(
+                providedDate.getUTCFullYear(),
+                providedDate.getUTCMonth(),
+                providedDate.getUTCDate(),
+                0, 0, 0, 0
+            ));
+        }
+        
         const newTaxpayer = await db.taxpayer.create({
             data: {
                 providenceNum,
@@ -499,7 +516,7 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
                 contract_type: contract_type as any,
                 officerId: matchedOfficer.id,
                 address,
-                emition_date: new Date(emition_date),
+                emition_date: finalEmitionDate,
                 taxpayer_category_id: categoryId,
                 parish_id: parishId,
             },

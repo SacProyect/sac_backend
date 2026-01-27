@@ -220,8 +220,10 @@ export async function getFiscalsForReview(userId: string, userRole: string, year
         // ✅ Construir filtro de año para taxpayers si se especifica
         let taxpayerYearFilter: any = undefined;
         if (year !== undefined) {
-            const startOfYear = new Date(Date.UTC(year, 0, 1));
-            const endOfYear = new Date(Date.UTC(year + 1, 0, 1));
+            // Usar fecha local para evitar problemas de zona horaria
+            // Crear fechas en hora local (no UTC) para que coincidan con las fechas guardadas
+            const startOfYear = new Date(year, 0, 1, 0, 0, 0, 0); // 1 de enero del año, hora local
+            const endOfYear = new Date(year + 1, 0, 1, 0, 0, 0, 0); // 1 de enero del año siguiente, hora local
             
             taxpayerYearFilter = {
                 some: {
