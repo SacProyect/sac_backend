@@ -392,14 +392,17 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
         const currentYear = new Date().getFullYear();
         const inputDate = new Date(emition_date);
 
-        // ✅ CORRECCIÓN 2026: Validar que la fecha no sea futura (más de 1 mes adelante)
-        // Permite fechas del año actual y anteriores, pero bloquea fechas muy futuras
+        // ✅ CORRECCIÓN 2026: Permitir cualquier fecha del año actual o anterior
+        // Solo bloquear fechas muy futuras (más de 1 año adelante) para prevenir errores
         const maxAllowedDate = new Date();
-        maxAllowedDate.setMonth(maxAllowedDate.getMonth() + 1); // Permitir hasta 1 mes en el futuro
+        maxAllowedDate.setFullYear(maxAllowedDate.getFullYear() + 1); // Permitir hasta 1 año en el futuro
         
         if (inputDate > maxAllowedDate) {
-            throw new Error(`La fecha de emisión no puede ser más de un mes en el futuro. Fecha recibida: ${inputDate.toLocaleDateString()}`);
+            throw new Error(`La fecha de emisión no puede ser más de un año en el futuro. Fecha recibida: ${inputDate.toLocaleDateString()}`);
         }
+        
+        // ✅ Permitir fechas del año actual (2026) y anteriores (2025) sin restricción
+        // Esto permite crear casos del año actual en cualquier momento del año
 
         // ✅ REFACTORIZACIÓN 2026: Relajar validaciones para permitir casos 2025 Y casos 2026
         // Solo aplicar restricciones estrictas para duplicados en el mismo año
