@@ -132,84 +132,84 @@ taxpayerRouter.get("/download-investigation",
 
 
 
-// taxpayerRouter.post(
-//     '/',
-//     authenticateToken,
-//     uploadLocal.array("pdfs", 20),
-//     body("providenceNum").isNumeric().withMessage("providenceNum must be numeric"),
-//     body("process").isString().withMessage("process must be a string"),
-//     body("name").isString().withMessage("name must be a string"),
-//     body("rif").matches(/^[JVEPG]\d{9}$/).withMessage("RIF format is invalid (must start with J, V, E, P or G followed by 9 digits)"),
-//     body("contract_type").isString().withMessage("contract_type must be a string"),
-//     body("officerName").isString().withMessage("officerName must be a string"),
-//     body("address").notEmpty().withMessage("address is required"),
-//     body("emition_date").notEmpty().withMessage("emition_date is required").isString().withMessage("emition_date must be a string"),
-//     body("category").notEmpty().withMessage("category must be provided").isString().withMessage("Category must be a string"),
-//     body("parish").notEmpty().withMessage("parish is required").isString().withMessage("parish must be a string"),
+taxpayerRouter.post(
+    '/',
+    authenticateToken,
+    uploadLocal.array("pdfs", 20),
+    body("providenceNum").isNumeric().withMessage("providenceNum must be numeric"),
+    body("process").isString().withMessage("process must be a string"),
+    body("name").isString().withMessage("name must be a string"),
+    body("rif").matches(/^[JVEPG]\d{9}$/).withMessage("RIF format is invalid (must start with J, V, E, P or G followed by 9 digits)"),
+    body("contract_type").isString().withMessage("contract_type must be a string"),
+    body("officerName").isString().withMessage("officerName must be a string"),
+    body("address").notEmpty().withMessage("address is required"),
+    body("emition_date").notEmpty().withMessage("emition_date is required").isString().withMessage("emition_date must be a string"),
+    body("category").notEmpty().withMessage("category must be provided").isString().withMessage("Category must be a string"),
+    body("parish").notEmpty().withMessage("parish is required").isString().withMessage("parish must be a string"),
 
-//     async (req: Request, res: Response) => {
-//         try {
+    async (req: Request, res: Response) => {
+        try {
 
-//             const { user } = req as AuthRequest;
-//             if (!user) return res.status(401).json("Unauthorized access");
-//             if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden");
+            const { user } = req as AuthRequest;
+            if (!user) return res.status(401).json("Unauthorized access");
+            if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden");
 
 
-//             const userId = user?.id;
-//             const role = user?.role;
-//             const s3Files = [];
+            const userId = user?.id;
+            const role = user?.role;
+            const s3Files = [];
 
-//             for (const file of req.files as Express.Multer.File[]) {
-//                 const fileStream = await fs.promises.readFile(file.path);
-//                 const s3Key = `pdfs/${Date.now()}-${file.originalname}`;
+            for (const file of req.files as Express.Multer.File[]) {
+                const fileStream = await fs.promises.readFile(file.path);
+                const s3Key = `pdfs/${Date.now()}-${file.originalname}`;
 
-//                 await s3.send(new PutObjectCommand({
-//                     Bucket: "sacbucketgeneral",
-//                     Key: s3Key,
-//                     Body: fileStream,
-//                     ContentType: file.mimetype,
-//                 }));
+                await s3.send(new PutObjectCommand({
+                    Bucket: "sacbucketgeneral",
+                    Key: s3Key,
+                    Body: fileStream,
+                    ContentType: file.mimetype,
+                }));
 
-//                 // Push the public URL (or generate it based on your bucket setup)
-//                 s3Files.push({ pdf_url: `https://sacbucketgeneral.s3.amazonaws.com/${s3Key}` });
+                // Push the public URL (or generate it based on your bucket setup)
+                s3Files.push({ pdf_url: `https://sacbucketgeneral.s3.amazonaws.com/${s3Key}` });
 
-//                 // Delete local file after upload
-//                 await fs.promises.unlink(file.path);
-//             }
+                // Delete local file after upload
+                await fs.promises.unlink(file.path);
+            }
 
-//             const { providenceNum, process, name, rif, contract_type, officerId, address, emition_date, parish, category } = req.body;
+            const { providenceNum, process, name, rif, contract_type, officerId, address, emition_date, parish, category } = req.body;
 
-//             // ✅ Validar que parish y category estén presentes (ya validado por express-validator, pero doble verificación)
-//             if (!parish || !category) {
-//                 return res.status(400).json({ 
-//                     message: "Server error", 
-//                     error: "Parroquia y Actividad Económica son campos obligatorios" 
-//                 });
-//             }
+            // ✅ Validar que parish y category estén presentes (ya validado por express-validator, pero doble verificación)
+            if (!parish || !category) {
+                return res.status(400).json({ 
+                    message: "Server error", 
+                    error: "Parroquia y Actividad Económica son campos obligatorios" 
+                });
+            }
 
-//             const newTaxpayer = await TaxpayerServices.createTaxpayer({
-//                 providenceNum: BigInt(providenceNum),
-//                 process,
-//                 name,
-//                 rif,
-//                 contract_type,
-//                 officerId,
-//                 emition_date,
-//                 address,
-//                 pdfs: s3Files,
-//                 userId: userId,
-//                 role: role,
-//                 parishId: parish,  // El frontend envía el ID como "parish"
-//                 categoryId: category,  // El frontend envía el ID como "category"
-//             });
+            const newTaxpayer = await TaxpayerServices.createTaxpayer({
+                providenceNum: BigInt(providenceNum),
+                process,
+                name,
+                rif,
+                contract_type,
+                officerId,
+                emition_date,
+                address,
+                pdfs: s3Files,
+                userId: userId,
+                role: role,
+                parishId: parish,  // El frontend envía el ID como "parish"
+                categoryId: category,  // El frontend envía el ID como "category"
+            });
 
-//             return res.status(200).json(newTaxpayer);
-//         } catch (error: any) {
-//             console.error(error);
-//             return res.status(500).json({ message: "Server error", error: error.message });
-//         }
-//     }
-// );
+            return res.status(200).json(newTaxpayer);
+        } catch (error: any) {
+            console.error(error);
+            return res.status(500).json({ message: "Server error", error: error.message });
+        }
+    }
+);
 
 taxpayerRouter.post(
     "/repair-report/:id",
