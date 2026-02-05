@@ -296,7 +296,7 @@ export const updateFase = async (data: NewFase) => {
         // Construir lista de destinatarios
         const recipients = [
             taxpayerBefore.user?.email,
-            ...adminUsers.map((admin:) => admin.email),
+            ...adminUsers.map((admin) => admin.email),
         ].filter(Boolean); // Elimina null/undefined
 
         // Obtener nombres de personas
@@ -1559,7 +1559,7 @@ export const updateIvaReport = async (
  * @param data The updated data for the payment.
  * @returns The updated payment object or an error if the operation fails.
  */
-export const updatePayment = async (eventId: string, data: Partial<NewPayment>): Promise<Payment | Error> => {
+export const updatePayment_ = async (eventId: string, data: Partial<NewPayment>): Promise<Payment | Error> => {
     try {
         const updatedEvent = await db.payment.update({
             where: {
