@@ -1,4 +1,4 @@
-import { compareSync } from "bcrypt";
+import { compareSync } from "bcryptjs";
 import { db } from "../utils/db.server";
 import { generateAcessToken, NewUserInput, passwordHashing, UpdateUserByNameInput, User } from "./user.utils";
 import bcrypt from 'bcryptjs';
