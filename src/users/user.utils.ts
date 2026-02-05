@@ -1,6 +1,6 @@
 import { JwtPayload, sign, verify } from "jsonwebtoken"
 import { NextFunction, Request, Response } from "express"
-import { hash } from "bcrypt";
+import { hash } from "bcryptjs";
 import { Taxpayer } from "../taxpayer/taxpayer.utils";
 import { Taxpayer_Fases, user_roles } from "@prisma/client";
 //TODO ESTO ES UNA PRUEBA PARA VER SI FUNCIONA EN LOCAL ESTO SE VA A ELIMINAR MAS ADELANTE
