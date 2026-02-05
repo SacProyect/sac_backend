@@ -8,6 +8,32 @@ import { censusRouter } from "./src/census/census.routes"
 import path from "path"
 dotenv.config()
 
+/** Log de conexión a BD al iniciar: host, nombre de BD y entorno inferido (desarrollo/producción) */
+function logDatabaseConnection() {
+    const url = process.env.DATABASE_URL
+    if (!url) {
+        console.warn("[DB] DATABASE_URL no definida")
+        return
+    }
+    try {
+        const u = new URL(url.replace(/^mysql:\/\//, "https://"))
+        const host = u.hostname
+        const port = u.port || "3306"
+        const dbName = (u.pathname || "").replace(/^\//, "") || "(sin nombre)"
+        const envLabel = /development|dev|local|test/i.test(dbName) ? "DESARROLLO" : "PRODUCCIÓN"
+        console.log("----------------------------------------")
+        console.log("[DB] Conexión activa:")
+        console.log(`[DB]   Host: ${host}:${port}`)
+        console.log(`[DB]   Base de datos: ${dbName}`)
+        console.log(`[DB]   Entorno: ${envLabel}`)
+        console.log("----------------------------------------")
+    } catch {
+        console.warn("[DB] No se pudo interpretar DATABASE_URL (solo se muestra que está definida)")
+    }
+}
+
+logDatabaseConnection()
+
 if (!process.env.PORT) {
     console.log(`No port value specified...`)
 }
