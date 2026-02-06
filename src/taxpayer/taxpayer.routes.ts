@@ -12,6 +12,7 @@ import { createLocalUpload } from "../utils/multer.local";
 import { uploadMemory } from "../utils/multer.memory";
 import { Decimal } from "@prisma/client/runtime/library";
 import { db } from "../utils/db.server";
+import logger from "../utils/logger";
 // import { commonParams } from "@aws-sdk/client-s3/dist-types/endpoint/EndpointParameters";
 
 const s3 = new S3Client({ region: "us-east-2" }); // Replace "your-region" with your AWS region
@@ -956,15 +957,17 @@ taxpayerRouter.post('/create-islr-report',
     body("paid").notEmpty(),
 
     async (req: Request, res: Response) => {
+        const autorizados = ["ADMIN", "COORDINATOR", "FISCAL", "SUPERVISOR"];
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
+            logger.error(errors.array());
             return res.status(400).json({ errors: errors.array() });
         }
 
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
+        if (!autorizados.includes(user.role)) return res.status(403).json("Forbidden")
 
 
         const input = { ...req.body }
@@ -973,16 +976,18 @@ taxpayerRouter.post('/create-islr-report',
         try {
             // ✅ Pasar userId y userRole para validación de acceso de fiscales rotados
             const report = await TaxpayerServices.createISLR(input, user.id, user.role);
-
-            return res.status(200).json(report);
+            logger.info("ISLR report created successfully");
+            logger.info("ISLR report sent to client");  
+            const response = res.status(200).json(report);
+            return response
 
         } catch (e: any) {
-
             if (e.message === `ISLR Report for this taxpayer in: ${emitionYear} was already created`) {
+                logger.error(e.message);
                 return res.status(400).json({ error: e.message });
             }
 
-            console.error(e);
+            logger.error(e.message);
             return res.status(500).json(e);
         }
     }
@@ -999,14 +1004,17 @@ taxpayerRouter.post('/payment',
         try {
             const input = { ...req.body }
             const payment = await TaxpayerServices.createPayment(input)
+            logger.info("Payment created successfully");
+            logger.info("Payment sent to client");  
             return res.status(200).json(payment)
         } catch (error: any) {
 
             if (error.name === "AmountError") {
+                logger.error(error.message);
                 return res.status(400).json({ error: error.message })
             }
 
-            console.error(error)
+            logger.error(error.message);
             return res.status(500).json(error.message)
         }
     }
@@ -1022,6 +1030,7 @@ taxpayerRouter.post("/observations",
 
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
+            logger.error(errors.array());
             return res.status(400).json({ errors: errors.array() });
         }
 
@@ -1031,11 +1040,13 @@ taxpayerRouter.post("/observations",
 
             const observation = await TaxpayerServices.createObservation(input);
 
+            logger.info("Observation created successfully");
+            logger.info("Observation sent to client");  
             return res.status(200).json(observation);
 
-        } catch (e) {
-            console.error("Error: ", e)
-            return res.status(500).json(e);
+        } catch (e: any) {
+            logger.error(e.message);
+            return res.status(500).json(e.message);
         }
     }
 )
@@ -1050,22 +1061,27 @@ taxpayerRouter.post('/payment_compromise',
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
+            logger.error(errors.array());
             return res.status(400).json({ errors: errors.array() });
         }
         
         try {
             const input = { ...req.body, type: EventType.PAYMENT_COMPROMISE }
             const payment_compromise = await TaxpayerServices.createEvent(input)
+            logger.info("Payment compromise created successfully");
+            logger.info("Payment compromise sent to client");  
             return res.status(200).json(payment_compromise)
         } catch (error: any) {
             console.error("Error en payment_compromise:", error);
             
             if (error.name === "AmountError") {
+                logger.error(error.message);
                 return res.status(400).json({ error: error.message })
             }
             
             // Retornar mensaje de error más descriptivo
             const errorMessage = error.message || "Error al crear el compromiso de pago";
+            logger.error(errorMessage);
             return res.status(400).json({ error: errorMessage })
         }
     }
@@ -1092,7 +1108,7 @@ taxpayerRouter.post('/warning',
             const warning = await TaxpayerServices.createEvent(input)
             return res.status(200).json(warning)
         } catch (error: any) {
-            console.error("Error en warning:", error);
+            logger.error(error.message);
             const errorMessage = error.message || "Error al crear el aviso";
             return res.status(400).json({ error: errorMessage })
         }
@@ -1110,15 +1126,19 @@ taxpayerRouter.put('/fine/:eventId',
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
+            logger.error(errors.array());
             return res.status(400).json({ errors: errors.array() });
         }
         try {
             const eventId = req.params.eventId;
             const input = { ...req.body };
             const fine = await TaxpayerServices.updateEvent(eventId, input);
+            logger.info("Fine updated successfully");
+            logger.info("Fine sent to client");  
             return res.status(200).json(fine);
         } catch (error: any) {
             console.error(error);
+            logger.error(error.message);
             return res.status(500).json({ error: error.message });
         }
     }
@@ -1134,9 +1154,12 @@ taxpayerRouter.put('/updateIva/:ivaId',
             const input = { ...req.body };
             // ✅ Pasar userId y userRole para validación de acceso de fiscales rotados
             const updated = await TaxpayerServices.updateIvaReport(ivaId, input, user?.id, user?.role);
+            logger.info("IVA report updated successfully");
+            logger.info("IVA report sent to client");  
             return res.status(200).json(updated);
         } catch (error: any) {
             console.error(error);
+            logger.error(error.message);
             return res.status(500).json({ message: error.message });
         }
     }
@@ -1151,8 +1174,11 @@ taxpayerRouter.put('/payment/:eventId',
             const eventId = (req.params.eventId);
             const input = { ...req.body };
             const payment = await TaxpayerServices.updateEvent(eventId, input);
+            logger.info("Payment updated successfully");
+            logger.info("Payment sent to client");  
             return res.status(200).json(payment);
         } catch (error: any) {
+            logger.error(error.message);
             return res.status(500).json(error.message);
         }
     }
@@ -1218,6 +1244,7 @@ taxpayerRouter.put('/update-culminated/:id',
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
+            logger.error(errors.array());
             return res.status(400).json({ errors: errors.array() });
         }
 
@@ -1235,10 +1262,12 @@ taxpayerRouter.put('/update-culminated/:id',
             // ✅ Pasar userId y userRole para validación de acceso de fiscales rotados
             const culminatedSuccesfully = await TaxpayerServices.updateCulminated(id, culminated, user.id, user.role);
 
+            logger.info("Case culminated successfully");
+            logger.info("Case sent to client");  
             return res.status(201).json(culminatedSuccesfully);
 
         } catch (e: any) {
-            console.error(e);
+            logger.error(e.message);
             return res.status(500).json({ message: e.message || "Error al culminar el caso" });
         }
 
@@ -1255,8 +1284,11 @@ taxpayerRouter.put('/payment_compromise/:eventId',
             const eventId = (req.params.eventId);
             const input = { ...req.body };
             const payment_compromise = await TaxpayerServices.updateEvent(eventId, input);
+            logger.info("Payment compromise updated successfully");
+            logger.info("Payment compromise sent to client");  
             return res.status(200).json(payment_compromise);
         } catch (error: any) {
+            logger.error(error.message);
             return res.status(500).json(error.message);
         }
     }
@@ -1270,8 +1302,11 @@ taxpayerRouter.put('/warning/:eventId',
             const eventId = (req.params.eventId);
             const input = { ...req.body };
             const warning = await TaxpayerServices.updateEvent(eventId, input);
+            logger.info("Warning updated successfully");
+            logger.info("Warning sent to client");  
             return res.status(200).json(warning);
         } catch (error: any) {
+            logger.error(error.message);
             return res.status(500).json(error.message);
         }
     }
@@ -1281,26 +1316,22 @@ taxpayerRouter.put("/update-islr/:id",
     authenticateToken,
 
     async (req: Request, res: Response) => {
-
+        const autorizados = ["ADMIN", "COORDINATOR", "FISCAL", "SUPERVISOR"];
         try {
-
             const { user } = req as AuthRequest
-
             if (!user) return res.status(401).json("Unauthorized access")
-            if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
-
-
+            if (!autorizados.includes(user.role)) return res.status(403).json("Forbidden")
             const id: string = req.params.id;
             const input = req.body;
-
             // ✅ Pasar userId y userRole para validación de acceso de fiscales rotados
             const updatedIslr = await TaxpayerServices.updateIslr(id, input, user.id, user.role)
-
+            logger.info("ISLR updated successfully");
+            logger.info("ISLR sent to client");  
             return res.status(201).json(updatedIslr);
 
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json("Server error.")
+        } catch (e: any) {
+            logger.error(e.message);
+            return res.status(500).json({ message: e.message })
         }
     }
 )
@@ -1320,10 +1351,12 @@ taxpayerRouter.delete('/event/:id',
             console.log("ID: " + id);
 
             const event = await TaxpayerServices.deleteEvent(id)
+            logger.info("Event deleted successfully");
+            logger.info("Event sent to client");  
             return res.status(200).json(event)
         } catch (error: any) {
-            console.error(error);
-            return res.status(500).json(error.message)
+            logger.error(error.message);
+            return res.status(500).json({ message: error.message})
         }
     }
 );
@@ -1340,10 +1373,12 @@ taxpayerRouter.delete('/payment/:id',
         try {
             const id: string = (req.params.id);
             const event = await TaxpayerServices.deletePayment(id)
+            logger.info("Payment deleted successfully");
+            logger.info("Payment sent to client");  
             return res.status(200).json(event)
         } catch (error: any) {
-            console.error(error);
-            return res.status(500).json(error.message)
+            logger.error(error.message);
+            return res.status(500).json({ message: error.message || "Server error." })
         }
     }
 );
@@ -1362,11 +1397,13 @@ taxpayerRouter.delete("/delete-iva/:id",
 
             const ivaReport = await TaxpayerServices.deleteIva(id);
 
+            logger.info("IVA report deleted successfully");
+            logger.info("IVA report sent to client");  
             return res.status(201).json(ivaReport);
 
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json({ message: "Server error." })
+        } catch (e: any) {
+            logger.error(e.message);
+            return res.status(500).json({ message: e.message || "Server error." })
         }
     }
 );
@@ -1386,10 +1423,12 @@ taxpayerRouter.delete("/delete-islr/:id",
 
             const islrReport = await TaxpayerServices.deleteIslr(id);
 
+            logger.info("ISLR report deleted successfully");
+            logger.info("ISLR report sent to client");  
             return res.status(201).json(islrReport);
-        } catch (e) {
-            console.error(e);
-            throw new Error("Server error.");
+        } catch (e: any) {
+            logger.error(e.message);
+            return res.status(500).json({ message: e.message })
         }
     }
 )
@@ -1411,10 +1450,12 @@ taxpayerRouter.post("/create-taxpayer-category",
         try {
             const response = await TaxpayerServices.CreateTaxpayerCategory(name);
 
-            return res.status(201).json("New category created successfully: " + response);
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json("Something went wrong.")
+            logger.info("New category created successfully");
+            logger.info("New category sent to client");  
+            return res.status(201).json(response);
+        } catch (e: any) {
+            logger.error(e.message);
+            return res.status(500).json(e.message)
         }
     }
 )

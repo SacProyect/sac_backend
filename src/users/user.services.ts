@@ -1,7 +1,9 @@
 import { compareSync } from "bcryptjs";
+import { Prisma } from "@prisma/client";
 import { db } from "../utils/db.server";
 import { generateAcessToken, NewUserInput, passwordHashing, UpdateUserByNameInput, User } from "./user.utils";
 import bcrypt from 'bcryptjs';
+import logger from "../utils/logger";
 
 /**
  * Logs in a user.
@@ -48,7 +50,7 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
  */
 export const signUp = async (input: NewUserInput): Promise<User | Error> => {
     try {
-        if (input.password.length < 8) throw new Error('Contraseña debe ser mínimo de 8 caracteres')
+        if (input.password.length < 8) throw new Error('Contraseña debe ser mínimo de 8 caracteres');
 
         input.password = await passwordHashing(input.password);
 
@@ -57,8 +59,13 @@ export const signUp = async (input: NewUserInput): Promise<User | Error> => {
         });
 
         return newUser;
-    } catch (error) {
-        throw error;
+    } catch (error: any) {
+        if (error instanceof Prisma.PrismaClientValidationError) {
+            logger.error(error.message);
+            throw new Error('Rol no permitido. Use: FISCAL, ADMIN, COORDINATOR o SUPERVISOR.');
+        }
+        logger.error(error.message);
+        throw new Error(error.message);
     }
 };
 /**
@@ -85,7 +92,8 @@ export const updateuser = async (userId: string, data: Partial<NewUserInput>): P
 
 
         return updateduser;
-    } catch (error) {
+    } catch (error: any) {
+        logger.error(error.message);
 
         throw error;
     }
@@ -130,12 +138,13 @@ export const getAllUsers = async (user: { id: string, role: string }): Promise<U
         }
 
         return users.filter((u) => (u.role !== "ADMIN") && (u.role !== "COORDINATOR"));
-    } catch (error) {
-        throw error;
+    } catch (error: any) {
+        logger.error(error.message);
+        throw new Error(error.message);
     }
 }
 
-export const getUser = async (id: string) => {
+export const getUser = async (id: string): Promise<{ user: User; token: string } | Error> => {
     try {
         const user = await db.user.findUnique({
             where: { id: id },
@@ -150,7 +159,7 @@ export const getUser = async (id: string) => {
         });
 
         if (!user) {
-            return null;
+            throw new Error('Usuario no encontrado');
         }
 
         // user.taxpayer = await db.taxpayer.findMany({
@@ -181,9 +190,9 @@ export const getUser = async (id: string) => {
         // 5) respond just like your login endpoint
         return { user, token };
 
-    } catch (e) {
-        console.error(e);
-        throw new Error("Error getting the updated user with the new token.")
+    } catch (e: any) {
+        logger.error(e.message);
+        throw new Error(e.message);
     }
 }
 
@@ -202,9 +211,9 @@ export async function updatePassword(userId: string, password: string) {
         });
 
         return updatedUser;
-    } catch (e) {
-        console.error(e);
-        throw new Error("No se pudo actualizar el password.");
+    } catch (e: any) {
+        logger.error(e.message);
+        throw new Error(e.message);
     }
 }
 
@@ -363,9 +372,9 @@ export async function getFiscalsForReview(userId: string, userRole: string, year
         return fiscalsWithYear;
 
 
-    } catch (e) {
-        console.error("Cannot get fiscals for review: ", e);
-        throw new Error("Cannot get fiscals for review");
+    } catch (e: any) {
+        logger.error(e.message);
+        throw new Error(e.message);
     }
 }
 
@@ -389,12 +398,12 @@ export async function updateUserByName(name: string, data: UpdateUserByNameInput
         });
 
         return updatedUser;
-    } catch (e) {
+    } catch (e: any) {
         console.error(e);
         throw new Error("Couldn't update the user.");
     }
 }
-
+    
 // Helper
 function normalizeText(text: string): string {
     return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
