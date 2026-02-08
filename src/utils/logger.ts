@@ -4,11 +4,14 @@ import { LogtailTransport } from '@logtail/winston';
 
 const BETTERSTACK_TOKEN = process.env.BETTERSTACK_SOURCE_TOKEN;
 const BETTERSTACK_ENDPOINT = process.env.BETTERSTACK_LOGS_ENDPOINT;
-const isProduction = process.env.NODE_ENV === 'production';
+const NODE_ENV = process.env.NODE_ENV ?? 'development';
+const isDevelopment = NODE_ENV === 'development';
+const isStaging = NODE_ENV === 'staging';
+const isProduction = NODE_ENV === 'production';
 
-// Solo crear Logtail en producción para que en desarrollo nunca se envíe nada a BetterStack
+// Staging y producción envían a BetterStack; desarrollo solo usa consola
 const logtail =
-  isProduction && BETTERSTACK_TOKEN
+  !isDevelopment && BETTERSTACK_TOKEN
     ? new Logtail(BETTERSTACK_TOKEN, {
         ...(BETTERSTACK_ENDPOINT && { endpoint: BETTERSTACK_ENDPOINT }),
         sendLogsToConsoleOutput: false,
@@ -44,13 +47,32 @@ const consoleTransport = new transports.Console({
   ),
 });
 
-// Desarrollo: solo consola (no enviar a BetterStack para no mezclar con logs de producción).
-// Producción: solo BetterStack; consola solo si no hay token (fallback).
-const loggerTransports = isProduction
-  ? logtail
-    ? [new LogtailTransport(logtail, { level: logLevel, format: logtailFormat })]
-    : [consoleTransport]
-  : [consoleTransport];
+// Desarrollo:  solo consola.
+// Staging:     BetterStack + consola (para debug en Render).
+// Producción:  solo BetterStack; consola como fallback si no hay token.
+function buildTransports() {
+  const list: any[] = [];
+
+  if (isDevelopment) {
+    list.push(consoleTransport);
+    return list;
+  }
+
+  // Staging o producción: siempre BetterStack si hay token
+  if (logtail) {
+    list.push(new LogtailTransport(logtail, { level: logLevel, format: logtailFormat }));
+  }
+
+  // Staging: también consola para ver logs en el dashboard de Render
+  // Producción: consola solo si no hay token (fallback)
+  if (isStaging || !logtail) {
+    list.push(consoleTransport);
+  }
+
+  return list;
+}
+
+const loggerTransports = buildTransports();
 
 const logger = createLogger({
   level: logLevel,
@@ -63,9 +85,10 @@ const logger = createLogger({
   transports: loggerTransports,
 });
 
-if (!isProduction) {
-  logger.debug('Logging initialized (solo consola en desarrollo).');
-}
+logger.debug(`Logging initialized [env=${NODE_ENV}]`, {
+  transports: loggerTransports.map((t: any) => t.constructor?.name ?? 'unknown'),
+  betterstack: !!logtail,
+});
 
 /** Envía los logs pendientes a BetterStack (llamar en shutdown para no perder logs). */
 export async function flushLogger(): Promise<void> {

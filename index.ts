@@ -6,13 +6,14 @@ import { taxpayerRouter } from "./src/taxpayer/taxpayer.routes"
 import { reportRouter } from "./src/reports/reports.routes"
 import { censusRouter } from "./src/census/census.routes"
 import path from "path"
+import logger from "./src/utils/logger"
 dotenv.config()
 
-/** Log de conexión a BD al iniciar: host, nombre de BD y entorno inferido (desarrollo/producción) */
+/** Log de conexión a BD al iniciar: host, nombre de BD y entorno (NODE_ENV) */
 function logDatabaseConnection() {
     const url = process.env.DATABASE_URL
     if (!url) {
-        console.warn("[DB] DATABASE_URL no definida")
+        logger.warn("[DB] DATABASE_URL no definida")
         return
     }
     try {
@@ -20,22 +21,17 @@ function logDatabaseConnection() {
         const host = u.hostname
         const port = u.port || "3306"
         const dbName = (u.pathname || "").replace(/^\//, "") || "(sin nombre)"
-        const envLabel = /development|dev|local|test/i.test(dbName) ? "DESARROLLO" : "PRODUCCIÓN"
-        console.log("----------------------------------------")
-        console.log("[DB] Conexión activa:")
-        console.log(`[DB]   Host: ${host}:${port}`)
-        console.log(`[DB]   Base de datos: ${dbName}`)
-        console.log(`[DB]   Entorno: ${envLabel}`)
-        console.log("----------------------------------------")
+        const env = process.env.NODE_ENV ?? "development"
+        logger.info(`[DB] Conexión activa — Host: ${host}:${port} | BD: ${dbName} | Entorno: ${env}`)
     } catch {
-        console.warn("[DB] No se pudo interpretar DATABASE_URL (solo se muestra que está definida)")
+        logger.warn("[DB] No se pudo interpretar DATABASE_URL (solo se muestra que está definida)")
     }
 }
 
 logDatabaseConnection()
 
 if (!process.env.PORT) {
-    console.log(`No port value specified...`)
+    logger.warn('No port value specified...')
 }
 const PORT = parseInt(process.env.PORT as string, 10)
 
@@ -87,7 +83,7 @@ app.use('/uploads', express.static(path.join(__dirname, './uploads')));
 
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server is listening on port: ${PORT}`)
+    logger.info(`Server is listening on port: ${PORT}`)
 })
 
 export default app
