@@ -1,7 +1,6 @@
 import * as readline from "readline";
 import * as UserService from "../src/users/user.services";
 import { db } from "../src/utils/db.server";
-import { User } from "../src/users/user.utils";
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
@@ -43,7 +42,7 @@ const changePassword = async () => {
 
     const newPassword = await question("Ingrese la nueva contraseña (mínimo 8 caracteres): ");
     if (newPassword.length < 8) {
-      console.log("La contraseña debe tener al menos 8 caracteres.");
+      console.log("Contraseña debe ser mínimo de 8 caracteres.");
       rl.close();
       process.exit(1);
     }
@@ -64,7 +63,7 @@ const changePassword = async () => {
       process.exit(0);
     }
 
-    await UserService.updateuser(selectedUser.id, { password: newPassword });
+    await UserService.updatePassword(selectedUser.id, newPassword);
     console.log("\n✓ Contraseña actualizada correctamente en la base de datos.");
   } catch (error) {
     console.error("Error:", error);
