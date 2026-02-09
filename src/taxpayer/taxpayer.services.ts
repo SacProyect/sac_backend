@@ -102,20 +102,7 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
             const normalizedName = input.name.replace(/\s+/g, "").toLowerCase();
             const firstWord = input.name.trim().split(/\s+/)[0];
 
-            const matches = await db.taxpayer.findMany({
-                where: {
-                    OR: [
-                        { providenceNum: input.providenceNum },
-                        { name: { contains: firstWord } }
-                    ]
-                },
-                select: {
-                    name: true,
-                    emition_date: true,
-                    process: true,
-                    providenceNum: true
-                }
-            });
+            const matches = await taxpayerRepository.findTaxpayersByNameOrProvidenceNum(input.providenceNum, firstWord);
 
             for (const entry of matches) {
                 const normalized = entry.name.replace(/\s+/g, "").toLowerCase();
@@ -143,56 +130,37 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
             throw new Error("Parroquia y Actividad Económica son campos obligatorios.");
         }
 
-        const taxpayer = await db.taxpayer.create({
-            data: {
-                providenceNum: input.providenceNum,
-                process: input.process,
-                name: input.name,
-                contract_type: input.contract_type,
-                officerId: input.officerId,
-                rif: input.rif,
-                address: input.address,
-                emition_date: emitionDate.toISOString(),
-                taxpayer_category_id: input.categoryId,
-                parish_id: input.parishId,
-            }
+        const taxpayer = await taxpayerRepository.createTaxpayer({
+            providenceNum: input.providenceNum,
+            process: input.process,
+            name: input.name,
+            contract_type: input.contract_type,
+            officerId: input.officerId,
+            rif: input.rif,
+            address: input.address,
+            emition_date: emitionDate.toISOString(),
+            taxpayer_category_id: input.categoryId,
+            parish_id: input.parishId,
         });
 
-        await db.investigationPdf.createMany({
-            data: input.pdfs.map((pdf) => ({
-                pdf_url: pdf.pdf_url,
-                taxpayerId: taxpayer.id,
-            })),
-        });
+        await taxpayerRepository.createInvestigationPdfs(input.pdfs.map((pdf) => ({
+            pdf_url: pdf.pdf_url,
+            taxpayerId: taxpayer.id,
+        })));
 
         if (input.process === "AF") {
-            const officer = await db.user.findUnique({
-                where: { id: input.officerId },
-                include: {
-                    group: {
-                        include: {
-                            coordinator: {
-                                select: { email: true }
-                            }
-                        }
-                    }
-                }
-            });
-
-            const fiscalName = (await db.user.findUnique({
-                where: { id: input.userId },
-                select: { name: true }
-            }))?.name ?? "—";
-
-            const admins = await db.user.findMany({
-                where: { role: "ADMIN" },
-            });
+            const [officer, fiscalName, admins] = await Promise.all([
+                taxpayerRepository.findUserByIdWithGroupCoordinator(input.officerId),
+                taxpayerRepository.findUserNameById(input.userId ?? ""),
+                taxpayerRepository.findAdmins(),
+            ]);
 
             const fromAddress = process.env.EMAIL_FROM ?? 'no-reply@sac-app.com';
             const recipients = [
                 ...admins.map(admin => admin.email),
-                ...(officer?.group?.coordinator?.email ? [officer.group.coordinator.email] : [])
+                ...(officer?.group?.coordinator?.email ? [officer.group.coordinator.email] : []),
             ];
+            const fiscalDisplayName = fiscalName ?? "—";
 
             const contractTypeMap: Record<string, string> = {
                 SPECIAL: "ESPECIAL",
@@ -204,7 +172,7 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
             const emailHtml = `
                 <div style="font-family: Arial, sans-serif; color: #333;">
                 <h2 style="color: #2c3e50;">🆕 Nuevo Contribuyente para Auditoría Fiscal</h2>
-                <p><strong>Fiscal Responsable:</strong> ${fiscalName}</p>
+                <p><strong>Fiscal Responsable:</strong> ${fiscalDisplayName}</p>
                 <p>Se ha creado un nuevo contribuyente con el procedimiento <strong>Auditoría Fiscal (AF)</strong>.</p>
                 <h3 style="margin-top:20px;color:#2980b9;">📋 Detalles</h3>
                 <ul style="line-height:1.6;">
@@ -215,7 +183,7 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                     <li><strong>Fecha de emisión:</strong> ${new Date(input.emition_date).toLocaleDateString()}</li>
                     <li><strong>Dirección:</strong> ${input.address}</li>
                 </ul>
-                <a href="https://sac-app.com" target="_blank" 
+                <a href="https://sac-app.com" target="_blank"
                 style="
                     display: inline-block;
                     background-color: #2980b9;
@@ -252,46 +220,17 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
 };
 
 
-
 export const updateFase = async (data: NewFase) => {
     try {
-        // Obtener al contribuyente antes de hacer el update para comparar fases
-        const taxpayerBefore = await db.taxpayer.findUnique({
-            where: { id: data.id },
-            include: {
-                user: {
-                    include: {
-                        group: {
-                            include: {
-                                coordinator: true, // para acceder al coordinador del grupo
-                            },
-                        },
-                    },
-                },
-            },
-        });
-
+        const taxpayerBefore = await taxpayerRepository.findTaxpayerWithUserAndCoordinator(data.id);
         if (!taxpayerBefore) {
             throw new Error('Taxpayer not found');
         }
 
         const oldFase = taxpayerBefore.fase.replace("_", " ");
+        const updatedTaxpayerFase = await taxpayerRepository.updateTaxpayerFase(data.id, data.fase);
 
-        // Actualizar la fase
-        const updatedTaxpayerFase = await db.taxpayer.update({
-            where: {
-                id: data.id,
-            },
-            data: {
-                fase: data.fase,
-            },
-        });
-
-        // Obtener todos los admins
-        const adminUsers = await db.user.findMany({
-            where: { role: 'ADMIN' },
-            select: { email: true },
-        });
+        const adminUsers = await taxpayerRepository.findAdminEmails();
 
         // Construir lista de destinatarios
         const recipients = [
@@ -379,7 +318,7 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
     } = data;
 
     try {
-        const users = await db.user.findMany();
+        const users = await taxpayerRepository.findManyUsers();
         const normalizedInputName = normalize(officerName);
         const matchedOfficer = users.find((u) =>
             normalize(u.name).includes(normalizedInputName) || normalizedInputName.includes(normalize(u.name))
@@ -407,22 +346,7 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
         const startOfYear = new Date(Date.UTC(inputYear, 0, 1, 0, 0, 0, 0));
         const endOfYear = new Date(Date.UTC(inputYear + 1, 0, 1, 0, 0, 0, 0));
         
-        const existingByProvidence = await db.taxpayer.findMany({
-            where: {
-                providenceNum,
-                status: true, // Solo activos
-                emition_date: {
-                    gte: startOfYear,
-                    lt: endOfYear,
-                }
-            },
-            select: {
-                id: true,
-                process: true,
-                emition_date: true,
-                status: true
-            }
-        });
+        const existingByProvidence = await taxpayerRepository.findExistingByProvidence(providenceNum, startOfYear, endOfYear);
 
         const currentYear = new Date().getFullYear();
         
@@ -500,15 +424,7 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
         const normalizedName = name.replace(/\s+/g, "").toLowerCase();
         const firstWord = name.trim().split(/\s+/)[0];
 
-        const candidates = await db.taxpayer.findMany({
-            where: {
-                name: { contains: firstWord },
-            },
-            select: {
-                name: true,
-                emition_date: true,
-            },
-        });
+        const candidates = await taxpayerRepository.findCandidatesByName(firstWord);
 
         // ✅ CORRECCIÓN 2026: Validación de nombre similar - solo bloquear duplicados exactos en mismo año
         // Permitir casos 2025 (trabajo pendiente) y casos 2026 (año actual)
@@ -570,19 +486,17 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
         // Ejemplo: Si es día 20 y quiere cargar algo del día 16 → PERMITIDO
         // No hay validación de fecha mínima - se permite cualquier fecha pasada
         
-        const newTaxpayer = await db.taxpayer.create({
-            data: {
-                providenceNum,
-                process: process as any,
-                name,
-                rif,
-                contract_type: contract_type as any,
-                officerId: matchedOfficer.id,
-                address,
-                emition_date: finalEmitionDate,
-                taxpayer_category_id: categoryId,
-                parish_id: parishId,
-            },
+        const newTaxpayer = await taxpayerRepository.createTaxpayerFromExcel({
+            providenceNum,
+            process,
+            name,
+            rif,
+            contract_type,
+            officerId: matchedOfficer.id,
+            address,
+            emition_date: finalEmitionDate,
+            taxpayer_category_id: categoryId,
+            parish_id: parishId,
         });
 
         return newTaxpayer;
@@ -633,37 +547,22 @@ function normalize(str: string): string {
 export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
     try {
         // ✅ CORRECCIÓN 2026: Validación mejorada para prevenir errores 500
-        
-        // Validar que el contribuyente existe
+
         if (input.taxpayerId) {
-            const taxpayer = await db.taxpayer.findUnique({
-                where: { id: input.taxpayerId },
-                select: { id: true, status: true }
-            });
-            
+            const taxpayer = await taxpayerRepository.findById(input.taxpayerId);
             if (!taxpayer) {
-                throw new Error(`Contribuyente con ID ${input.taxpayerId} no encontrado.`);
-            }
-            
-            if (!taxpayer.status) {
-                throw new Error(`No se pueden crear eventos para contribuyentes inactivos.`);
+                throw new Error(`Contribuyente con ID ${input.taxpayerId} no encontrado o está inactivo.`);
             }
         }
 
-        // Validar PAYMENT_COMPROMISE
-        if (input.type == "PAYMENT_COMPROMISE") {
+        if (input.type === "PAYMENT_COMPROMISE") {
             if (!input.fineEventId) {
                 throw new Error("fineEventId es requerido para eventos de tipo PAYMENT_COMPROMISE.");
             }
-            
-            const verifyEvent = await db.event.findUnique({
-                where: { id: input.fineEventId }
-            });
-
+            const verifyEvent = await taxpayerRepository.findEventById(input.fineEventId);
             if (!verifyEvent) {
                 throw new Error(`Evento de multa con ID ${input.fineEventId} no encontrado.`);
             }
-
             if (input.amount !== undefined && input.amount > verifyEvent.debt) {
                 throw BadRequestError("AmountError", "El monto no puede ser mayor que la deuda de la multa.");
             }
@@ -673,7 +572,7 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
         if (!input.date) {
             throw new Error("La fecha es requerida para crear un evento.");
         }
-        
+
         if (!input.taxpayerId) {
             throw new Error("El ID del contribuyente es requerido.");
         }
@@ -687,11 +586,9 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
         // Set expires_at to 15 days from now if it's not provided
         const expiresAt = input.expires_at ?? new Date(new Date(input.date).getTime() + 15 * 24 * 60 * 60 * 1000);
 
-        const event = await db.event.create({
-            data: {
-                ...input,
-                expires_at: expiresAt,
-            }
+        const event = await taxpayerRepository.createEvent({
+            ...input,
+            expires_at: expiresAt,
         });
 
         return event;
@@ -705,7 +602,6 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
 
 
 
-
 /**
  * Creates a new payment.
  *
@@ -715,28 +611,14 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
 export const createPayment = async (input: NewPayment): Promise<Payment | Error> => {
     try {
 
-        const verifyPayment = await db.event.findFirst({
-            where: { id: input.eventId }
-        })
-
-        if (verifyPayment) {
-            if (verifyPayment.debt < input.amount) {
-                throw BadRequestError("AmountError", "Payment can't be greater than debt")
-            }
+        const event = await taxpayerRepository.findEventById(String(input.eventId));
+        if (event && event.debt < input.amount) {
+            throw BadRequestError("AmountError", "Payment can't be greater than debt");
         }
 
-        const newPayment = await db.payment.create({
-            data: input,
-            include: {
-                event: true
-            }
-        })
+        const newPayment = await taxpayerRepository.createPayment(input);
 
-        await db.event.update({
-            where: { id: input.eventId },
-            data: { debt: { decrement: input.amount } }
-        })
-
+        await taxpayerRepository.updateEventDebt(input.eventId, input.amount);
 
         return newPayment
     } catch (error: any) {
@@ -749,14 +631,7 @@ export async function modifyIndexIva(newIndexIva: Decimal, taxpayerId: string) {
 
     try {
 
-        const taxpayer = db.taxpayer.update({
-            where: {
-                id: taxpayerId,
-            },
-            data: {
-                index_iva: newIndexIva,
-            }
-        });
+        const taxpayer = await taxpayerRepository.updateIndexIva(taxpayerId, newIndexIva);
 
         return taxpayer;
 
@@ -770,49 +645,28 @@ export async function modifyIndexIva(newIndexIva: Decimal, taxpayerId: string) {
 export async function createIndexIva(data: CreateIndexIva) {
     try {
         // Obtener los índices anteriores activos
-        const previousIndexIva = await db.indexIva.findMany({
-            where: {
-                expires_at: null,
-            },
-        });
+        const previousIndexIva = await taxpayerRepository.findIndexIvaExpired();
 
         // Actualizar expires_at a NOW
-        await db.indexIva.updateMany({
-            where: {
-                expires_at: null,
-            },
-            data: {
-                expires_at: new Date(),
-            },
-        });
+        await taxpayerRepository.expireIndexIva();
 
         // Crear nuevos índices
         const [indexIvaSpecial, indexIvaOrdinary] = await Promise.all([
-            db.indexIva.create({
-                data: {
-                    contract_type: "SPECIAL",
-                    base_amount: data.specialAmount,
-                },
-            }),
-            db.indexIva.create({
-                data: {
-                    contract_type: "ORDINARY",
-                    base_amount: data.ordinaryAmount,
-                },
-            }),
+            taxpayerRepository.createIndexIvaRecord("SPECIAL", data.specialAmount),
+            taxpayerRepository.createIndexIvaRecord("ORDINARY", data.ordinaryAmount),
         ]);
 
         // Recorre los índices anteriores y actualiza taxpayers
         for (const oldIndex of previousIndexIva) {
-            await db.taxpayer.updateMany({
-                where: {
+            await taxpayerRepository.updateTaxpayerIndexIva(
+                {
                     index_iva: oldIndex.base_amount,
                     contract_type: oldIndex.contract_type,
                 },
-                data: {
+                {
                     index_iva: oldIndex.contract_type === "SPECIAL" ? data.specialAmount : data.ordinaryAmount,
-                },
-            });
+                }
+            );
         }
 
         return { indexIvaSpecial, indexIvaOrdinary };
@@ -845,86 +699,14 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
 
         if (type && type !== "payment") {
             where.type = type
-            events = await db.event.findMany({
-                where,
-                select: {
-                    id: true,
-                    date: true,
-                    amount: true,
-                    type: true,
-                    taxpayerId: true,
-                    debt: true,
-                    description: true,
-                    taxpayer: {
-                        select: {
-                            officerId: true,
-                            name: true,
-                            rif: true,
-                        }
-                    }
-
-                }
-            })
+            events = await taxpayerRepository.findEvents(where);
         } else if (type === "payment") {
-            events = await db.payment.findMany({
-                where,
-                select: {
-                    id: true,
-                    date: true,
-                    amount: true,
-                    event: true,
-                    taxpayerId: true,
-                    taxpayer: {
-                        select: {
-                            officerId: true,
-                            name: true,
-                            rif: true,
-                        }
-                    }
-
-                }
-            })
+            events = await taxpayerRepository.findPayments(where)
         } else {
-            events = await db.event.findMany({
-                where,
-                select: {
-                    id: true,
-                    date: true,
-                    amount: true,
-                    type: true,
-                    taxpayerId: true,
-                    description: true,
-                    debt: true,
-                    taxpayer: {
-                        select: {
-                            officerId: true,
-                            name: true,
-                            rif: true,
-                        }
-                    }
+            const foundEvents = await taxpayerRepository.findEvents(where);
+            const payments = await taxpayerRepository.findPayments(where);
 
-                }
-            })
-
-            const payments = await db.payment.findMany({
-                where,
-                select: {
-                    id: true,
-                    date: true,
-                    amount: true,
-                    event: true,
-                    taxpayerId: true,
-                    taxpayer: {
-                        select: {
-                            name: true,
-                            rif: true,
-                        }
-                    }
-
-                }
-            })
-
-            events = [...events, ...payments]
+            events = [...foundEvents, ...payments]
         }
 
         const mappedResponse: Event[] = events.map((event: any) => {
@@ -948,25 +730,23 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
     }
 }
 
+
+
 /**
  * Gets a taxpayer by its ID.
  *
- * @param {number} taxpayerId - The ID of the taxpayer.
+ * @param {string} taxpayerId - The ID of the taxpayer.
  * @returns {Promise<Taxpayer | Error>} A Promise resolving to the taxpayer or an error.
  */
 export const getTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Error> => {
-
-
     try {
-        const taxpayer = await db.taxpayer.findUnique({
-            where: { id: taxpayerId }
-        });
+        const taxpayer = await taxpayerRepository.findById(taxpayerId);
 
-        if (!taxpayer || !taxpayer.status) {
+        if (!taxpayer) {
             throw new Error(`No active taxpayer found with ID ${taxpayerId}`);
         }
 
-        return taxpayer
+        return taxpayer;
     } catch (error: any) {
         logger.error("Error getTaxpayerById", { taxpayerId, message: error?.message, stack: error?.stack });
         throw error;
@@ -975,18 +755,7 @@ export const getTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Er
 
 export const getFiscalTaxpayersForStats = async (userId: string) => {
     try {
-        const user = await db.user.findUnique({
-            where: { id: userId },
-            include: {
-                taxpayer: {
-                    include: {
-                        IVAReports: true,
-                        ISLRReports: true,
-                        event: true,
-                    },
-                },
-            },
-        });
+        const user = await taxpayerRepository.findUserWithTaxpayerStats(userId);
 
         if (!user) throw new Error("Usuario no encontrado");
 
@@ -1054,155 +823,19 @@ export const getFiscalTaxpayersForStats = async (userId: string) => {
 };
 
 export const getTaxpayersForEvents = async (userId: string, userRole: string) => {
-
     try {
-
-        let taxpayers: taxpayer[] = [];
-
-        if (userRole === "ADMIN") {
-            taxpayers = await db.taxpayer.findMany({
-                include: {
-                    event: true,
-                    IVAReports: true,
-                    ISLRReports: true,
-                    user: {
-                        select: {
-                            name: true,
-                        },
-                    },
-                }
-            });
-        } else if (userRole === "COORDINATOR") {
-            const group = await db.fiscalGroup.findUnique({
-                where: {
-                    coordinatorId: userId
-                },
-
-                include: {
-                    members: {
-                        include: {
-                            taxpayer: {
-                                include: {
-                                    event: true,
-                                    IVAReports: true,
-                                    ISLRReports: true,
-                                    user: {
-                                        select: {
-                                            name: true,
-                                        },
-                                    },
-                                }
-                            },
-                        },
-                    },
-                },
-            })
-            if (!group) throw new Error("Grupo no encontrado para el coordinador");
-
-            // Aplanamos los taxpayers de todos los miembros
-            taxpayers = group.members.flatMap((member) => member.taxpayer);
-        } else if (userRole === "SUPERVISOR") {
-            const user = await db.user.findUnique({
-                where: {
-                    id: userId,
-                },
-                include: {
-                    taxpayer: { // 👈 Taxpayers assigned directly to the supervisor
-                        include: {
-                            event: true,
-                            IVAReports: true,
-                            ISLRReports: true,
-                            user: {
-                                select: {
-                                    name: true,
-                                },
-                            },
-                        },
-                    },
-                    supervised_members: {  // 👈 Taxpayers assigned to supervised members
-                        include: {
-                            taxpayer: {
-                                include: {
-                                    event: true,
-                                    IVAReports: true,
-                                    ISLRReports: true,
-                                    user: {
-                                        select: {
-                                            name: true,
-                                        },
-                                    },
-                                }
-                            },
-                        },
-                    },
-                },
-            });
-
-            if (!user) throw new Error("Usuario no encontrado.");
-
-            // Combine supervised members' taxpayers and supervisor's own taxpayers
-            const supervisedTaxpayers = user.supervised_members.flatMap((member) => member.taxpayer);
-            taxpayers = [...user.taxpayer, ...supervisedTaxpayers];
-        } else if (userRole === "FISCAL") {
-            const fiscal = await db.user.findUnique({
-                where: {
-                    id: userId,
-                },
-                include: {
-                    taxpayer: {
-                        include: {
-                            event: true,
-                            IVAReports: true,
-                            ISLRReports: true,
-                            user: {
-                                select: {
-                                    name: true,
-                                },
-                            },
-                        },
-                    },
-                }
-            });
-            if (!fiscal) throw new Error("Usuario no encontrado.");
-
-            taxpayers = fiscal?.taxpayer;
-        }
-
+        const taxpayers = await taxpayerRepository.findTaxpayersForEvents(userId, userRole);
         return taxpayers;
-
     } catch (e: any) {
         logger.error(e);
         throw new Error(e.message || "Error al obtener contribuyentes");
     }
-
 }
 
 export const getTaxpayers = async () => {
     try {
-
-        const taxpayers = await db.taxpayer.findMany({
-            select: {
-                id: true,
-                name: true,
-                rif: true,
-                address: true,
-                process: true,
-                providenceNum: true,
-                contract_type: true,
-                emition_date: true,
-                taxpayer_category: true,
-                parish: true,
-                user: {
-                    select: {
-                        id: true,
-                        name: true,
-                    }
-                }
-            }
-        });
-
+        const taxpayers = await taxpayerRepository.findAll();
         return taxpayers;
-
     } catch (e) {
         logger.error(e);
         throw new Error("No se pudo obtener la lista de contribuyentes.")
@@ -1218,12 +851,7 @@ export const getTaxpayers = async () => {
  */
 export const getTaxpayersByUser = async (userId: string): Promise<Taxpayer[] | Error> => {
     try {
-        const taxpayers = await db.taxpayer.findMany({
-            where: {
-                officerId: userId,
-                status: true
-            }
-        })
+        const taxpayers = await taxpayerRepository.findByUser(userId);
         return taxpayers
     } catch (error: any) {
         logger.error("Error getTaxpayersByUser", { userId, message: error?.message, stack: error?.stack });
@@ -1241,11 +869,7 @@ export const getTaxpayersByUser = async (userId: string): Promise<Taxpayer[] | E
  */
 export const deleteTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Error> => {
     try {
-        const removedTaxpayer = await db.taxpayer.delete({
-            where: {
-                id: taxpayerId
-            },
-        });
+        const removedTaxpayer = await taxpayerRepository.deleteById(taxpayerId);
         return removedTaxpayer;
     } catch (error: any) {
         logger.error("Error deleteTaxpayerById", { taxpayerId, message: error?.message, stack: error?.stack });
@@ -1261,11 +885,7 @@ export const deleteTaxpayerById = async (taxpayerId: string): Promise<Taxpayer |
  */
 export const deleteEvent = async (eventId: string): Promise<Event | Error> => {
     try {
-        const updatedEvent = await db.event.delete({
-            where: {
-                id: eventId
-            },
-        });
+        const updatedEvent = await taxpayerRepository.deleteEventById(eventId);
         return updatedEvent;
     } catch (error: any) {
         logger.error("Error deleteEvent", { eventId, message: error?.message, stack: error?.stack });
@@ -1275,9 +895,7 @@ export const deleteEvent = async (eventId: string): Promise<Event | Error> => {
 
 export const deleteIva = async (id: string) => {
     try {
-        const deletedReport = await db.iVAReports.delete({
-            where: { id: id },
-        })
+        const deletedReport = await taxpayerRepository.deleteIvaById(id);
 
         return deletedReport;
     } catch (e) {
@@ -1288,12 +906,8 @@ export const deleteIva = async (id: string) => {
 
 export const deleteIslr = async (id: string) => {
     try {
-
-        const deletedReport = await db.iSLRReports.delete({
-            where: { id: id }
-        })
+        const deletedReport = await taxpayerRepository.deleteIslrById(id);
         return deletedReport;
-
     } catch (e) {
         logger.error(e);
         throw new Error("No se pudo eliminar el reporte de ISLR.")
@@ -1308,17 +922,7 @@ export const deleteIslr = async (id: string) => {
  */
 export const deletePayment = async (eventId: string): Promise<Payment | Error> => {
     try {
-        const updatedEvent = await db.payment.update({
-            where: {
-                id: eventId
-            },
-            include: {
-                event: true
-            },
-            data: {
-                status: false
-            }
-        });
+        const updatedEvent = await taxpayerRepository.deletePaymentById(eventId);
         return updatedEvent;
     } catch (error: any) {
         logger.error("Error deletePayment", { eventId, message: error?.message, stack: error?.stack });
@@ -1329,11 +933,7 @@ export const deletePayment = async (eventId: string): Promise<Payment | Error> =
 
 export const deleteObservation = async (id: string) => {
     try {
-        const deleteEvent = await db.observations.delete({
-            where: {
-                id: id,
-            }
-        })
+        const deleteEvent = await taxpayerRepository.deleteObservationById(id);
 
         return deleteEvent;
     } catch (e) {
@@ -1936,23 +1536,8 @@ export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> 
         if (taxpayerId) {
             where.taxpayerId = taxpayerId
         }
-        const pendingPayments = await db.event.findMany({
-            select: {
-                id: true,
-                date: true,
-                amount: true,
-                type: true,
-                taxpayerId: true,
-                taxpayer: {
-                    select: {
-                        name: true,
-                        rif: true,
-                    }
-                }
+        const pendingPayments = await taxpayerRepository.findPendingPayments(where);
 
-            },
-            where
-        })
         const mappedResponse: Event[] = pendingPayments.map((event: any) => {
             return {
                 id: event.id,
@@ -1974,40 +1559,7 @@ export async function getTaxpayerData(id: string) {
 
     try {
 
-        const taxpayerData = await db.taxpayer.findUnique({
-            where: {
-                id: id
-            },
-            include: {
-                RepairReports: true,
-                investigation_pdfs: true,
-                user: { 
-                    select: { 
-                        id: true,
-                        name: true,
-                        group: { 
-                            select: { 
-                                coordinatorId: true,
-                                coordinator: {
-                                    select: {
-                                        name: true
-                                    }
-                                }
-                            } 
-                        }, 
-                        supervisorId: true,
-                    } 
-                },
-                IVAReports: {
-                    take: 1,
-                    orderBy: {
-                        date: 'desc'
-                    }
-                },
-                taxpayer_category: true,
-                parish: true,
-            },
-        });
+        const taxpayerData = await taxpayerRepository.getTaxpayerData(id);
 
         return taxpayerData
 
@@ -2019,15 +1571,8 @@ export async function getTaxpayerData(id: string) {
 
 export async function uploadRepairReport(taxpayerId: string, pdf_url: string) {
     try {
-        const newRepairReport = await db.repairReport.create({
-            data: {
-                taxpayerId,
-                pdf_url,
-            },
-        });
-
+        const newRepairReport = await taxpayerRepository.createRepairReport(taxpayerId, pdf_url);
         return newRepairReport;
-
     } catch (e: any) {
         logger.error("Can't create the repair report", { taxpayerId, pdf_url, message: e?.message, stack: e?.stack });
         throw new Error("Can't create the repair report")
@@ -2050,9 +1595,7 @@ export async function updateRepairReportPdfUrl(id: string, pdf_url: string) {
 // Eliminar si falla la subida
 export async function deleteRepairReportById(id: string) {
     try {
-        return await db.repairReport.delete({
-            where: { id },
-        });
+        return await taxpayerRepository.deleteRepairReportById(id);
     } catch (error: any) {
         logger.error("Failed to delete RepairReport", { id, message: error?.message, stack: error?.stack });
         throw new Error("Could not delete RepairReport");
@@ -2062,11 +1605,7 @@ export async function deleteRepairReportById(id: string) {
 export async function getObservations(taxpayerId: string) {
     try {
 
-        const taxpayerObservations = await db.observations.findMany({
-            where: {
-                taxpayerId: taxpayerId,
-            }
-        })
+        const taxpayerObservations = await taxpayerRepository.findObservationsByTaxpayer(taxpayerId);
 
         return taxpayerObservations
     } catch (e: any) {
@@ -2080,11 +1619,7 @@ export async function getObservations(taxpayerId: string) {
 export async function getTaxpayerSummary(taxpayerId: string) {
 
     try {
-        const taxpayerSummary = await db.iVAReports.findMany({
-            where: {
-                taxpayerId: taxpayerId,
-            }
-        })
+        const taxpayerSummary = await taxpayerRepository.findIvaReportsByTaxpayer(taxpayerId);
 
         return taxpayerSummary;
 
@@ -2096,19 +1631,7 @@ export async function getTaxpayerSummary(taxpayerId: string) {
 
 export async function getIslrReports(taxpayerId: string) {
     try {
-        const reports = await db.iSLRReports.findMany({
-            where: {
-                taxpayerId: taxpayerId,
-            },
-            include: {
-                taxpayer: {
-                    select: {
-                        name: true,
-                        process: true,
-                    }
-                }
-            }
-        })
+        const reports = await taxpayerRepository.findIslrReportsByTaxpayer(taxpayerId);
 
         return reports;
     } catch (e: any) {
@@ -2125,13 +1648,11 @@ export const createObservation = async (input: NewObservation) => {
     }
 
     try {
-        const observation = db.observations.create({
-            data: {
-                taxpayerId: input.taxpayerId,
-                description: input.description,
-                date: new Date(input.date),
-            }
-        })
+        const observation = taxpayerRepository.createObservation({
+            taxpayerId: input.taxpayerId,
+            description: input.description,
+            date: new Date(input.date),
+        });
 
         return observation
 
@@ -2335,11 +1856,7 @@ export const CreateTaxpayerCategory = async (name: string) => {
 
     try {
 
-        const createdCategory = await db.taxpayerCategory.create({
-            data: {
-                name: name,
-            }
-        });
+        const createdCategory = await staticDataRepository.createTaxpayerCategory(name);
 
         return createdCategory;
 
@@ -2350,14 +1867,15 @@ export const CreateTaxpayerCategory = async (name: string) => {
 }
 
 
+import { staticDataRepository } from "./repository/static-data.repository";
+import { taxpayerRepository } from "./repository/taxpayer.repository";
+
+// ... other imports
+
 export const getTaxpayerCategories = async () => {
-
     try {
-
-        const categories = await db.taxpayerCategory.findMany();
-
+        const categories = await staticDataRepository.findAllCategories();
         return categories;
-
     } catch (e: any) {
         if (e instanceof Prisma.PrismaClientKnownRequestError) {
             logger.error("Prisma error getting taxpayer categories", { code: e.code, message: e?.message });
@@ -2373,7 +1891,7 @@ export const getParishList = async () => {
 
     try {
 
-        const parishList = await db.parish.findMany();
+        const parishList = await staticDataRepository.findAllParishes();
 
         return parishList;
 

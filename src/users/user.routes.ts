@@ -200,7 +200,7 @@ userRouter.put('/update-by-name/:name',
     }
 )
 
-userRouter.patch('/update-password/:id',
+userRouter.put('/update-password/:id',
     authenticateToken,
     body("password").notEmpty(),
 
