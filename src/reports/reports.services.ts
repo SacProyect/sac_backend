@@ -7,7 +7,7 @@ import dayjs from "dayjs";
 import isBetween from 'dayjs/plugin/isBetween';
 import { es, id } from 'date-fns/locale';
 import { formatInTimeZone } from 'date-fns-tz';
-
+import logger from "../utils/logger";
 dayjs.extend(isBetween);
 
 /**
@@ -31,7 +31,7 @@ function calculateComplianceScore(
 } {
     try {
         if (!taxpayer || !taxpayer.id) {
-            console.error(`[COMPLIANCE_SCORE] Taxpayer inválido o sin ID`);
+            logger.error(`[COMPLIANCE_SCORE] Taxpayer inválido o sin ID`);
             return {
                 score: 0,
                 mesesExigibles: 1,
@@ -51,7 +51,7 @@ function calculateComplianceScore(
         if (taxpayer.emition_date) {
             fechaInicio = new Date(taxpayer.emition_date);
         } else {
-            console.warn(
+            logger.warn(
                 `⚠️ [COMPLIANCE_SCORE] Contribuyente ${taxpayer.id} (${taxpayer.rif}) no tiene emition_date. Usando created_at como fallback.`
             );
             fechaInicio = new Date(taxpayer.created_at || new Date());
@@ -191,7 +191,7 @@ function calculateComplianceScore(
 
         // Debug conciso (evitar spam por contribuyente en producción)
         if (process.env.NODE_ENV !== "production") {
-            console.log(
+            logger.info(
                 `[COMPLIANCE_SCORE_IVA] ID:${taxpayer.id} RIF:${taxpayer.rif || "N/A"} ` +
                     `Año:${selectedYear} MesesExigibles:${mesesExigibles} MesesEvaluables:${mesesEvaluables} ` +
                     `MesesConPago:${mesesConPago} Score:${score}% Clasificación:${clasificacion}`
@@ -206,7 +206,7 @@ function calculateComplianceScore(
             fechaInicio,
         };
     } catch (error) {
-        console.error(
+        logger.error(
             `[COMPLIANCE_SCORE_IVA] Error crítico al calcular complianceScore para ${taxpayer?.id || "unknown"}:`,
             error
         );
@@ -324,6 +324,10 @@ export const getFineHistory = async (taxpayerId?: string) => {
             total_amount: totalAmount
         }
     } catch (error) {
+        logger.error("[REPORTS] getFineHistory failed", {
+            taxpayerId: taxpayerId ?? null,
+            error,
+        });
         throw error
     }
 }
@@ -369,7 +373,7 @@ export const getPaymentHistory = async (taxpayerId?: string) => {
         const compliance = getComplianceRate(fines, payments)
 
         const totalPayments: Payment[] = []
-        // console.log("PAYMENTS REPORT SERVICES: " + JSON.stringify(payments[0]))
+        // logger.info("PAYMENTS REPORT SERVICES: " + JSON.stringify(payments[0]))
 
         payments.forEach((payment) => {
             if (payment.event.amount.equals(payment.amount)) {
@@ -389,6 +393,10 @@ export const getPaymentHistory = async (taxpayerId?: string) => {
 
         }
     } catch (error) {
+        logger.error("[REPORTS] getPaymentHistory failed", {
+            taxpayerId: taxpayerId ?? null,
+            error,
+        });
         throw error
     }
 }
@@ -482,7 +490,12 @@ export const createError = async (input: InputError): Promise<InputError | Error
 
         return createdError;
     } catch (e) {
-        console.error("Error during creation: " + e)
+        logger.error("[REPORTS] createError failed", {
+            inputTitle: input?.title,
+            inputType: input?.type,
+            userId: input?.userId,
+            error: e,
+        });
         throw new Error("Error creating the report")
     }
 
@@ -569,6 +582,12 @@ export const getPendingPayments = async (
 
         return mappedResponse;
     } catch (error) {
+        logger.error("[REPORTS] getPendingPayments failed", {
+            userId,
+            userRole,
+            taxpayerId: taxpayerId ?? null,
+            error,
+        });
         throw error;
     }
 };
@@ -639,8 +658,13 @@ export const getGroupRecord = async (data: InputGroupRecords) => {
                     const result = parseFloat(valid);
                     const rounded = isNaN(result) ? 0 : parseFloat(result.toFixed(2));
 
-                    console.log(`DEBUG record fiscal: ${record.fiscal.name}, process: ${record.process}`);
-                    console.log(`   Raw value: ${val}, Cleaned: ${valid}, Parsed: ${rounded}`);
+                    logger.debug("[REPORTS] getGroupRecord parseValue", {
+                        fiscalName: record.fiscal?.name,
+                        process: record.process,
+                        rawValue: val,
+                        cleanedValue: valid,
+                        parsedValue: rounded,
+                    });
 
                     return rounded;
                 };
@@ -682,7 +706,10 @@ export const getGroupRecord = async (data: InputGroupRecords) => {
         throw new Error("Faltan parámetros para obtener el reporte");
 
     } catch (e) {
-        console.error("Error en getGroupRecord:", e);
+        logger.error("[REPORTS] getGroupRecord failed", {
+            input: data,
+            error: e,
+        });
         throw new Error("No se pudo obtener el reporte de grupo.");
     }
 };
@@ -705,11 +732,20 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
     const start = startDate ? toUTC(startDate) : new Date(Date.UTC(currentYear, 0, 1));
     const end = endDate ? toUTC(endDate) : new Date(Date.UTC(currentYear + 1, 0, 1)); // exclusivo
 
-    console.log(toUTC(startDate));
-    console.log(toUTC(endDate));
+    logger.debug("[REPORTS] getFiscalGroups date filters", {
+        startDate,
+        endDate,
+        startUTC: start,
+        endUTC: end,
+    });
 
     // 👉 Restrict access to authorized roles only
     if (role !== "ADMIN" && role !== "COORDINATOR" && role !== "SUPERVISOR") {
+        logger.warn("[REPORTS] getFiscalGroups unauthorized access", {
+            role,
+            id,
+            supervisorId,
+        });
         throw new Error("Unauthorized");
     }
 
@@ -1030,12 +1066,15 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
             };
         });
 
-
-
-
         return updatedGroups;
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getFiscalGroups failed", {
+            filters,
+            role,
+            groupId: id,
+            supervisorId,
+            error: e,
+        });
         throw e;
     }
 };
@@ -1153,7 +1192,11 @@ export const getGlobalPerformance = async (date: Date): Promise<MonthlyRow[]> =>
 
         return rows;
     } catch (error) {
-        console.error("Error in getGlobalPerformance:", error);
+        logger.error("[REPORTS] getGlobalPerformance failed", {
+            inputDate: date,
+            year: date ? date.getUTCFullYear() : undefined,
+            error,
+        });
         throw new Error("Can't get the global performance");
     }
 };
@@ -1247,22 +1290,15 @@ export async function debugQuery() {
             (iva) => iva.taxpayer.emition_date < cutoffDate
         );
 
-        console.log(`📊 Total IVA reports in 2025: ${ivaReports2025.length}`);
-        console.log(`🚨 IVA reports in 2025 from taxpayers created before 2025: ${mismatched.length}`);
-
-        if (mismatched.length > 0) {
-            console.log("🧾 Taxpayers with mismatched dates:");
-            mismatched.forEach((item, index) => {
-                console.log(
-                    `#${index + 1} - RIF: ${item.taxpayer.rif} | Emitted: ${item.taxpayer.emition_date.toISOString()} | IVA Date: ${item.date.toISOString()}`
-                );
-            });
-        }
+        logger.info("[REPORTS] debugQuery 2025 IVA reports summary", {
+            totalReports: ivaReports2025.length,
+            mismatchedCount: mismatched.length,
+        });
 
         return mismatched;
 
     } catch (e) {
-        console.error("❌ Error during debugQuery:", e);
+        logger.error("[REPORTS] debugQuery failed", { error: e });
         return [];
     }
 }
@@ -1378,7 +1414,10 @@ export async function getGroupPerformance(date?: Date) {
         return performanceByGroup;
 
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getGroupPerformance failed", {
+            date,
+            error: e,
+        });
         throw new Error("Error en la API: " + e);
     }
 }
@@ -1569,7 +1608,10 @@ export async function getGlobalKPI(date?: Date) {
             delinquencyRate: round2(delinquencyRate),           // %
         };
     } catch (e) {
-        console.error("Error in getGlobalKPI:", e);
+        logger.error("[REPORTS] getGlobalKPI failed", {
+            date,
+            error: e,
+        });
         throw new Error("Error al calcular KPIs globales");
     }
 }
@@ -1680,7 +1722,11 @@ export async function getIndividualIvaReport(id: string, date?: Date) {
         return performanceByMonth;
 
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getIndividualIvaReport failed", {
+            taxpayerId: id,
+            date,
+            error: e,
+        });
         throw new Error("Failed to fetch individual IVA report");
     }
 }
@@ -1804,7 +1850,10 @@ export async function getBestSupervisorByGroups(date?: Date) {
 
         return result;
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getBestSupervisorByGroups failed", {
+            date,
+            error: e,
+        });
         throw new Error("Error al obtener el mejor supervisor de cada grupo.");
     }
 }
@@ -1911,7 +1960,10 @@ export async function getTopFiscals(date?: Date) {
 
         return sorted;
     } catch (e) {
-
+        logger.error("[REPORTS] getTopFiscals failed", {
+            date,
+            error: e,
+        });
         throw new Error("No se pudo obtener el top fiscales.")
     }
 }
@@ -2006,7 +2058,10 @@ export async function getTopFiveByGroup(date?: Date) {
 
         return result;
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getTopFiveByGroup failed", {
+            date,
+            error: e,
+        });
         throw new Error("Error al obtener los top fiscales por grupo");
     }
 }
@@ -2337,7 +2392,10 @@ export async function getMonthlyCompliance(date?: Date) {
 
         return complianceResults;
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getMonthlyCompliance failed", {
+            date,
+            error: e,
+        });
         throw new Error("No se pudo calcular el porcentaje de cumplimiento.");
     }
 }
@@ -2471,7 +2529,10 @@ export async function getTaxpayerCompliance(date?: Date) {
             totalTaxpayers: taxpayers.length,
         };
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getTaxpayerCompliance failed", {
+            date,
+            error: e,
+        });
         throw new Error("Error al calcular el cumplimiento de IVA.");
     }
 }
@@ -2630,7 +2691,10 @@ export async function getExpectedAmount(date?: Date) {
             status: percentageDifference.gte(0) ? "superávit" : "déficit",
         };
     } catch (e) {
-        console.error("Error al calcular la recaudación esperada:", e);
+        logger.error("[REPORTS] getExpectedAmount failed", {
+            date,
+            error: e,
+        });
         throw new Error("Error al calcular la recaudación esperada.");
     }
 }
@@ -2641,7 +2705,7 @@ function toUTCString(dateStr?: string, endOfDay = false): string | undefined {
     const date = new Date(dateStr);
 
     if (isNaN(date.getTime())) {
-        console.error("Fecha inválida recibida:", dateStr);
+        logger.warn("[REPORTS] toUTCString received invalid date", { dateStr });
         return undefined;
     }
 
@@ -2661,8 +2725,12 @@ export async function getCompleteReport(data?: CompleteReportInput) {
     const start = toUTCString(data?.startDate);
     const end = toUTCString(data?.endDate, true);
 
-    console.log("Start UTC:", start);
-    console.log("End UTC:", end);
+    logger.debug("[REPORTS] getCompleteReport date range", {
+        rawStartDate: data?.startDate,
+        rawEndDate: data?.endDate,
+        startUTC: start,
+        endUTC: end,
+    });
 
     const currentYear = new Date().getUTCFullYear();
 
@@ -2680,7 +2748,10 @@ export async function getCompleteReport(data?: CompleteReportInput) {
                 },
             });
 
-            console.log(user);
+            logger.debug("[REPORTS] getCompleteReport resolved user (non-coordinator)", {
+                userId: user?.id,
+                groupId: user?.groupId,
+            });
 
             if (!user) {
                 throw new Error("User not found");
@@ -2705,7 +2776,10 @@ export async function getCompleteReport(data?: CompleteReportInput) {
                 }
             });
 
-            console.log(user);
+            logger.debug("[REPORTS] getCompleteReport resolved user (coordinator)", {
+                userId: user?.coordinatedGroup ? data.userId : undefined,
+                coordinatedGroupId: user?.coordinatedGroup?.id,
+            });
 
             if (!user) {
                 throw new Error("User not found");
@@ -2843,7 +2917,10 @@ export async function getCompleteReport(data?: CompleteReportInput) {
         return result;
 
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getCompleteReport failed", {
+            input: data,
+            error: e,
+        });
         throw new Error("No se pudo obtener el reporte completo.")
     }
 }
@@ -2934,7 +3011,11 @@ export async function getFiscalInfo(fiscalId: string, date?: Date) {
         }
 
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getFiscalInfo failed", {
+            fiscalId,
+            date,
+            error: e,
+        });
         throw new Error("No se pudo obtener la informacion del fiscal.")
     }
 }
@@ -3026,7 +3107,11 @@ export async function getFiscalTaxpayers(fiscalId: string, date?: Date) {
 
 
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getFiscalTaxpayers failed", {
+            fiscalId,
+            date,
+            error: e,
+        });
         throw new Error("No se pudo obtener la lista de contribuyentes asignados.")
     }
 }
@@ -3106,7 +3191,11 @@ export async function getMonthyCollect(fiscalId: string, date?: Date) {
         return orderedMonthlyStats;
 
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getMonthyCollect failed", {
+            fiscalId,
+            date,
+            error: e,
+        });
         throw new Error("No se pudo obtener la recaudación mensual.");
     }
 }
@@ -3211,7 +3300,11 @@ export async function getMontlyPerformance(fiscalId: string, date?: Date) {
 
         return result;
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getMontlyPerformance failed", {
+            fiscalId,
+            date,
+            error: e,
+        });
         throw new Error("No se pudo calcular el desempeño mensual.");
     }
 }
@@ -3358,6 +3451,11 @@ export async function getComplianceByProcess(fiscalId: string, date?: Date) {
         return result;
 
     } catch (e) {
+        logger.error("[REPORTS] getComplianceByProcess failed", {
+            fiscalId,
+            date,
+            error: e,
+        });
         throw new Error("No se pudo obtener el cumplimiento por procedimiento.")
     }
 }
@@ -3445,7 +3543,11 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
             low: low.sort((a, b) => (b.complianceRate as number) - (a.complianceRate as number)),
         };
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getFiscalTaxpayerCompliance failed", {
+            fiscalId,
+            date,
+            error: e,
+        });
         throw new Error("No se pudo obtener el cumplimiento de los contribuyentes.");
     }
 }
@@ -3698,7 +3800,9 @@ export async function getCoordinationPerformance() {
 
         return coordinationPerformance.sort((a, b) => b.performance - a.performance);
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getCoordinationPerformance failed", {
+            error: e,
+        });
         throw new Error("Error al calcular el rendimiento de coordinación.");
     }
 }
@@ -3794,7 +3898,11 @@ export async function getFiscalCollectAnalisis(fiscalId: string, date?: Date) {
                 avgFines = totalFines.dividedBy(totalTaxpayers);
             }
         } catch (error) {
-            console.error(`[FISCAL_COLLECT_ANALISIS] Error al calcular promedios:`, error);
+            logger.error("[REPORTS] getFiscalCollectAnalisis averages failed", {
+                fiscalId,
+                date,
+                error,
+            });
         }
 
         // ✅ SANITIZACIÓN CRÍTICA: Asegurar que todos los valores monetarios sean válidos
@@ -3818,7 +3926,11 @@ export async function getFiscalCollectAnalisis(fiscalId: string, date?: Date) {
         };
 
     } catch (e) {
-        console.error(e);
+        logger.error("[REPORTS] getFiscalCollectAnalisis failed", {
+            fiscalId,
+            date,
+            error: e,
+        });
         throw new Error("Error al obtener el análisis de recaudación.");
     }
 }

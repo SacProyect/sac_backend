@@ -10,6 +10,7 @@ import {
 } from "@aws-sdk/s3-request-presigner";
 import { Decimal } from "@prisma/client/runtime/library";
 import { ISLRReports, IVAReports, Prisma, taxpayer, taxpayer_contract_type, taxpayer_process } from "@prisma/client";
+import logger from "../utils/logger";
 
 
 // Resend v4: `emails` exists on the instance, not the class.
@@ -29,7 +30,7 @@ export async function generateDownloadRepairUrl(key: string) {
         const url = await getSignedUrl(s3, command, { expiresIn: 180 }); // 3 minutes
         return url;
     } catch (error) {
-        console.error("Error generating signed URL for key:", key, error);
+        logger.error("Error generating signed URL for key:", key, error);
         throw new Error("No se pudo generar la URL de descarga.");
     }
 }
@@ -47,7 +48,7 @@ export async function generateDownloadInvestigationPdfUrl(key: string) {
         return url;
 
     } catch (e) {
-        console.error("Error generating signed URL for key:", key, e);
+        logger.error("Error generating signed URL for key:", key, e);
         throw new Error("No se pudo generar la url de descarga")
     }
 
@@ -65,20 +66,20 @@ async function sendEmailWithRetry(
 ) {
     // If RESEND_API_KEY isn't configured, skip sending without crashing the API.
     if (!process.env.RESEND_API_KEY) {
-        console.warn("RESEND_API_KEY no está configurada. Se omitió el envío de email.");
+        logger.warn("RESEND_API_KEY no está configurada. Se omitió el envío de email.");
         return;
     }
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
             return await resend.emails.send(params);
         } catch (err) {
-            console.error(`Intento ${attempt} de envío de email fallido:`, err);
+            logger.error(`Intento ${attempt} de envío de email fallido:`, err);
             if (attempt < retries) {
                 // espera antes del próximo intento
                 await sleep(delayMs);
             } else {
                 // tras último intento, registra error y sigue adelante
-                console.error("Todos los intentos de envío de email han fallado.");
+                logger.error("Todos los intentos de envío de email han fallado.");
             }
         }
     }
@@ -239,13 +240,13 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                 to: recipients,
                 subject: '🔍 Nuevo contribuyente creado para Auditoría Fiscal',
                 html: emailHtml
-            }).catch(err => console.error("Error inesperado al enviar email:", err));
+            }).catch(err => logger.error("Error inesperado al enviar email:", err));
         }
 
         return taxpayer;
 
     } catch (error: any) {
-        console.error(error);
+        logger.error("Error creating taxpayer:", error);
         throw error;
     }
 };
@@ -306,7 +307,9 @@ export const updateFase = async (data: NewFase) => {
         const newFase = data.fase.replace("_", " ");
 
         // Enviar correo con Resend
-        await resend.emails.send({
+        // ✅ No romper el flujo si falla el correo:
+        // usamos el helper con reintentos y NO esperamos el resultado.
+        sendEmailWithRetry({
             from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com', // asegúrate que esté verificado en Resend
             to: recipients.join(', '),
             subject: `Cambio de fase de auditoría fiscal - ${taxpayerName}`,
@@ -349,11 +352,13 @@ export const updateFase = async (data: NewFase) => {
             </div>
             </div>
         `,
-        });
+        }).catch((err) =>
+            logger.error("Error inesperado al enviar email de cambio de fase:", err)
+        );
 
         return updatedTaxpayerFase;
     } catch (e) {
-        console.error(e);
+        logger.error(e);
         throw new Error('Could not update the fase');
     }
 };
@@ -395,6 +400,7 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
             }
             inputYear = inputDate.getFullYear();
         } catch (dateError: any) {
+            logger.warn("Error al procesar la fecha de emisión", { emition_date, message: dateError?.message });
             throw new Error(`Error al procesar la fecha de emisión: ${dateError.message}`);
         }
         
@@ -454,7 +460,7 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
             if (existingProcess === process && sameYear) {
                 // Permitir si es año anterior (2025) - casos pendientes
                 if (inputYear < currentYear) {
-                    console.log(`⚠️ Permitido: Caso ${process} del año ${inputYear} (año anterior) - trabajo pendiente`);
+                    logger.info(`⚠️ Permitido: Caso ${process} del año ${inputYear} (año anterior) - trabajo pendiente`);
                     continue; // Continuar sin lanzar error
                 }
                 // Para año actual (2026) o futuro, bloquear duplicados (comportamiento normal)
@@ -464,7 +470,7 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
             if (combination === 'AF|VDF' && sameYear) {
                 // Permitir si es año anterior (2025) - trabajo pendiente
                 if (inputYear < currentYear) {
-                    console.log(`⚠️ Permitido: Combinación AF|VDF del año ${inputYear} (año anterior) - trabajo pendiente`);
+                    logger.info(`⚠️ Permitido: Combinación AF|VDF del año ${inputYear} (año anterior) - trabajo pendiente`);
                     continue;
                 }
                 // Para año actual (2026), bloquear combinación (comportamiento normal)
@@ -474,7 +480,7 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
             if (existingProcess === 'FP' && process === 'FP' && sameYear) {
                 // Permitir si es año anterior (2025) - trabajo pendiente
                 if (inputYear < currentYear) {
-                    console.log(`⚠️ Permitido: Segundo FP del año ${inputYear} (año anterior) - trabajo pendiente`);
+                    logger.info(`⚠️ Permitido: Segundo FP del año ${inputYear} (año anterior) - trabajo pendiente`);
                     continue;
                 }
                 // Para año actual (2026), bloquear duplicado (comportamiento normal)
@@ -517,7 +523,7 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
         if (sameName.length > 0) {
             if (inputYear < currentYear) {
                 // Año anterior: solo advertencia, permitir
-                console.log(`⚠️ Advertencia: Existe contribuyente similar en año ${inputYear}, pero se permite por ser año anterior (trabajo pendiente)`);
+                logger.info(`⚠️ Advertencia: Existe contribuyente similar en año ${inputYear}, pero se permite por ser año anterior (trabajo pendiente)`);
             } else {
                 // Año actual o futuro: bloquear duplicado exacto
                 throw new Error(`Ya existe un contribuyente con un nombre similar a "${name}" en el mismo año ${inputYear}.`);
@@ -581,7 +587,7 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
 
         return newTaxpayer;
     } catch (error: any) {
-        console.error("Error creating taxpayer:", error);
+        logger.error("Error creating taxpayer:", error);
 
         if (error.code === 'P2002') {
             throw new Error(`A taxpayer with this RIF already exists: ${rif}`);
@@ -597,7 +603,7 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
 
         // ✅ CORRECCIÓN: Mensaje de error más claro para los fiscales
         const errorMessage = error.message || "Error desconocido al crear el contribuyente";
-        console.error("Error detallado en createTaxpayerExcel:", {
+        logger.error("Error detallado en createTaxpayerExcel:", {
             error: error.message,
             stack: error.stack,
             code: error.code,
@@ -691,7 +697,7 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
         return event;
 
     } catch (error) {
-        console.error("Error creating event: " + error)
+        logger.error("Error creating event: ", error)
         throw error;
     }
 }
@@ -733,7 +739,8 @@ export const createPayment = async (input: NewPayment): Promise<Payment | Error>
 
 
         return newPayment
-    } catch (error) {
+    } catch (error: any) {
+        logger.error("Error creating payment", { eventId: input?.eventId, taxpayerId: input?.taxpayerId, message: error?.message, stack: error?.stack });
         throw error;
     }
 }
@@ -754,7 +761,7 @@ export async function modifyIndexIva(newIndexIva: Decimal, taxpayerId: string) {
         return taxpayer;
 
     } catch (e) {
-        console.error(e);
+        logger.error(e);
         throw new Error("No se pudo modificar el indice de IVA individual.");
     }
 
@@ -811,7 +818,7 @@ export async function createIndexIva(data: CreateIndexIva) {
         return { indexIvaSpecial, indexIvaOrdinary };
 
     } catch (e) {
-        console.error(e);
+        logger.error(e);
         throw new Error("No se pudo cambiar el índice de IVA");
     }
 }
@@ -936,7 +943,7 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
 
         return mappedResponse
     } catch (error) {
-        console.error(error)
+        logger.error(error)
         throw error;
     }
 }
@@ -960,7 +967,8 @@ export const getTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Er
         }
 
         return taxpayer
-    } catch (error) {
+    } catch (error: any) {
+        logger.error("Error getTaxpayerById", { taxpayerId, message: error?.message, stack: error?.stack });
         throw error;
     }
 }
@@ -1040,7 +1048,7 @@ export const getFiscalTaxpayersForStats = async (userId: string) => {
 
         return stats;
     } catch (e) {
-        console.error(e);
+        logger.error(e);
         throw new Error("No se pudieron obtener los contribuyentes.");
     }
 };
@@ -1163,7 +1171,7 @@ export const getTaxpayersForEvents = async (userId: string, userRole: string) =>
         return taxpayers;
 
     } catch (e: any) {
-        console.error(e);
+        logger.error(e);
         throw new Error(e.message || "Error al obtener contribuyentes");
     }
 
@@ -1196,7 +1204,7 @@ export const getTaxpayers = async () => {
         return taxpayers;
 
     } catch (e) {
-        console.error(e);
+        logger.error(e);
         throw new Error("No se pudo obtener la lista de contribuyentes.")
     }
 }
@@ -1217,7 +1225,8 @@ export const getTaxpayersByUser = async (userId: string): Promise<Taxpayer[] | E
             }
         })
         return taxpayers
-    } catch (error) {
+    } catch (error: any) {
+        logger.error("Error getTaxpayersByUser", { userId, message: error?.message, stack: error?.stack });
         throw error
     }
 }
@@ -1238,7 +1247,8 @@ export const deleteTaxpayerById = async (taxpayerId: string): Promise<Taxpayer |
             },
         });
         return removedTaxpayer;
-    } catch (error) {
+    } catch (error: any) {
+        logger.error("Error deleteTaxpayerById", { taxpayerId, message: error?.message, stack: error?.stack });
         throw error;
     }
 }
@@ -1257,7 +1267,8 @@ export const deleteEvent = async (eventId: string): Promise<Event | Error> => {
             },
         });
         return updatedEvent;
-    } catch (error) {
+    } catch (error: any) {
+        logger.error("Error deleteEvent", { eventId, message: error?.message, stack: error?.stack });
         throw error;
     }
 }
@@ -1270,7 +1281,7 @@ export const deleteIva = async (id: string) => {
 
         return deletedReport;
     } catch (e) {
-        console.error(e);
+        logger.error(e);
         throw new Error("No se pudo borrar el reporte de IVA");
     }
 }
@@ -1284,7 +1295,7 @@ export const deleteIslr = async (id: string) => {
         return deletedReport;
 
     } catch (e) {
-        console.error(e);
+        logger.error(e);
         throw new Error("No se pudo eliminar el reporte de ISLR.")
     }
 }
@@ -1309,7 +1320,8 @@ export const deletePayment = async (eventId: string): Promise<Payment | Error> =
             }
         });
         return updatedEvent;
-    } catch (error) {
+    } catch (error: any) {
+        logger.error("Error deletePayment", { eventId, message: error?.message, stack: error?.stack });
         throw error;
     }
 }
@@ -1325,7 +1337,7 @@ export const deleteObservation = async (id: string) => {
 
         return deleteEvent;
     } catch (e) {
-        console.error("Error erasing the observation: ", e);
+        logger.error("Error erasing the observation: ", e);
         throw new Error("Error erasing the observation");
     }
 }
@@ -1433,6 +1445,7 @@ export const updateTaxpayer = async (
 
         return updatedTaxpayer;
     } catch (e: any) {
+        logger.error("Error updateTaxpayer", { taxpayerId, message: e?.message, stack: e?.stack });
         throw new Error(e);
     }
 };
@@ -1447,10 +1460,10 @@ export const updateTaxpayer = async (
  */
 export const updateEvent = async (eventId: string, data: Partial<NewEvent>): Promise<Event | Error> => {
 
-    // console.log("EVENT ID: " + eventId);
+    // logger.info("EVENT ID: " + eventId);
     try {
-        console.log("EVENT ID: " + eventId);
-        console.log("DATA: " + JSON.stringify(data));
+        logger.info("EVENT ID: " + eventId);
+        logger.info("DATA: " + JSON.stringify(data));
         const updatedEvent = await db.event.update({
             where: {
                 id: eventId
@@ -1461,7 +1474,7 @@ export const updateEvent = async (eventId: string, data: Partial<NewEvent>): Pro
         });
         return updatedEvent;
     } catch (error) {
-        console.error(error);
+        logger.error(error);
         throw error;
     }
 }
@@ -1542,6 +1555,7 @@ export const updateIvaReport = async (
 
         return updatedIva;
     } catch (error: any) {
+        logger.error("Error updating IVA report:", error);
         throw new Error(error.message || "Error actualizando el reporte de IVA");
     }
 };
@@ -1553,24 +1567,25 @@ export const updateIvaReport = async (
  * @param data The updated data for the payment.
  * @returns The updated payment object or an error if the operation fails.
  */
-// export const updatePayment = async (eventId: string, data: Partial<NewPayment>): Promise<Payment | Error> => {
-//     try {
-//         const updatedEvent = await db.payment.update({
-//             where: {
-//                 id: eventId
-//             },
-//             include: {
-//                 event: true
-//             },
-//             data: {
-//                 ...data
-//             }
-//         });
-//         return updatedEvent;
-//     } catch (error) {
-//         throw error;
-//     }
-// }
+export const updatePayment_ = async (eventId: string, data: Partial<NewPayment>): Promise<Payment | Error> => {
+    try {
+        const updatedEvent = await db.payment.update({
+            where: {
+                id: eventId
+            },
+            include: {
+                event: true
+            },
+            data: {
+                ...data
+            }
+        });
+        return updatedEvent;
+    } catch (error: any) {
+        logger.error("Error updateEvent", { eventId, message: error?.message, stack: error?.stack });
+        throw error;
+    }
+}
 
 export const updateObservation = async (id: string, newDescription: string) => {
     try {
@@ -1585,7 +1600,7 @@ export const updateObservation = async (id: string, newDescription: string) => {
 
         return updatedObservation
     } catch (e) {
-        console.error("Error updating observation:", e)
+        logger.error("Error updating observation:", e)
         throw new Error("Error updating observation")
     }
 }
@@ -1655,7 +1670,7 @@ export const updateIslr = async (
         return updatedIslr;
 
     } catch (e: any) {
-        console.error(e);
+        logger.error(e);
         throw new Error(e.message || "No se pudieron actualizar los datos del reporte de ISLR");
     }
 }
@@ -1770,7 +1785,7 @@ export const updateCulminated = async (
         return updatedCulminatedProcess;
 
     } catch (e: any) {
-        console.error(e);
+        logger.error(e);
         throw new Error(e.message || "Couldn't update the culminated field.");
     }
 }
@@ -1815,7 +1830,7 @@ export const updatePayment = async (id: string, newStatus: string) => {
         return updatedPayment
 
     } catch (e) {
-        console.error(e);
+        logger.error(e);
         throw new Error("Can not update the debt for this fine.")
     }
 }
@@ -1868,7 +1883,9 @@ export const notifyTaxpayer = async (id: string) => {
         });
 
         if (coordinatorEmail) {
-            await resend.emails.send({
+            // ✅ No romper el endpoint si falla el envío del correo.
+            // Usamos el helper de reintentos y no esperamos el resultado.
+            sendEmailWithRetry({
                 from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com',
                 to: coordinatorEmail,
                 subject: `Contribuyente notificado: ${taxpayerName}`,
@@ -1898,11 +1915,13 @@ export const notifyTaxpayer = async (id: string) => {
                     </div>
                 </div>
                 `,
-            });
+            }).catch((err) =>
+                logger.error("Error inesperado al enviar email de notificación de contribuyente:", err)
+            );
         }
 
     } catch (e) {
-        console.error(e);
+        logger.error(e);
         throw new Error("Error notifying the taxpayer");
     }
 };
@@ -1945,7 +1964,8 @@ export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> 
             }
         })
         return mappedResponse
-    } catch (error) {
+    } catch (error: any) {
+        logger.error("Error getEventsbyTaxpayer", { message: error?.message, stack: error?.stack });
         throw error;
     }
 }
@@ -1991,8 +2011,8 @@ export async function getTaxpayerData(id: string) {
 
         return taxpayerData
 
-    } catch (e) {
-        console.error(e);
+    } catch (e: any) {
+        logger.error("Error getting the taxpayer data", { message: e?.message, stack: e?.stack });
         throw new Error("Error getting the taxpayer data ");
     }
 }
@@ -2008,7 +2028,8 @@ export async function uploadRepairReport(taxpayerId: string, pdf_url: string) {
 
         return newRepairReport;
 
-    } catch (e) {
+    } catch (e: any) {
+        logger.error("Can't create the repair report", { taxpayerId, pdf_url, message: e?.message, stack: e?.stack });
         throw new Error("Can't create the repair report")
     }
 }
@@ -2020,8 +2041,8 @@ export async function updateRepairReportPdfUrl(id: string, pdf_url: string) {
             where: { id },
             data: { pdf_url },
         });
-    } catch (error) {
-        console.error(`❌ Failed to update pdf_url for RepairReport with ID ${id}:`, error);
+    } catch (error: any) {
+        logger.error("Failed to update pdf_url for RepairReport", { id, message: error?.message, stack: error?.stack });
         throw new Error("Could not update pdf_url for RepairReport");
     }
 }
@@ -2032,8 +2053,8 @@ export async function deleteRepairReportById(id: string) {
         return await db.repairReport.delete({
             where: { id },
         });
-    } catch (error) {
-        console.error(`❌ Failed to delete RepairReport with ID ${id}:`, error);
+    } catch (error: any) {
+        logger.error("Failed to delete RepairReport", { id, message: error?.message, stack: error?.stack });
         throw new Error("Could not delete RepairReport");
     }
 }
@@ -2048,8 +2069,8 @@ export async function getObservations(taxpayerId: string) {
         })
 
         return taxpayerObservations
-    } catch (e) {
-        console.error(e)
+    } catch (e: any) {
+        logger.error("Error getting the observations", { taxpayerId, message: e?.message, stack: e?.stack });
         throw new Error("Error getting the observations")
     }
 }
@@ -2067,8 +2088,8 @@ export async function getTaxpayerSummary(taxpayerId: string) {
 
         return taxpayerSummary;
 
-    } catch (e) {
-        console.error(e);
+    } catch (e: any) {
+        logger.error("Error getting the taxpayer summary", { taxpayerId, message: e?.message, stack: e?.stack });
         throw new Error("Error getting the taxpayer summary");
     }
 }
@@ -2090,8 +2111,8 @@ export async function getIslrReports(taxpayerId: string) {
         })
 
         return reports;
-    } catch (e) {
-        console.error(e);
+    } catch (e: any) {
+        logger.error("Couldn't get the ISLR reports for this taxpayer", { taxpayerId, message: e?.message, stack: e?.stack });
         throw new Error("Couldn't get the ISLR reports for this taxpayer.");
     }
 }
@@ -2114,8 +2135,8 @@ export const createObservation = async (input: NewObservation) => {
 
         return observation
 
-    } catch (e) {
-        console.error("Error", e)
+    } catch (e: any) {
+        logger.error("Error when creating observation", { taxpayerId: input.taxpayerId, message: e?.message, stack: e?.stack });
         throw new Error("Error when creating observation")
     }
 }
@@ -2303,7 +2324,7 @@ export const createISLR = async (data: NewIslrReport, userId?: string, userRole?
         return response;
 
     } catch (e: any) {
-        console.error(e);
+        logger.error("Couldn't create the ISLR Report", { message: e?.message, stack: e?.stack });
         throw new Error(e.message || "Couldn't create the ISLR Report");
     }
 };
@@ -2323,7 +2344,7 @@ export const CreateTaxpayerCategory = async (name: string) => {
         return createdCategory;
 
     } catch (e: any) {
-        console.error(e);
+        logger.error("CreateTaxpayerCategory failed", { name, message: e?.message, stack: e?.stack });
         throw new Error(e);
     }
 }
@@ -2337,9 +2358,11 @@ export const getTaxpayerCategories = async () => {
 
         return categories;
 
-    } catch (e) {
+    } catch (e: any) {
         if (e instanceof Prisma.PrismaClientKnownRequestError) {
-            console.error('Prisma error:', e.code);
+            logger.error("Prisma error getting taxpayer categories", { code: e.code, message: e?.message });
+        } else {
+            logger.error("Can't get the taxpayer categories", { message: e?.message, stack: e?.stack });
         }
         throw new Error("Can't get the taxpayer categories");
     }
@@ -2354,9 +2377,11 @@ export const getParishList = async () => {
 
         return parishList;
 
-    } catch (e) {
+    } catch (e: any) {
         if (e instanceof Prisma.PrismaClientKnownRequestError) {
-            console.error('Prisma error:', e.code);
+            logger.error("Prisma error getting parish list", { code: e.code, message: e?.message });
+        } else {
+            logger.error("Can't get the parish list", { message: e?.message, stack: e?.stack });
         }
         throw new Error("Can't get the parish list.")
     }
