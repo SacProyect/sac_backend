@@ -1,6 +1,6 @@
 import { compareSync } from "bcryptjs";
 import { Prisma } from "@prisma/client";
-import { db } from "../utils/db.server";
+import { db, runTransaction } from "../utils/db.server";
 import { generateAcessToken, NewUserInput, passwordHashing, UpdateUserByNameInput, User } from "./user.utils";
 import bcrypt from 'bcryptjs';
 import logger from "../utils/logger";
@@ -54,9 +54,11 @@ export const signUp = async (input: NewUserInput): Promise<User | Error> => {
 
         input.password = await passwordHashing(input.password);
 
-        const newUser = await db.user.create({
-            data: input
-        });
+        const newUser = await runTransaction((tx) =>
+            tx.user.create({
+                data: input
+            })
+        );
 
         return newUser;
     } catch (error: any) {
@@ -81,15 +83,16 @@ export const updateuser = async (userId: string, data: Partial<NewUserInput>): P
             data.password = await passwordHashing(data.password);
         }
 
-        const updateduser = await db.user.update({
-            where: {
-                id: userId
-            },
-            data: {
-                ...data
-            }
-        });
-
+        const updateduser = await runTransaction((tx) =>
+            tx.user.update({
+                where: {
+                    id: userId
+                },
+                data: {
+                    ...data
+                }
+            })
+        );
 
         return updateduser;
     } catch (error: any) {
@@ -205,10 +208,12 @@ export async function updatePassword(userId: string, password: string) {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const updatedUser = await db.user.update({
-            where: { id: userId },
-            data: { password: hashedPassword },
-        });
+        const updatedUser = await runTransaction((tx) =>
+            tx.user.update({
+                where: { id: userId },
+                data: { password: hashedPassword },
+            })
+        );
 
         return updatedUser;
     } catch (e: any) {
@@ -392,10 +397,12 @@ export async function updateUserByName(name: string, data: UpdateUserByNameInput
 
         if (!userFound) throw new Error("User not found");
 
-        const updatedUser = await db.user.update({
-            where: { personId: userFound.personId },
-            data,
-        });
+        const updatedUser = await runTransaction((tx) =>
+            tx.user.update({
+                where: { personId: userFound.personId },
+                data,
+            })
+        );
 
         return updatedUser;
     } catch (e: any) {

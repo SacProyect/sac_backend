@@ -1,17 +1,19 @@
 import { Taxpayer_Fases } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
-import { db } from "../../utils/db.server";
+import { db, TxClient } from "../../utils/db.server";
 import { Taxpayer } from "../taxpayer.utils";
 
 export class TaxpayerRepository {
 
-    async findManyUsers() {
-        return db.user.findMany();
+    async findManyUsers(tx?: TxClient) {
+        const client = tx ?? db;
+        return client.user.findMany();
     }
 
     /** Usado para emails: obtiene usuario (oficial) con grupo y coordinador. */
-    async findUserByIdWithGroupCoordinator(userId: string) {
-        return db.user.findUnique({
+    async findUserByIdWithGroupCoordinator(userId: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.user.findUnique({
             where: { id: userId },
             include: {
                 group: {
@@ -24,8 +26,9 @@ export class TaxpayerRepository {
     }
 
     /** Obtiene solo el nombre de un usuario por ID. */
-    async findUserNameById(userId: string): Promise<string | null> {
-        const user = await db.user.findUnique({
+    async findUserNameById(userId: string, tx?: TxClient): Promise<string | null> {
+        const client = tx ?? db;
+        const user = await client.user.findUnique({
             where: { id: userId },
             select: { name: true },
         });
@@ -33,23 +36,26 @@ export class TaxpayerRepository {
     }
 
     /** Obtiene todos los usuarios con rol ADMIN (para notificaciones). */
-    async findAdmins() {
-        return db.user.findMany({
+    async findAdmins(tx?: TxClient) {
+        const client = tx ?? db;
+        return client.user.findMany({
             where: { role: "ADMIN" },
         });
     }
 
     /** Obtiene admins solo con email (para listas de destinatarios). */
-    async findAdminEmails() {
-        return db.user.findMany({
+    async findAdminEmails(tx?: TxClient) {
+        const client = tx ?? db;
+        return client.user.findMany({
             where: { role: "ADMIN" },
             select: { email: true },
         });
     }
 
     /** Obtiene contribuyente con user, group y coordinator para emails/notificaciones. */
-    async findTaxpayerWithUserAndCoordinator(taxpayerId: string) {
-        return db.taxpayer.findUnique({
+    async findTaxpayerWithUserAndCoordinator(taxpayerId: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayer.findUnique({
             where: { id: taxpayerId },
             include: {
                 user: {
@@ -66,15 +72,17 @@ export class TaxpayerRepository {
     }
 
     /** Actualiza solo la fase de un contribuyente. */
-    async updateTaxpayerFase(taxpayerId: string, fase: Taxpayer_Fases) {
-        return db.taxpayer.update({
+    async updateTaxpayerFase(taxpayerId: string, fase: Taxpayer_Fases, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayer.update({
             where: { id: taxpayerId },
             data: { fase },
         });
     }
 
-    async findExistingByProvidence(providenceNum: bigint, startOfYear: Date, endOfYear: Date) {
-        return db.taxpayer.findMany({
+    async findExistingByProvidence(providenceNum: bigint, startOfYear: Date, endOfYear: Date, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayer.findMany({
             where: {
                 providenceNum,
                 status: true,
@@ -92,8 +100,9 @@ export class TaxpayerRepository {
         });
     }
 
-    async findCandidatesByName(firstWord: string) {
-        return db.taxpayer.findMany({
+    async findCandidatesByName(firstWord: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayer.findMany({
             where: {
                 name: { contains: firstWord },
             },
@@ -104,8 +113,9 @@ export class TaxpayerRepository {
         });
     }
 
-    async createTaxpayer(data: any) { // Consider DTO
-        return db.taxpayer.create({
+    async createTaxpayer(data: any, tx?: TxClient) { // Consider DTO
+        const client = tx ?? db;
+        return client.taxpayer.create({
             data: data
         });
     }
@@ -122,8 +132,9 @@ export class TaxpayerRepository {
         emition_date: Date;
         taxpayer_category_id: string;
         parish_id: string;
-    }) {
-        return db.taxpayer.create({
+    }, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayer.create({
             data: {
                 providenceNum: data.providenceNum,
                 process: data.process as any,
@@ -139,14 +150,16 @@ export class TaxpayerRepository {
         });
     }
 
-    async createInvestigationPdfs(pdfs: { pdf_url: string, taxpayerId: string }[]) {
-        return db.investigationPdf.createMany({
+    async createInvestigationPdfs(pdfs: { pdf_url: string, taxpayerId: string }[], tx?: TxClient) {
+        const client = tx ?? db;
+        return client.investigationPdf.createMany({
             data: pdfs
         });
     }
 
-    async findTaxpayersByNameOrProvidenceNum(providenceNum: bigint, firstWord: string) {
-        return db.taxpayer.findMany({
+    async findTaxpayersByNameOrProvidenceNum(providenceNum: bigint, firstWord: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayer.findMany({
             where: {
                 OR: [
                     { providenceNum: providenceNum },
@@ -162,16 +175,18 @@ export class TaxpayerRepository {
         });
     }
     
-    async findIndexIvaExpired() {
-        return db.indexIva.findMany({
+    async findIndexIvaExpired(tx?: TxClient) {
+        const client = tx ?? db;
+        return client.indexIva.findMany({
             where: {
                 expires_at: null,
             },
         });
     }
 
-    async expireIndexIva() {
-        return db.indexIva.updateMany({
+    async expireIndexIva(tx?: TxClient) {
+        const client = tx ?? db;
+        return client.indexIva.updateMany({
             where: {
                 expires_at: null,
             },
@@ -181,8 +196,9 @@ export class TaxpayerRepository {
         });
     }
 
-    async createIndexIvaRecord(contract_type: "SPECIAL" | "ORDINARY", base_amount: Decimal) {
-        return db.indexIva.create({
+    async createIndexIvaRecord(contract_type: "SPECIAL" | "ORDINARY", base_amount: Decimal, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.indexIva.create({
             data: {
                 contract_type,
                 base_amount,
@@ -190,15 +206,17 @@ export class TaxpayerRepository {
         });
     }
 
-    async updateTaxpayerIndexIva(where: any, data: any) {
-        return db.taxpayer.updateMany({
+    async updateTaxpayerIndexIva(where: any, data: any, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayer.updateMany({
             where,
             data,
         });
     }
 
-    async updateIndexIva(taxpayerId: string, newIndexIva: Decimal) {
-        return db.taxpayer.update({
+    async updateIndexIva(taxpayerId: string, newIndexIva: Decimal, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayer.update({
             where: {
                 id: taxpayerId,
             },
@@ -208,8 +226,9 @@ export class TaxpayerRepository {
         });
     }
 
-    async createPayment(input: any) { // Consider using a DTO for input here
-        return db.payment.create({
+    async createPayment(input: any, tx?: TxClient) { // Consider using a DTO for input here
+        const client = tx ?? db;
+        return client.payment.create({
             data: input,
             include: {
                 event: true
@@ -217,29 +236,33 @@ export class TaxpayerRepository {
         });
     }
 
-    async updateEventDebt(eventId: string, amount: Decimal) {
-        return db.event.update({
+    async updateEventDebt(eventId: string, amount: Decimal, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.event.update({
             where: { id: eventId },
             data: { debt: { decrement: amount } }
         });
     }
 
-    async findEventById(eventId: string) {
-        return db.event.findUnique({
+    async findEventById(eventId: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.event.findUnique({
             where: { id: eventId },
         });
     }
 
-    async createEvent(input: any) { // Consider using a DTO for input here
-        return db.event.create({
+    async createEvent(input: any, tx?: TxClient) { // Consider using a DTO for input here
+        const client = tx ?? db;
+        return client.event.create({
             data: {
                 ...input,
             }
         });
     }
 
-    async createRepairReport(taxpayerId: string, pdf_url: string) {
-        return db.repairReport.create({
+    async createRepairReport(taxpayerId: string, pdf_url: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.repairReport.create({
             data: {
                 taxpayerId,
                 pdf_url,
@@ -247,8 +270,9 @@ export class TaxpayerRepository {
         });
     }
 
-    async createObservation(input: { taxpayerId: string, description: string, date: Date }) {
-        return db.observations.create({
+    async createObservation(input: { taxpayerId: string, description: string, date: Date }, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.observations.create({
             data: {
                 taxpayerId: input.taxpayerId,
                 description: input.description,
@@ -257,22 +281,25 @@ export class TaxpayerRepository {
         });
     }
 
-    async deleteRepairReportById(id: string) {
-        return db.repairReport.delete({
+    async deleteRepairReportById(id: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.repairReport.delete({
             where: { id },
         });
     }
 
-    async deleteObservationById(id: string) {
-        return db.observations.delete({
+    async deleteObservationById(id: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.observations.delete({
             where: {
                 id: id,
             }
         });
     }
 
-    async deletePaymentById(eventId: string) {
-        return db.payment.update({
+    async deletePaymentById(eventId: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.payment.update({
             where: {
                 id: eventId
             },
@@ -285,36 +312,41 @@ export class TaxpayerRepository {
         });
     }
 
-    async deleteIslrById(id: string) {
-        return db.iSLRReports.delete({
+    async deleteIslrById(id: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.iSLRReports.delete({
             where: { id: id }
         });
     }
 
-    async deleteIvaById(id: string) {
-        return db.iVAReports.delete({
+    async deleteIvaById(id: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.iVAReports.delete({
             where: { id: id },
         });
     }
 
-    async deleteEventById(eventId: string) {
-        return db.event.delete({
+    async deleteEventById(eventId: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.event.delete({
             where: {
                 id: eventId
             },
         });
     }
 
-    async deleteById(taxpayerId: string) {
-        return db.taxpayer.delete({
+    async deleteById(taxpayerId: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayer.delete({
             where: {
                 id: taxpayerId
             },
         });
     }
 
-    async findIslrReportsByTaxpayer(taxpayerId: string) {
-        return db.iSLRReports.findMany({
+    async findIslrReportsByTaxpayer(taxpayerId: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.iSLRReports.findMany({
             where: {
                 taxpayerId: taxpayerId,
             },
@@ -329,24 +361,27 @@ export class TaxpayerRepository {
         });
     }
 
-    async findIvaReportsByTaxpayer(taxpayerId: string) {
-        return db.iVAReports.findMany({
+    async findIvaReportsByTaxpayer(taxpayerId: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.iVAReports.findMany({
             where: {
                 taxpayerId: taxpayerId,
             }
         });
     }
 
-    async findObservationsByTaxpayer(taxpayerId: string) {
-        return db.observations.findMany({
+    async findObservationsByTaxpayer(taxpayerId: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.observations.findMany({
             where: {
                 taxpayerId: taxpayerId,
             }
         });
     }
 
-    async getTaxpayerData(id: string) {
-        return db.taxpayer.findUnique({
+    async getTaxpayerData(id: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayer.findUnique({
             where: {
                 id: id
             },
@@ -382,8 +417,9 @@ export class TaxpayerRepository {
         });
     }
 
-    async findPendingPayments(where: any) {
-        return db.event.findMany({
+    async findPendingPayments(where: any, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.event.findMany({
             select: {
                 id: true,
                 date: true,
@@ -402,8 +438,9 @@ export class TaxpayerRepository {
         });
     }
 
-    async findPayments(where: any) {
-        return db.payment.findMany({
+    async findPayments(where: any, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.payment.findMany({
             where,
             select: {
                 id: true,
@@ -422,8 +459,9 @@ export class TaxpayerRepository {
         });
     }
 
-    async findEvents(where: any) {
-        return db.event.findMany({
+    async findEvents(where: any, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.event.findMany({
             where,
             select: {
                 id: true,
@@ -444,11 +482,12 @@ export class TaxpayerRepository {
         });
     }
 
-    async findTaxpayersForEvents(userId: string, userRole: string) {
+    async findTaxpayersForEvents(userId: string, userRole: string, tx?: TxClient) {
+        const client = tx ?? db;
         let taxpayers: any[] = [];
 
         if (userRole === "ADMIN") {
-            taxpayers = await db.taxpayer.findMany({
+            taxpayers = await client.taxpayer.findMany({
                 include: {
                     event: true,
                     IVAReports: true,
@@ -461,7 +500,7 @@ export class TaxpayerRepository {
                 }
             });
         } else if (userRole === "COORDINATOR") {
-            const group = await db.fiscalGroup.findUnique({
+            const group = await client.fiscalGroup.findUnique({
                 where: {
                     coordinatorId: userId
                 },
@@ -490,7 +529,7 @@ export class TaxpayerRepository {
             // Aplanamos los taxpayers de todos los miembros
             taxpayers = group.members.flatMap((member) => member.taxpayer);
         } else if (userRole === "SUPERVISOR") {
-            const user = await db.user.findUnique({
+            const user = await client.user.findUnique({
                 where: {
                     id: userId,
                 },
@@ -532,7 +571,7 @@ export class TaxpayerRepository {
             const supervisedTaxpayers = user.supervised_members.flatMap((member) => member.taxpayer);
             taxpayers = [...user.taxpayer, ...supervisedTaxpayers];
         } else if (userRole === "FISCAL") {
-            const fiscal = await db.user.findUnique({
+            const fiscal = await client.user.findUnique({
                 where: {
                     id: userId,
                 },
@@ -559,8 +598,9 @@ export class TaxpayerRepository {
         return taxpayers;
     }
     
-    async findUserWithTaxpayerStats(userId: string) {
-        return db.user.findUnique({
+    async findUserWithTaxpayerStats(userId: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.user.findUnique({
             where: { id: userId },
             include: {
                 taxpayer: {
@@ -574,8 +614,9 @@ export class TaxpayerRepository {
         });
     }
 
-    async findByUser(userId: string) {
-        return db.taxpayer.findMany({
+    async findByUser(userId: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayer.findMany({
             where: {
                 officerId: userId,
                 status: true
@@ -583,8 +624,9 @@ export class TaxpayerRepository {
         });
     }
 
-    async findAll() {
-        return db.taxpayer.findMany({
+    async findAll(tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayer.findMany({
             select: {
                 id: true,
                 name: true,
@@ -606,8 +648,9 @@ export class TaxpayerRepository {
         });
     }
 
-    async findById(taxpayerId: string): Promise<Taxpayer | null> {
-        const taxpayer = await db.taxpayer.findUnique({
+    async findById(taxpayerId: string, tx?: TxClient): Promise<Taxpayer | null> {
+        const client = tx ?? db;
+        const taxpayer = await client.taxpayer.findUnique({
             where: { id: taxpayerId }
         });
 

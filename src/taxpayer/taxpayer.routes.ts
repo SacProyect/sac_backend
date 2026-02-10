@@ -669,6 +669,18 @@ taxpayerRouter.delete("/del-observation/:id",
     }
 )
 
+taxpayerRouter.get('/event/all',
+    authenticateToken,
+    async (req: Request, res: Response) => {
+        try {
+            const events = await TaxpayerServices.getEventsbyTaxpayer()
+            return res.status(200).json(events)
+        } catch (error: any) {
+            return res.status(500).json(error.message)
+        }
+    }
+)
+
 taxpayerRouter.get('/event/:id/:type?',
     authenticateToken,
     async (req: Request, res: Response) => {
@@ -702,20 +714,6 @@ taxpayerRouter.get('/data/:id',
         } catch (e) {
             console.error(e);
             return res.status(500).json("Ha ocurrido un error.")
-        }
-    }
-)
-
-
-
-taxpayerRouter.get('/event/all',
-    authenticateToken,
-    async (req: Request, res: Response) => {
-        try {
-            const events = await TaxpayerServices.getEventsbyTaxpayer()
-            return res.status(200).json(events)
-        } catch (error: any) {
-            return res.status(500).json(error.message)
         }
     }
 )
@@ -997,7 +995,7 @@ taxpayerRouter.post('/payment',
     authenticateToken,
     body("date").isISO8601().toDate(),
     body("amount").isDecimal(),
-    body("eventId").isNumeric(),
+    body("eventId").isString().notEmpty(),
     body("taxpayerId").isString(),
     body("debt").isNumeric(),
     async (req: Request, res: Response) => {

@@ -4,7 +4,11 @@
   "description": "Backend SAC",
   "main": "index.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:concurrency": "vitest run src/__tests__/**/taxpayer.concurrency.test.ts",
+    "load-test": "node scripts/load-test.js",
     "postinstall": "npm exec -- prisma generate",
     "build": "npm exec -- prisma generate && tsc",
     "start": "node ./dist/index",
@@ -51,8 +55,14 @@
     "@types/multer-s3": "^3.0.3",
     "@types/node": "^20.14.10",
     "@types/nodemon": "^1.19.6",
+    "@types/supertest": "^6.0.2",
+    "@vitest/coverage-v8": "^2.1.0",
+    "autocannon": "^7.15.0",
     "prisma": "^6.6.0",
+    "supertest": "^7.0.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^2.1.0",
+    "vitest-mock-extended": "^1.3.1"
   }
 }

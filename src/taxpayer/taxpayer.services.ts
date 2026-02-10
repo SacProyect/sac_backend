@@ -1,4 +1,4 @@
-import { db } from "../utils/db.server";
+import { db, runTransaction } from "../utils/db.server";
 import { CreateIndexIva, Event, FiscalTaxpayerStat, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 import { BadRequestError } from "../utils/errors/BadRequestError";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
@@ -130,23 +130,28 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
             throw new Error("Parroquia y Actividad Económica son campos obligatorios.");
         }
 
-        const taxpayer = await taxpayerRepository.createTaxpayer({
-            providenceNum: input.providenceNum,
-            process: input.process,
-            name: input.name,
-            contract_type: input.contract_type,
-            officerId: input.officerId,
-            rif: input.rif,
-            address: input.address,
-            emition_date: emitionDate.toISOString(),
-            taxpayer_category_id: input.categoryId,
-            parish_id: input.parishId,
-        });
+        const pdfs = input.pdfs!; // ya validado arriba
+        const taxpayer = await runTransaction(async (tx) => {
+            const created = await taxpayerRepository.createTaxpayer({
+                providenceNum: input.providenceNum,
+                process: input.process,
+                name: input.name,
+                contract_type: input.contract_type,
+                officerId: input.officerId,
+                rif: input.rif,
+                address: input.address,
+                emition_date: emitionDate.toISOString(),
+                taxpayer_category_id: input.categoryId,
+                parish_id: input.parishId,
+            }, tx);
 
-        await taxpayerRepository.createInvestigationPdfs(input.pdfs.map((pdf) => ({
-            pdf_url: pdf.pdf_url,
-            taxpayerId: taxpayer.id,
-        })));
+            await taxpayerRepository.createInvestigationPdfs(pdfs.map((pdf) => ({
+                pdf_url: pdf.pdf_url,
+                taxpayerId: created.id,
+            })), tx);
+
+            return created;
+        });
 
         if (input.process === "AF") {
             const [officer, fiscalName, admins] = await Promise.all([
@@ -228,7 +233,9 @@ export const updateFase = async (data: NewFase) => {
         }
 
         const oldFase = taxpayerBefore.fase.replace("_", " ");
-        const updatedTaxpayerFase = await taxpayerRepository.updateTaxpayerFase(data.id, data.fase);
+        const updatedTaxpayerFase = await runTransaction((tx) =>
+            taxpayerRepository.updateTaxpayerFase(data.id, data.fase, tx)
+        );
 
         const adminUsers = await taxpayerRepository.findAdminEmails();
 
@@ -486,18 +493,20 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
         // Ejemplo: Si es día 20 y quiere cargar algo del día 16 → PERMITIDO
         // No hay validación de fecha mínima - se permite cualquier fecha pasada
         
-        const newTaxpayer = await taxpayerRepository.createTaxpayerFromExcel({
-            providenceNum,
-            process,
-            name,
-            rif,
-            contract_type,
-            officerId: matchedOfficer.id,
-            address,
-            emition_date: finalEmitionDate,
-            taxpayer_category_id: categoryId,
-            parish_id: parishId,
-        });
+        const newTaxpayer = await runTransaction((tx) =>
+            taxpayerRepository.createTaxpayerFromExcel({
+                providenceNum,
+                process,
+                name,
+                rif,
+                contract_type,
+                officerId: matchedOfficer.id,
+                address,
+                emition_date: finalEmitionDate,
+                taxpayer_category_id: categoryId,
+                parish_id: parishId,
+            }, tx)
+        );
 
         return newTaxpayer;
     } catch (error: any) {
@@ -563,7 +572,7 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
             if (!verifyEvent) {
                 throw new Error(`Evento de multa con ID ${input.fineEventId} no encontrado.`);
             }
-            if (input.amount !== undefined && input.amount > verifyEvent.debt) {
+            if (input.amount !== undefined && Number(input.amount) > Number(verifyEvent.debt)) {
                 throw BadRequestError("AmountError", "El monto no puede ser mayor que la deuda de la multa.");
             }
         }
@@ -586,10 +595,12 @@ export const createEvent = async (input: NewEvent): Promise<Event | Error> => {
         // Set expires_at to 15 days from now if it's not provided
         const expiresAt = input.expires_at ?? new Date(new Date(input.date).getTime() + 15 * 24 * 60 * 60 * 1000);
 
-        const event = await taxpayerRepository.createEvent({
-            ...input,
-            expires_at: expiresAt,
-        });
+        const event = await runTransaction((tx) =>
+            taxpayerRepository.createEvent({
+                ...input,
+                expires_at: expiresAt,
+            }, tx)
+        );
 
         return event;
 
@@ -612,13 +623,18 @@ export const createPayment = async (input: NewPayment): Promise<Payment | Error>
     try {
 
         const event = await taxpayerRepository.findEventById(String(input.eventId));
-        if (event && event.debt < input.amount) {
+        if (!event) {
+            throw new Error("Event not found");
+        }
+        if (Number(event.debt) < Number(input.amount)) {
             throw BadRequestError("AmountError", "Payment can't be greater than debt");
         }
 
-        const newPayment = await taxpayerRepository.createPayment(input);
-
-        await taxpayerRepository.updateEventDebt(input.eventId, input.amount);
+        const newPayment = await runTransaction(async (tx) => {
+            const payment = await taxpayerRepository.createPayment(input, tx);
+            await taxpayerRepository.updateEventDebt(input.eventId, input.amount, tx);
+            return payment;
+        });
 
         return newPayment
     } catch (error: any) {
@@ -631,7 +647,9 @@ export async function modifyIndexIva(newIndexIva: Decimal, taxpayerId: string) {
 
     try {
 
-        const taxpayer = await taxpayerRepository.updateIndexIva(taxpayerId, newIndexIva);
+        const taxpayer = await runTransaction((tx) =>
+            taxpayerRepository.updateIndexIva(taxpayerId, newIndexIva, tx)
+        );
 
         return taxpayer;
 
@@ -644,32 +662,37 @@ export async function modifyIndexIva(newIndexIva: Decimal, taxpayerId: string) {
 
 export async function createIndexIva(data: CreateIndexIva) {
     try {
-        // Obtener los índices anteriores activos
-        const previousIndexIva = await taxpayerRepository.findIndexIvaExpired();
+        const result = await runTransaction(async (tx) => {
+            // Obtener los índices anteriores activos
+            const previousIndexIva = await taxpayerRepository.findIndexIvaExpired(tx);
 
-        // Actualizar expires_at a NOW
-        await taxpayerRepository.expireIndexIva();
+            // Actualizar expires_at a NOW
+            await taxpayerRepository.expireIndexIva(tx);
 
-        // Crear nuevos índices
-        const [indexIvaSpecial, indexIvaOrdinary] = await Promise.all([
-            taxpayerRepository.createIndexIvaRecord("SPECIAL", data.specialAmount),
-            taxpayerRepository.createIndexIvaRecord("ORDINARY", data.ordinaryAmount),
-        ]);
+            // Crear nuevos índices
+            const [indexIvaSpecial, indexIvaOrdinary] = await Promise.all([
+                taxpayerRepository.createIndexIvaRecord("SPECIAL", data.specialAmount, tx),
+                taxpayerRepository.createIndexIvaRecord("ORDINARY", data.ordinaryAmount, tx),
+            ]);
 
-        // Recorre los índices anteriores y actualiza taxpayers
-        for (const oldIndex of previousIndexIva) {
-            await taxpayerRepository.updateTaxpayerIndexIva(
-                {
-                    index_iva: oldIndex.base_amount,
-                    contract_type: oldIndex.contract_type,
-                },
-                {
-                    index_iva: oldIndex.contract_type === "SPECIAL" ? data.specialAmount : data.ordinaryAmount,
-                }
-            );
-        }
+            // Recorre los índices anteriores y actualiza taxpayers
+            for (const oldIndex of previousIndexIva) {
+                await taxpayerRepository.updateTaxpayerIndexIva(
+                    {
+                        index_iva: oldIndex.base_amount,
+                        contract_type: oldIndex.contract_type,
+                    },
+                    {
+                        index_iva: oldIndex.contract_type === "SPECIAL" ? data.specialAmount : data.ordinaryAmount,
+                    },
+                    tx
+                );
+            }
 
-        return { indexIvaSpecial, indexIvaOrdinary };
+            return { indexIvaSpecial, indexIvaOrdinary };
+        });
+
+        return result;
 
     } catch (e) {
         logger.error(e);
@@ -869,7 +892,7 @@ export const getTaxpayersByUser = async (userId: string): Promise<Taxpayer[] | E
  */
 export const deleteTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Error> => {
     try {
-        const removedTaxpayer = await taxpayerRepository.deleteById(taxpayerId);
+        const removedTaxpayer = await runTransaction((tx) => taxpayerRepository.deleteById(taxpayerId, tx));
         return removedTaxpayer;
     } catch (error: any) {
         logger.error("Error deleteTaxpayerById", { taxpayerId, message: error?.message, stack: error?.stack });
@@ -885,7 +908,7 @@ export const deleteTaxpayerById = async (taxpayerId: string): Promise<Taxpayer |
  */
 export const deleteEvent = async (eventId: string): Promise<Event | Error> => {
     try {
-        const updatedEvent = await taxpayerRepository.deleteEventById(eventId);
+        const updatedEvent = await runTransaction((tx) => taxpayerRepository.deleteEventById(eventId, tx));
         return updatedEvent;
     } catch (error: any) {
         logger.error("Error deleteEvent", { eventId, message: error?.message, stack: error?.stack });
@@ -895,7 +918,7 @@ export const deleteEvent = async (eventId: string): Promise<Event | Error> => {
 
 export const deleteIva = async (id: string) => {
     try {
-        const deletedReport = await taxpayerRepository.deleteIvaById(id);
+        const deletedReport = await runTransaction((tx) => taxpayerRepository.deleteIvaById(id, tx));
 
         return deletedReport;
     } catch (e) {
@@ -906,7 +929,7 @@ export const deleteIva = async (id: string) => {
 
 export const deleteIslr = async (id: string) => {
     try {
-        const deletedReport = await taxpayerRepository.deleteIslrById(id);
+        const deletedReport = await runTransaction((tx) => taxpayerRepository.deleteIslrById(id, tx));
         return deletedReport;
     } catch (e) {
         logger.error(e);
@@ -922,7 +945,7 @@ export const deleteIslr = async (id: string) => {
  */
 export const deletePayment = async (eventId: string): Promise<Payment | Error> => {
     try {
-        const updatedEvent = await taxpayerRepository.deletePaymentById(eventId);
+        const updatedEvent = await runTransaction((tx) => taxpayerRepository.deletePaymentById(eventId, tx));
         return updatedEvent;
     } catch (error: any) {
         logger.error("Error deletePayment", { eventId, message: error?.message, stack: error?.stack });
@@ -933,7 +956,7 @@ export const deletePayment = async (eventId: string): Promise<Payment | Error> =
 
 export const deleteObservation = async (id: string) => {
     try {
-        const deleteEvent = await taxpayerRepository.deleteObservationById(id);
+        const deleteEvent = await runTransaction((tx) => taxpayerRepository.deleteObservationById(id, tx));
 
         return deleteEvent;
     } catch (e) {
@@ -1038,10 +1061,12 @@ export const updateTaxpayer = async (
             updateData.taxpayer_category = { connect: { id: data.taxpayer_category_id } };
         }
 
-        const updatedTaxpayer = await db.taxpayer.update({
-            where: { id: taxpayerId },
-            data: updateData,
-        });
+        const updatedTaxpayer = await runTransaction((tx) =>
+            tx.taxpayer.update({
+                where: { id: taxpayerId },
+                data: updateData,
+            })
+        );
 
         return updatedTaxpayer;
     } catch (e: any) {
@@ -1064,14 +1089,16 @@ export const updateEvent = async (eventId: string, data: Partial<NewEvent>): Pro
     try {
         logger.info("EVENT ID: " + eventId);
         logger.info("DATA: " + JSON.stringify(data));
-        const updatedEvent = await db.event.update({
-            where: {
-                id: eventId
-            },
-            data: {
-                ...data
-            }
-        });
+        const updatedEvent = await runTransaction((tx) =>
+            tx.event.update({
+                where: {
+                    id: eventId
+                },
+                data: {
+                    ...data
+                }
+            })
+        );
         return updatedEvent;
     } catch (error) {
         logger.error(error);
@@ -1145,13 +1172,15 @@ export const updateIvaReport = async (
         // Remover campos que no deben ser actualizados directamente
         const { taxpayerId, id, _key, created_at, ...cleanData } = data as any;
 
-        const updatedIva = await db.iVAReports.update({
-            where: { id: ivaId },
-            data: {
-                ...cleanData,
-                updated_at: new Date(),
-            },
-        });
+        const updatedIva = await runTransaction((tx) =>
+            tx.iVAReports.update({
+                where: { id: ivaId },
+                data: {
+                    ...cleanData,
+                    updated_at: new Date(),
+                },
+            })
+        );
 
         return updatedIva;
     } catch (error: any) {
@@ -1169,17 +1198,19 @@ export const updateIvaReport = async (
  */
 export const updatePayment_ = async (eventId: string, data: Partial<NewPayment>): Promise<Payment | Error> => {
     try {
-        const updatedEvent = await db.payment.update({
-            where: {
-                id: eventId
-            },
-            include: {
-                event: true
-            },
-            data: {
-                ...data
-            }
-        });
+        const updatedEvent = await runTransaction((tx) =>
+            tx.payment.update({
+                where: {
+                    id: eventId
+                },
+                include: {
+                    event: true
+                },
+                data: {
+                    ...data
+                }
+            })
+        );
         return updatedEvent;
     } catch (error: any) {
         logger.error("Error updateEvent", { eventId, message: error?.message, stack: error?.stack });
@@ -1189,14 +1220,16 @@ export const updatePayment_ = async (eventId: string, data: Partial<NewPayment>)
 
 export const updateObservation = async (id: string, newDescription: string) => {
     try {
-        const updatedObservation = await db.observations.update({
-            where: {
-                id: id,
-            },
-            data: {
-                description: newDescription,
-            },
-        })
+        const updatedObservation = await runTransaction((tx) =>
+            tx.observations.update({
+                where: {
+                    id: id,
+                },
+                data: {
+                    description: newDescription,
+                },
+            })
+        );
 
         return updatedObservation
     } catch (e) {
@@ -1262,10 +1295,12 @@ export const updateIslr = async (
     }
 
     try {
-        const updatedIslr = await db.iSLRReports.update({
-            where: { id: id },
-            data: input,
-        })
+        const updatedIslr = await runTransaction((tx) =>
+            tx.iSLRReports.update({
+                where: { id: id },
+                data: input,
+            })
+        );
 
         return updatedIslr;
 
@@ -1370,14 +1405,16 @@ export const updateCulminated = async (
             throw new Error("Este caso ya está cerrado definitivamente y no puede ser modificado.");
         }
 
-        const updatedCulminatedProcess = await db.taxpayer.update({
-            where: {
-                id: id,
-            },
-            data: {
-                culminated: culminated,
-            }
-        });
+        const updatedCulminatedProcess = await runTransaction((tx) =>
+            tx.taxpayer.update({
+                where: {
+                    id: id,
+                },
+                data: {
+                    culminated: culminated,
+                },
+            })
+        );
 
         // Nota: El envío de emails está comentado porque requiere resend configurado
         // Si se necesita reactivar, descomentar y configurar las variables de entorno
@@ -1394,38 +1431,36 @@ export const updateCulminated = async (
 export const updatePayment = async (id: string, newStatus: string) => {
 
     try {
-        let updatedPayment;
-
-        if (newStatus === "paid") {
-            updatedPayment = await db.event.update({
+        const updatedPayment = await runTransaction(async (tx) => {
+            if (newStatus === "paid") {
+                return tx.event.update({
+                    where: {
+                        id: id,
+                    },
+                    data: {
+                        debt: 0,
+                    }
+                });
+            }
+            const getFineAmount = await tx.event.findFirst({
                 where: {
                     id: id,
-                },
-                data: {
-                    debt: 0,
                 }
-            })
-        } else {
-            const getFineAmount = await db.event.findFirst({
-                where: {
-                    id: id,
-                }
-            })
+            });
 
             if (getFineAmount) {
-
                 const amount = getFineAmount.amount;
-
-                updatedPayment = await db.event.update({
+                return tx.event.update({
                     where: {
                         id: id,
                     },
                     data: {
                         debt: amount,
                     }
-                })
+                });
             }
-        }
+            return getFineAmount;
+        });
 
         return updatedPayment
 
@@ -1442,14 +1477,16 @@ export const updatePayment = async (id: string, newStatus: string) => {
 export const notifyTaxpayer = async (id: string) => {
 
     try {
-        const notifiedTaxpayer = await db.taxpayer.update({
-            where: {
-                id: id,
-            },
-            data: {
-                notified: true,
-            }
-        })
+        const notifiedTaxpayer = await runTransaction((tx) =>
+            tx.taxpayer.update({
+                where: {
+                    id: id,
+                },
+                data: {
+                    notified: true,
+                },
+            })
+        );
 
         const taxpayer = await db.taxpayer.findFirst({
             where: { id: id },
@@ -1520,6 +1557,7 @@ export const notifyTaxpayer = async (id: string) => {
             );
         }
 
+        return notifiedTaxpayer;
     } catch (e) {
         logger.error(e);
         throw new Error("Error notifying the taxpayer");
@@ -1571,7 +1609,9 @@ export async function getTaxpayerData(id: string) {
 
 export async function uploadRepairReport(taxpayerId: string, pdf_url: string) {
     try {
-        const newRepairReport = await taxpayerRepository.createRepairReport(taxpayerId, pdf_url);
+        const newRepairReport = await runTransaction((tx) =>
+            taxpayerRepository.createRepairReport(taxpayerId, pdf_url, tx)
+        );
         return newRepairReport;
     } catch (e: any) {
         logger.error("Can't create the repair report", { taxpayerId, pdf_url, message: e?.message, stack: e?.stack });
@@ -1582,10 +1622,12 @@ export async function uploadRepairReport(taxpayerId: string, pdf_url: string) {
 // Actualizar luego de subir exitosamente a S3
 export async function updateRepairReportPdfUrl(id: string, pdf_url: string) {
     try {
-        return await db.repairReport.update({
-            where: { id },
-            data: { pdf_url },
-        });
+        return await runTransaction((tx) =>
+            tx.repairReport.update({
+                where: { id },
+                data: { pdf_url },
+            })
+        );
     } catch (error: any) {
         logger.error("Failed to update pdf_url for RepairReport", { id, message: error?.message, stack: error?.stack });
         throw new Error("Could not update pdf_url for RepairReport");
@@ -1595,7 +1637,7 @@ export async function updateRepairReportPdfUrl(id: string, pdf_url: string) {
 // Eliminar si falla la subida
 export async function deleteRepairReportById(id: string) {
     try {
-        return await taxpayerRepository.deleteRepairReportById(id);
+        return await runTransaction((tx) => taxpayerRepository.deleteRepairReportById(id, tx));
     } catch (error: any) {
         logger.error("Failed to delete RepairReport", { id, message: error?.message, stack: error?.stack });
         throw new Error("Could not delete RepairReport");
@@ -1648,11 +1690,13 @@ export const createObservation = async (input: NewObservation) => {
     }
 
     try {
-        const observation = taxpayerRepository.createObservation({
-            taxpayerId: input.taxpayerId,
-            description: input.description,
-            date: new Date(input.date),
-        });
+        const observation = await runTransaction((tx) =>
+            taxpayerRepository.createObservation({
+                taxpayerId: input.taxpayerId,
+                description: input.description,
+                date: new Date(input.date),
+            }, tx)
+        );
 
         return observation
 
@@ -1725,18 +1769,6 @@ export const createIVA = async (data: NewIvaReport, userId?: string, userRole?: 
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
 
-    // ✅ PERMITIR cualquier fecha del año (progresiva o pasada del mismo mes)
-    // Solo validar duplicados por mes - no hay restricción de fecha mínima
-    const existing = await db.iVAReports.findFirst({
-        where: {
-            taxpayerId: data.taxpayerId,
-            date: { gte: startDate, lte: endDate },
-        },
-    });
-    if (existing) {
-        throw new Error(`Ya existe un reporte IVA para este contribuyente en ${month}/${year}.`);
-    }
-
     // 3. Construir el objeto de creación
     const createData = {
         taxpayerId: data.taxpayerId,
@@ -1748,9 +1780,20 @@ export const createIVA = async (data: NewIvaReport, userId?: string, userRole?: 
         excess: data.excess != null ? new Decimal(data.excess) : null,
     };
 
-    // 4. Crear y devolver
-    const report = await db.iVAReports.create({
-        data: createData,
+    // 4. Validar duplicados y crear en transacción (evita condiciones de carrera)
+    const report = await runTransaction(async (tx) => {
+        const existing = await tx.iVAReports.findFirst({
+            where: {
+                taxpayerId: data.taxpayerId,
+                date: { gte: startDate, lte: endDate },
+            },
+        });
+        if (existing) {
+            throw new Error(`Ya existe un reporte IVA para este contribuyente en ${month}/${year}.`);
+        }
+        return tx.iVAReports.create({
+            data: createData,
+        });
     });
     return report;
 };
@@ -1816,30 +1859,29 @@ export const createISLR = async (data: NewIslrReport, userId?: string, userRole?
         const emitionYear = reportDate.getFullYear();
 
         // ✅ PERMITIR cualquier fecha del año (progresiva o pasada)
-        // Solo validar duplicados por año - no hay restricción de fecha mínima
-        const existingReport = await db.iSLRReports.findFirst({
-            where: {
-                taxpayerId: data.taxpayerId,
-                AND: [
-                    {
-                        emition_date: {
-                            gte: new Date(`${emitionYear}-01-01`),
-                            lte: new Date(`${emitionYear}-12-31`)
+        // Validar duplicados y crear en una transacción para evitar condiciones de carrera
+        const response = await runTransaction(async (tx) => {
+            const existingReport = await tx.iSLRReports.findFirst({
+                where: {
+                    taxpayerId: data.taxpayerId,
+                    AND: [
+                        {
+                            emition_date: {
+                                gte: new Date(`${emitionYear}-01-01`),
+                                lte: new Date(`${emitionYear}-12-31`)
+                            }
                         }
-                    }
-                ]
+                    ]
+                }
+            });
+
+            if (existingReport) {
+                throw new Error(`Ya existe un reporte ISLR para este contribuyente en el año ${emitionYear}.`);
             }
-        });
 
-        // Si ya existe, lanza error
-        if (existingReport) {
-            throw new Error(`Ya existe un reporte ISLR para este contribuyente en el año ${emitionYear}.`);
-        }
-
-        // ✅ No hay restricción de año - se permite crear reportes de años anteriores
-        // Si no existe, crea el reporte
-        const response = await db.iSLRReports.create({
-            data,
+            return tx.iSLRReports.create({
+                data,
+            });
         });
 
         return response;
@@ -1856,7 +1898,9 @@ export const CreateTaxpayerCategory = async (name: string) => {
 
     try {
 
-        const createdCategory = await staticDataRepository.createTaxpayerCategory(name);
+        const createdCategory = await runTransaction((tx) =>
+            staticDataRepository.createTaxpayerCategory(name, tx)
+        );
 
         return createdCategory;
 

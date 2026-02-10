@@ -246,7 +246,7 @@ export const getStatistics = async (userId: string, timeframe?: string, taxpayer
                     end_date = false
             }
             if (start_date && end_date) {
-                where.fecha = {
+                where.date = {
                     gte: start_date,
                     lte: end_date,
                 }

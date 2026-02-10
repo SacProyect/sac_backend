@@ -473,7 +473,7 @@ export const createError = async (input: InputError): Promise<InputError | Error
 
 
     try {
-        const createdError = db.errors.create({
+        const createdError = await db.errors.create({
             data: {
                 title: input.title ?? undefined,
                 description: input.description,

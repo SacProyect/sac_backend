@@ -1,6 +1,6 @@
 import { TaxpayerCensus } from "@prisma/client";
 import { NewTaxpayerCensus } from "../taxpayer/taxpayer.utils";
-import { db } from "../utils/db.server";
+import { db, runTransaction } from "../utils/db.server";
 import { NewTaxpayerCensusInput } from "./census.utils";
 import logger from "../utils/logger";
 
@@ -9,18 +9,20 @@ import logger from "../utils/logger";
 export const createTaxpayerCensus = async (input: NewTaxpayerCensusInput): Promise<TaxpayerCensus> => {
     try {
         logger.info('Creando contribuyente de censo', { rif: input.rif, name: input.name });
-        const taxpayerCensus = await db.taxpayerCensus.create({
-            data: {
-                number: input.number,
-                process: input.process ?? "FP",
-                name: input.name,
-                rif: input.rif,
-                type: input.type ?? "ORDINARY",
-                address: input.address ?? "Caracas",
-                emition_date: input.emition_date ?? new Date(),
-                userId: input.userId
-            }
-        });
+        const taxpayerCensus = await runTransaction((tx) =>
+            tx.taxpayerCensus.create({
+                data: {
+                    number: input.number,
+                    process: input.process ?? "FP",
+                    name: input.name,
+                    rif: input.rif,
+                    type: input.type ?? "ORDINARY",
+                    address: input.address ?? "Caracas",
+                    emition_date: input.emition_date ?? new Date(),
+                    userId: input.userId
+                }
+            })
+        );
 
         logger.info('Contribuyente de censo creado exitosamente', { id: taxpayerCensus.id, rif: taxpayerCensus.rif });
         return taxpayerCensus;
@@ -52,11 +54,13 @@ export const getTaxpayerCensus = async () => {
 export const deleteTaxpayerCensus = async (id: string) => {
     try {
         logger.info('Eliminando contribuyente de censo', { id });
-        const deletedTaxpayer = await db.taxpayerCensus.delete({
-            where: {
-                id: id,
-            }
-        })
+        const deletedTaxpayer = await runTransaction((tx) =>
+            tx.taxpayerCensus.delete({
+                where: {
+                    id: id,
+                }
+            })
+        );
 
         logger.info('Contribuyente de censo eliminado exitosamente', { id: deletedTaxpayer.id });
         return deletedTaxpayer;

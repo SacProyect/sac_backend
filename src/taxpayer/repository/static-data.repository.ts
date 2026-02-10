@@ -1,21 +1,24 @@
-import { db } from "../../utils/db.server";
+import { db, TxClient } from "../../utils/db.server";
 
 export class StaticDataRepository {
 
-    async createTaxpayerCategory(name: string) {
-        return db.taxpayerCategory.create({
+    async createTaxpayerCategory(name: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayerCategory.create({
             data: {
                 name: name,
             }
         });
     }
 
-    async findAllCategories() {
-        return db.taxpayerCategory.findMany();
+    async findAllCategories(tx?: TxClient) {
+        const client = tx ?? db;
+        return client.taxpayerCategory.findMany();
     }
 
-    async findAllParishes() {
-        return db.parish.findMany();
+    async findAllParishes(tx?: TxClient) {
+        const client = tx ?? db;
+        return client.parish.findMany();
     }
 }
 
