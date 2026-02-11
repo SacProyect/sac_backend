@@ -856,9 +856,9 @@ export const getTaxpayersForEvents = async (userId: string, userRole: string, pa
     }
 }
 
-export const getTaxpayers = async (page: number = 1, limit: number = 50) => {
+export const getTaxpayers = async (page: number = 1, limit: number = 50, year?: number, search?: string) => {
     try {
-        const result = await taxpayerRepository.findAll(page, limit);
+        const result = await taxpayerRepository.findAll(page, limit, year, search);
         return result;
     } catch (e) {
         logger.error(e);

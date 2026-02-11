@@ -79,9 +79,11 @@ taxpayerRouter.get('/get-taxpayers',
         
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 50;
+        const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+        const search = req.query.search as string || undefined;
         
         try {
-            const result = await TaxpayerServices.getTaxpayers(page, limit);
+            const result = await TaxpayerServices.getTaxpayers(page, limit, year, search);
             return res.status(200).json(result)
         } catch (error: any) {
             logger.error("get-taxpayers", { message: error?.message });

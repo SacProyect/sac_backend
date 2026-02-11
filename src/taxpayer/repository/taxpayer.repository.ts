@@ -645,15 +645,45 @@ export class TaxpayerRepository {
         });
     }
 
-    async findAll(page: number = 1, limit: number = 50, tx?: TxClient) {
+    async findAll(page: number = 1, limit: number = 50, year?: number, search?: string, tx?: TxClient) {
         const client = tx ?? db;
         const skip = (page - 1) * limit;
         
+        const where: any = { status: true };
+
+        if (year) {
+            const startDate = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0));
+            const endDate = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0, 0));
+            
+            where.emition_date = {
+                gte: startDate,
+                lt: endDate
+            };
+        }
+
+        if (search) {
+            const searchFilters: any[] = [
+                { name: { contains: search } },
+                { rif: { contains: search } },
+                { user: { name: { contains: search } } }
+            ];
+
+            // Si es un número, intentar buscar por número de providencia
+            if (!isNaN(Number(search))) {
+                searchFilters.push({ providenceNum: BigInt(search) });
+            }
+
+            where.AND = [
+                ...(where.AND || []), // Mantener otros AND si existieran
+                { OR: searchFilters }
+            ];
+        }
+
         const [taxpayers, total] = await Promise.all([
             client.taxpayer.findMany({
                 skip,
                 take: limit,
-                where: { status: true },
+                where: where,
                 select: {
                     id: true,
                     name: true,
@@ -674,7 +704,7 @@ export class TaxpayerRepository {
                 },
                 orderBy: { created_at: 'desc' }
             }),
-            client.taxpayer.count({ where: { status: true } })
+            client.taxpayer.count({ where: where })
         ]);
         
         return {
