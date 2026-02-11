@@ -22,7 +22,7 @@ userRouter.get('/all',
             return res.status(200).json(users)
         } catch (error: any) {
             logger.error("Error getAllUsers", { userId: user?.id, message: error.message, stack: error.stack });
-            return res.status(500).json(error.message)
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -200,7 +200,7 @@ userRouter.put('/update-by-name/:name',
 
         } catch (e: any) {
             logger.error("Error update-by-name", { name: req.params.name, message: e?.message, stack: e?.stack });
-            return res.status(500).json(e);
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
 
     }
@@ -235,7 +235,7 @@ userRouter.put('/update-password/:id',
 
         } catch (e: any) {
             logger.error("Error update-password", { userId: req.params.id, message: e?.message, stack: e?.stack });
-            return res.status(500).json(e);
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )

@@ -216,7 +216,7 @@ export class TaxpayerRepository {
 
     async updateIndexIva(taxpayerId: string, newIndexIva: Decimal, tx?: TxClient) {
         const client = tx ?? db;
-        return client.taxpayer.update({
+        return await client.taxpayer.update({
             where: {
                 id: taxpayerId,
             },
@@ -240,14 +240,31 @@ export class TaxpayerRepository {
         const client = tx ?? db;
         return client.event.update({
             where: { id: eventId },
-            data: { debt: { decrement: amount } }
+            data: { debt: { decrement: amount } },
+        });
+    }
+
+    /** Restaura la deuda del evento al eliminar (soft) un pago. */
+    async restoreEventDebt(eventId: string, amount: Decimal, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.event.update({
+            where: { id: eventId },
+            data: { debt: { increment: amount } },
+        });
+    }
+
+    async findPaymentById(paymentId: string, tx?: TxClient) {
+        const client = tx ?? db;
+        return client.payment.findUnique({
+            where: { id: paymentId },
+            include: { event: true },
         });
     }
 
     async findEventById(eventId: string, tx?: TxClient) {
         const client = tx ?? db;
-        return client.event.findUnique({
-            where: { id: eventId },
+        return client.event.findFirst({
+            where: { id: eventId, status: true },
         });
     }
 
@@ -272,7 +289,7 @@ export class TaxpayerRepository {
 
     async createObservation(input: { taxpayerId: string, description: string, date: Date }, tx?: TxClient) {
         const client = tx ?? db;
-        return client.observations.create({
+        return await client.observations.create({
             data: {
                 taxpayerId: input.taxpayerId,
                 description: input.description,
@@ -297,18 +314,13 @@ export class TaxpayerRepository {
         });
     }
 
-    async deletePaymentById(eventId: string, tx?: TxClient) {
+    /** Soft delete: solo marca status false. La restauración de deuda se hace en el servicio dentro de la transacción. */
+    async deletePaymentById(paymentId: string, tx?: TxClient) {
         const client = tx ?? db;
         return client.payment.update({
-            where: {
-                id: eventId
-            },
-            include: {
-                event: true
-            },
-            data: {
-                status: false
-            }
+            where: { id: paymentId },
+            include: { event: true },
+            data: { status: false },
         });
     }
 
@@ -326,21 +338,21 @@ export class TaxpayerRepository {
         });
     }
 
+    /** Soft delete: marca el evento como inactivo (status: false). */
     async deleteEventById(eventId: string, tx?: TxClient) {
         const client = tx ?? db;
-        return client.event.delete({
-            where: {
-                id: eventId
-            },
+        return client.event.update({
+            where: { id: eventId },
+            data: { status: false },
         });
     }
 
+    /** Soft delete: marca el contribuyente como inactivo (status: false). */
     async deleteById(taxpayerId: string, tx?: TxClient) {
         const client = tx ?? db;
-        return client.taxpayer.delete({
-            where: {
-                id: taxpayerId
-            },
+        return client.taxpayer.update({
+            where: { id: taxpayerId },
+            data: { status: false },
         });
     }
 
@@ -495,14 +507,10 @@ export class TaxpayerRepository {
                     take: limit,
                     where: { status: true },
                     include: {
-                        event: true,
+                        event: { where: { status: true } },
                         IVAReports: true,
                         ISLRReports: true,
-                        user: {
-                            select: {
-                                name: true,
-                            },
-                        },
+                        user: { select: { name: true } },
                     },
                     orderBy: { created_at: 'desc' }
                 }),
@@ -519,15 +527,11 @@ export class TaxpayerRepository {
                         include: {
                             taxpayer: {
                                 include: {
-                                    event: true,
+                                    event: { where: { status: true } },
                                     IVAReports: true,
                                     ISLRReports: true,
-                                    user: {
-                                        select: {
-                                            name: true,
-                                        },
-                                    },
-                                }
+                                    user: { select: { name: true } },
+                                },
                             },
                         },
                     },
@@ -543,31 +547,23 @@ export class TaxpayerRepository {
                     id: userId,
                 },
                 include: {
-                    taxpayer: { // 👈 Taxpayers assigned directly to the supervisor
+                    taxpayer: {
                         include: {
-                            event: true,
+                            event: { where: { status: true } },
                             IVAReports: true,
                             ISLRReports: true,
-                            user: {
-                                select: {
-                                    name: true,
-                                },
-                            },
+                            user: { select: { name: true } },
                         },
                     },
-                    supervised_members: {  // 👈 Taxpayers assigned to supervised members
+                    supervised_members: {
                         include: {
                             taxpayer: {
                                 include: {
-                                    event: true,
+                                    event: { where: { status: true } },
                                     IVAReports: true,
                                     ISLRReports: true,
-                                    user: {
-                                        select: {
-                                            name: true,
-                                        },
-                                    },
-                                }
+                                    user: { select: { name: true } },
+                                },
                             },
                         },
                     },
@@ -588,17 +584,13 @@ export class TaxpayerRepository {
                 include: {
                     taxpayer: {
                         include: {
-                            event: true,
+                            event: { where: { status: true } },
                             IVAReports: true,
                             ISLRReports: true,
-                            user: {
-                                select: {
-                                    name: true,
-                                },
-                            },
+                            user: { select: { name: true } },
                         },
                     },
-                }
+                },
             });
             if (!fiscal) throw new Error("Usuario no encontrado.");
 

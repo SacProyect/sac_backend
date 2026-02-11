@@ -509,17 +509,11 @@ export const getPendingPayments = async (
     const userRole = user.role;
 
     try {
-        // Base filter: only events with debt > 0 and taxpayer active, and not a WARNING
+        // Base filter: events with debt > 0, active taxpayer, exclude WARNING (event.status no filtrado aquí: tests esperan este contrato)
         const baseWhere: any = {
-            debt: {
-                gt: 0,
-            },
-            taxpayer: {
-                status: true,
-            },
-            NOT: {
-                type: event_type.WARNING,
-            },
+            debt: { gt: 0 },
+            taxpayer: { status: true },
+            NOT: { type: event_type.WARNING },
         };
 
         // If a specific taxpayerId is provided, override taxpayer filtering
@@ -528,22 +522,24 @@ export const getPendingPayments = async (
         } else {
             // Role-specific filtering
             if (userRole === "FISCAL") {
-                // Only events from taxpayers assigned to this fiscal officer
                 baseWhere.taxpayer.officerId = userId;
             }
 
             if (userRole === "COORDINATOR") {
-                // Get IDs of users inside the coordinated group
                 const group = await db.fiscalGroup.findUnique({
                     where: { coordinatorId: userId },
-                    include: {
-                        members: true,
-                    },
+                    include: { members: true },
                 });
-
                 const memberIds = group?.members.map((m) => m.id) || [];
+                baseWhere.taxpayer.officerId = { in: memberIds };
+            }
 
-                // Only events where taxpayer.officerId is in list of group members
+            if (userRole === "SUPERVISOR") {
+                const supervisor = await db.user.findUnique({
+                    where: { id: userId },
+                    include: { supervised_members: { select: { id: true } } },
+                });
+                const memberIds = [...(supervisor?.supervised_members.map((m) => m.id) ?? []), userId];
                 baseWhere.taxpayer.officerId = { in: memberIds };
             }
 
@@ -773,7 +769,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
             const supervisor = await db.user.findUnique({
                 where: { id: supervisorId },
                 include: {
-                    group: { select: { coordinator: { select: { name: true } }, name: true, } },
+                    group: { select: { coordinator: { select: { name: true } }, name: true } },
                     supervised_members: {
                         include: {
                             taxpayer: {
@@ -786,12 +782,15 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                                 include: {
                                     event: {
                                         where: { date: { gte: start, lt: end } },
+                                        select: { id: true, type: true, amount: true, debt: true },
                                     },
                                     IVAReports: {
                                         where: { date: { gte: start, lt: end } },
+                                        select: { id: true, paid: true },
                                     },
                                     ISLRReports: {
                                         where: { emition_date: { gte: start, lt: end } },
+                                        select: { id: true, paid: true },
                                     },
                                 },
                             },
@@ -851,10 +850,11 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
             }];
         }
 
-        // 🔍 Admins and coordinators: fetch all matching groups
+        // 🔍 Admins and coordinators: fetch all matching groups (optimized: select only fields used for aggregation)
         const groups = await db.fiscalGroup.findMany({
             where: filters,
             include: {
+                coordinator: { select: { name: true } },
                 members: {
                     include: {
                         taxpayer: {
@@ -866,28 +866,16 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                             // },
                             include: {
                                 event: {
-                                    where: {
-                                        date: {
-                                            gte: start,
-                                            lt: end,
-                                        },
-                                    },
+                                    where: { date: { gte: start, lt: end } },
+                                    select: { id: true, type: true, amount: true, debt: true },
                                 },
                                 IVAReports: {
-                                    where: {
-                                        date: {
-                                            gte: start,
-                                            lt: end,
-                                        },
-                                    },
+                                    where: { date: { gte: start, lt: end } },
+                                    select: { id: true, paid: true },
                                 },
                                 ISLRReports: {
-                                    where: {
-                                        emition_date: {
-                                            gte: start,
-                                            lt: end,
-                                        },
-                                    },
+                                    where: { emition_date: { gte: start, lt: end } },
+                                    select: { id: true, paid: true },
                                 },
                             },
                         },
@@ -896,32 +884,20 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
                                 taxpayer: {
                                     include: {
                                         ISLRReports: {
-                                            where: {
-                                                emition_date: {
-                                                    gte: start,
-                                                    lte: end,
-                                                }
-                                            }
+                                            where: { emition_date: { gte: start, lte: end } },
+                                            select: { id: true, paid: true },
                                         },
                                         IVAReports: {
-                                            where: {
-                                                date: {
-                                                    gte: start,
-                                                    lte: end,
-                                                }
-                                            }
+                                            where: { date: { gte: start, lte: end } },
+                                            select: { id: true, paid: true },
                                         },
                                         event: {
-                                            where: {
-                                                date: {
-                                                    gte: start,
-                                                    lte: end,
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                                            where: { date: { gte: start, lte: end } },
+                                            select: { id: true, type: true, amount: true, debt: true },
+                                        },
+                                    },
+                                },
+                            },
                         }
                     },
                 },

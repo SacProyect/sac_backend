@@ -1,7 +1,8 @@
 import { db, runTransaction } from "../utils/db.server";
 import { CreateIndexIva, Event, FiscalTaxpayerStat, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
 import { BadRequestError } from "../utils/errors/BadRequestError";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { getS3Client } from "../utils/s3.client";
 import { Resend } from 'resend';
 import { differenceInDays } from "date-fns"
 import {
@@ -15,7 +16,7 @@ import logger from "../utils/logger";
 
 // Resend v4: `emails` exists on the instance, not the class.
 const resend = new Resend(process.env.RESEND_API_KEY ?? "");
-const s3 = new S3Client({ region: "us-east-2" });
+const s3 = getS3Client();
 
 
 
@@ -938,17 +939,20 @@ export const deleteIslr = async (id: string) => {
 }
 
 /**
- * Deletes a payment by changing their status to false.
- * 
- * @param {string}eventId The ID of the payment to delete.
- * @returns The updated payment object or an error if the operation fails.
+ * Soft delete de un pago: restaura la deuda del evento y marca el pago como inactivo.
+ * @param paymentId ID del pago a eliminar.
  */
-export const deletePayment = async (eventId: string): Promise<Payment | Error> => {
+export const deletePayment = async (paymentId: string): Promise<Payment | Error> => {
     try {
-        const updatedEvent = await runTransaction((tx) => taxpayerRepository.deletePaymentById(eventId, tx));
-        return updatedEvent;
+        const result = await runTransaction(async (tx) => {
+            const payment = await taxpayerRepository.findPaymentById(paymentId, tx);
+            if (!payment) throw new Error("Pago no encontrado");
+            await taxpayerRepository.restoreEventDebt(payment.eventId, payment.amount, tx);
+            return taxpayerRepository.deletePaymentById(paymentId, tx);
+        });
+        return result;
     } catch (error: any) {
-        logger.error("Error deletePayment", { eventId, message: error?.message, stack: error?.stack });
+        logger.error("Error deletePayment", { paymentId, message: error?.message, stack: error?.stack });
         throw error;
     }
 }

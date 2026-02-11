@@ -414,15 +414,23 @@ export async function getFiscalsForReview(
 }
 
 
+/**
+ * Actualiza un usuario por nombre. Optimizado: no carga todos los usuarios,
+ * usa búsqueda por primera palabra y luego matcheo normalizado en un conjunto acotado.
+ */
 export async function updateUserByName(name: string, data: UpdateUserByNameInput) {
     try {
-        const normalizedName = normalizeText(name);
+        const normalizedName = normalizeText(name).toLowerCase();
+        const firstWord = name.trim().split(/\s+/)[0];
+        if (!firstWord) throw new Error("User not found");
 
-        const users = await db.user.findMany(); // todos los usuarios
+        const users = await db.user.findMany({
+            where: { name: { contains: firstWord } },
+            select: { id: true, name: true, personId: true },
+        });
 
-        // Buscar manualmente el primer nombre que haga match "sin acentos" e insensible a mayúsculas
-        const userFound = users.find(u =>
-            normalizeText(u.name).toLowerCase() === normalizedName.toLowerCase()
+        const userFound = users.find(
+            (u) => normalizeText(u.name).toLowerCase() === normalizedName
         );
 
         if (!userFound) throw new Error("User not found");

@@ -7,7 +7,8 @@ import { authenticateToken, AuthRequest } from "../users/user.utils";
 // import multer, { StorageEngine } from "multer";
 // import path from "path";
 import fs from 'fs'
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getS3Client } from "../utils/s3.client";
 import { createLocalUpload } from "../utils/multer.local";
 import { uploadMemory } from "../utils/multer.memory";
 import { Decimal } from "@prisma/client/runtime/library";
@@ -15,7 +16,7 @@ import { db } from "../utils/db.server";
 import logger from "../utils/logger";
 // import { commonParams } from "@aws-sdk/client-s3/dist-types/endpoint/EndpointParameters";
 
-const s3 = new S3Client({ region: "us-east-2" }); // Replace "your-region" with your AWS region
+const s3 = getS3Client();
 export const taxpayerRouter = express.Router();
 
 
@@ -41,8 +42,8 @@ taxpayerRouter.get('/get-taxpayers-for-events',
             const result = await TaxpayerServices.getTaxpayersForEvents(userId, userRole, page, limit);
             return res.status(200).json(result)
         } catch (error: any) {
-            console.error(error);
-            return res.status(500).json(error)
+            logger.error("get-taxpayers-for-events", { message: error?.message });
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -61,8 +62,8 @@ taxpayerRouter.get('/get-fiscal-taxpayers-for-stats/:id',
             const taxpayer = await TaxpayerServices.getFiscalTaxpayersForStats(userId);
             return res.status(200).json(taxpayer)
         } catch (error: any) {
-            console.error(error);
-            return res.status(500).json(error)
+            logger.error("get-fiscal-taxpayers-for-stats", { message: error?.message });
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 
@@ -83,8 +84,8 @@ taxpayerRouter.get('/get-taxpayers',
             const result = await TaxpayerServices.getTaxpayers(page, limit);
             return res.status(200).json(result)
         } catch (error: any) {
-            console.error("No se pudieron obtener los taxpayers: ", error);
-            return res.status(500).json(error)
+            logger.error("get-taxpayers", { message: error?.message });
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -454,7 +455,7 @@ taxpayerRouter.get('/:id',
 
             return res.status(200).json(taxpayer)
         } catch (error: any) {
-            return res.status(500).json(error.message);
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -469,7 +470,7 @@ taxpayerRouter.get('/all/:id',
             const taxpayers = await TaxpayerServices.getTaxpayersByUser(id);
             return res.status(200).json(taxpayers);
         } catch (error: any) {
-            return res.status(500).json(error.message)
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 );
@@ -503,7 +504,7 @@ taxpayerRouter.put("/:id",
             return res.status(200).json(updatedTaxpayer)
         } catch (error: any) {
             console.error(error);
-            return res.status(500).json(error.message)
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 
@@ -647,7 +648,7 @@ taxpayerRouter.delete('/:id',
             const taxpayer = await TaxpayerServices.deleteTaxpayerById(id);
             return res.status(200).json(taxpayer)
         } catch (error: any) {
-            return res.status(500).json(error.message);
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -682,7 +683,7 @@ taxpayerRouter.get('/event/all',
             const events = await TaxpayerServices.getEventsbyTaxpayer()
             return res.status(200).json(events)
         } catch (error: any) {
-            return res.status(500).json(error.message)
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -699,7 +700,7 @@ taxpayerRouter.get('/event/:id/:type?',
             // console.log("EVENTS: " + JSON.stringify(events))
             return res.status(200).json(events)
         } catch (error: any) {
-            return res.status(500).json(error.message)
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -770,7 +771,7 @@ taxpayerRouter.get('/get-islr/:id',
 
         } catch (e: any) {
             console.error(e);
-            return res.status(500).json(e);
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -857,7 +858,7 @@ taxpayerRouter.post('/create-index-iva',
             const index = await TaxpayerServices.createIndexIva(data);
             return res.status(200).json(index)
         } catch (error: any) {
-            return res.status(500).json(error.message)
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -891,7 +892,7 @@ taxpayerRouter.put('/modify-individual-index-iva/:id',
             return res.status(200).json(index)
         } catch (error: any) {
             console.error(error);
-            return res.status(500).json(error.message)
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -992,7 +993,7 @@ taxpayerRouter.post('/create-islr-report',
             }
 
             logger.error(e.message);
-            return res.status(500).json(e);
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -1019,7 +1020,7 @@ taxpayerRouter.post('/payment',
             }
 
             logger.error(error.message);
-            return res.status(500).json(error.message)
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -1050,7 +1051,7 @@ taxpayerRouter.post("/observations",
 
         } catch (e: any) {
             logger.error(e.message);
-            return res.status(500).json(e.message);
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -1183,7 +1184,7 @@ taxpayerRouter.put('/payment/:eventId',
             return res.status(200).json(payment);
         } catch (error: any) {
             logger.error(error.message);
-            return res.status(500).json(error.message);
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 );
@@ -1293,7 +1294,7 @@ taxpayerRouter.put('/payment_compromise/:eventId',
             return res.status(200).json(payment_compromise);
         } catch (error: any) {
             logger.error(error.message);
-            return res.status(500).json(error.message);
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 );
@@ -1311,7 +1312,7 @@ taxpayerRouter.put('/warning/:eventId',
             return res.status(200).json(warning);
         } catch (error: any) {
             logger.error(error.message);
-            return res.status(500).json(error.message);
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 );
@@ -1459,7 +1460,7 @@ taxpayerRouter.post("/create-taxpayer-category",
             return res.status(201).json(response);
         } catch (e: any) {
             logger.error(e.message);
-            return res.status(500).json(e.message)
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )

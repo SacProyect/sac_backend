@@ -6,7 +6,8 @@ import { body, validationResult, query } from 'express-validator';
 import { createError } from "./reports.services";
 import multer, { StorageEngine } from "multer";
 import path from "path";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { getS3Client } from "../utils/s3.client";
 import { createLocalUpload } from "../utils/multer.local";
 import fs from 'fs';
 import { report } from "process";
@@ -34,7 +35,7 @@ function parseDateParam(dateParam: string | undefined): Date {
 }
 
 
-const s3 = new S3Client({ region: "us-east-2" }); // Sustituye "your-region" con la región de tu bucket S3
+const s3 = getS3Client();
 export const reportRouter = Router();
 
 
@@ -115,7 +116,7 @@ reportRouter.post('/errors',
 
         } catch (e) {
             console.error(e);
-            return res.status(500).json(e);
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 );
@@ -129,7 +130,7 @@ reportRouter.get('/kpi',
             const KPI = await ReportService.getGlobalKPI()
             return res.status(200).json(KPI)
         } catch (error: any) {
-            return res.status(500).json(error.message)
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -145,7 +146,7 @@ reportRouter.get('/fine/:id?',
             const fineHistory = await ReportService.getFineHistory(id)
             res.status(200).json(fineHistory)
         } catch (error: any) {
-            return res.status(500).json(error.message)
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -164,7 +165,7 @@ reportRouter.get('/payments/:id?',
 
             res.status(200).json(paymentHistory)
         } catch (error: any) {
-            return res.status(500).json(error.message)
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )
@@ -187,7 +188,7 @@ reportRouter.get('/pending/:id?',
             const events = await ReportService.getPendingPayments(user, id);
             return res.status(200).json(events)
         } catch (error: any) {
-            return res.status(500).json(error.message)
+            return res.status(500).json({ error: "Error interno del servidor" });
         }
     }
 )

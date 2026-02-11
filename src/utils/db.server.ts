@@ -35,7 +35,11 @@ declare global {
 }
 
 if (!global.__db) {
-    global.__db = new PrismaClient();
+    global.__db = new PrismaClient({
+        log: process.env.NODE_ENV === "development" ? ["query", "warn", "error"] : ["error"],
+    });
+    // En producción, configurar connection pooling en DATABASE_URL, ej.:
+    // mysql://user:pass@host:3306/db?connection_limit=10&pool_timeout=30
 }
 
 db = global.__db;
