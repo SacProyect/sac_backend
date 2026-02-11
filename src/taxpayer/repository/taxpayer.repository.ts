@@ -702,7 +702,7 @@ export class TaxpayerRepository {
                         }
                     }
                 },
-                orderBy: { created_at: 'desc' }
+                orderBy: { created_at: 'asc' }
             }),
             client.taxpayer.count({ where: where })
         ]);
