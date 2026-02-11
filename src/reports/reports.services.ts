@@ -1813,6 +1813,9 @@ export async function getBestSupervisorByGroups(date?: Date) {
         const groups = await db.fiscalGroup.findMany({
             include: {
                 members: {
+                    where: {
+                        status: true
+                    },
                     include: {
                         supervised_members: {
                             include: {
