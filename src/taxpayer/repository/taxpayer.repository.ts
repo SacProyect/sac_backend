@@ -665,23 +665,16 @@ export class TaxpayerRepository {
             const searchFilters: any[] = [
                 { name: { contains: search } },
                 { rif: { contains: search } },
-                { address: { contains: search } },
-                { user: { name: { contains: search } } },
-                { parish: { name: { contains: search } } },
-                { taxpayer_category: { name: { contains: search } } }
+                { user: { name: { contains: search } } }
             ];
 
             // Si es un número, intentar buscar por número de providencia
-            if (!isNaN(Number(search)) && search.trim() !== "") {
-                try {
-                    searchFilters.push({ providenceNum: BigInt(search) });
-                } catch (e) {
-                    // Si falla la conversión a BigInt, simplemente no buscamos por este campo
-                }
+            if (!isNaN(Number(search))) {
+                searchFilters.push({ providenceNum: BigInt(search) });
             }
 
             where.AND = [
-                ...(where.AND || []), 
+                ...(where.AND || []), // Mantener otros AND si existieran
                 { OR: searchFilters }
             ];
         }
@@ -709,7 +702,7 @@ export class TaxpayerRepository {
                         }
                     }
                 },
-                orderBy: { providenceNum: 'asc' }
+                orderBy: { created_at: 'desc' }
             }),
             client.taxpayer.count({ where: where })
         ]);
