@@ -426,6 +426,7 @@ reportRouter.get("/individual-iva-report/:id",
 reportRouter.get('/get-best-supervisor-by-group',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -449,6 +450,7 @@ reportRouter.get('/get-best-supervisor-by-group',
 reportRouter.get('/get-top-fiscals',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -472,6 +474,7 @@ reportRouter.get('/get-top-fiscals',
 reportRouter.get('/get-top-five-by-group',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -495,6 +498,7 @@ reportRouter.get('/get-top-five-by-group',
 reportRouter.get('/get-monthly-growth',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -518,6 +522,7 @@ reportRouter.get('/get-monthly-growth',
 reportRouter.get('/get-taxpayers-compliance',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -541,6 +546,7 @@ reportRouter.get('/get-taxpayers-compliance',
 reportRouter.get('/get-expected-amount',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -564,6 +570,7 @@ reportRouter.get('/get-expected-amount',
 reportRouter.get('/get-fiscal-info/:id',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -588,6 +595,7 @@ reportRouter.get('/get-fiscal-info/:id',
 reportRouter.get('/get-fiscal-taxpayers/:id',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -612,6 +620,7 @@ reportRouter.get('/get-fiscal-taxpayers/:id',
 reportRouter.get('/get-fiscal-monthly-collect/:id',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -636,6 +645,7 @@ reportRouter.get('/get-fiscal-monthly-collect/:id',
 reportRouter.get('/get-fiscal-monthly-performance/:id',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -660,6 +670,7 @@ reportRouter.get('/get-fiscal-monthly-performance/:id',
 reportRouter.get('/get-fiscal-compliance-by-process/:id',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -684,6 +695,7 @@ reportRouter.get('/get-fiscal-compliance-by-process/:id',
 reportRouter.get('/get-fiscal-compliance/:id',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -708,6 +720,7 @@ reportRouter.get('/get-fiscal-compliance/:id',
 reportRouter.get('/get-fiscal-collect-analisis/:id',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest

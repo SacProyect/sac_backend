@@ -67,7 +67,7 @@ export const signUp = async (input: NewUserInput): Promise<User | Error> => {
             throw new Error('Rol no permitido. Use: FISCAL, ADMIN, COORDINATOR o SUPERVISOR.');
         }
         logger.error(error.message);
-        throw new Error(error.message);
+        throw error;
     }
 };
 /**
