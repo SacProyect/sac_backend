@@ -128,6 +128,8 @@ userRouter.get("/me",
 userRouter.get('/get-fiscals-for-review',
     authenticateToken,
     query("year").optional().isInt().withMessage("Year must be an integer"),
+    query("page").optional().isInt({ min: 1 }).withMessage("Page must be a positive integer"),
+    query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("Limit must be between 1 and 100"),
 
     async (req: Request, res: Response) => {
 
@@ -145,17 +147,21 @@ userRouter.get('/get-fiscals-for-review',
 
             const userId = user.id;
             const userRole = user.role;
-            
+
+            // ✅ Parámetros de paginación (opcionales)
+            const page = parseInt(req.query.page as string, 10) || 1;
+            const limit = parseInt(req.query.limit as string, 10) || 50;
+
             // ✅ Obtener parámetro de año opcional
             const yearParam = req.query.year;
             const year = yearParam ? parseInt(yearParam as string, 10) : undefined;
-            
+
             // Validar que el año sea razonable (2020-2030)
             if (year !== undefined && (year < 2020 || year > 2030)) {
                 return res.status(400).json({ error: "El año debe estar entre 2020 y 2030" });
             }
 
-            const response = await UserService.getFiscalsForReview(userId, userRole, year);
+            const response = await UserService.getFiscalsForReview(userId, userRole, year, page, limit);
 
             return res.status(200).json(response);
 

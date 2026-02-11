@@ -482,23 +482,32 @@ export class TaxpayerRepository {
         });
     }
 
-    async findTaxpayersForEvents(userId: string, userRole: string, tx?: TxClient) {
+    async findTaxpayersForEvents(userId: string, userRole: string, page: number = 1, limit: number = 50, tx?: TxClient) {
         const client = tx ?? db;
         let taxpayers: any[] = [];
+        let total: number = 0;
+        const skip = (page - 1) * limit;
 
         if (userRole === "ADMIN") {
-            taxpayers = await client.taxpayer.findMany({
-                include: {
-                    event: true,
-                    IVAReports: true,
-                    ISLRReports: true,
-                    user: {
-                        select: {
-                            name: true,
+            [taxpayers, total] = await Promise.all([
+                client.taxpayer.findMany({
+                    skip,
+                    take: limit,
+                    where: { status: true },
+                    include: {
+                        event: true,
+                        IVAReports: true,
+                        ISLRReports: true,
+                        user: {
+                            select: {
+                                name: true,
+                            },
                         },
                     },
-                }
-            });
+                    orderBy: { created_at: 'desc' }
+                }),
+                client.taxpayer.count({ where: { status: true } })
+            ]);
         } else if (userRole === "COORDINATOR") {
             const group = await client.fiscalGroup.findUnique({
                 where: {
@@ -570,6 +579,7 @@ export class TaxpayerRepository {
             // Combine supervised members' taxpayers and supervisor's own taxpayers
             const supervisedTaxpayers = user.supervised_members.flatMap((member) => member.taxpayer);
             taxpayers = [...user.taxpayer, ...supervisedTaxpayers];
+            total = taxpayers.length;
         } else if (userRole === "FISCAL") {
             const fiscal = await client.user.findUnique({
                 where: {
@@ -593,9 +603,28 @@ export class TaxpayerRepository {
             if (!fiscal) throw new Error("Usuario no encontrado.");
 
             taxpayers = fiscal?.taxpayer;
+            total = taxpayers.length;
         }
 
-        return taxpayers;
+        // Para roles COORDINATOR, SUPERVISOR y FISCAL aplicamos paginación manualmente
+        if (userRole !== "ADMIN") {
+            const paginatedTaxpayers = taxpayers.slice(skip, skip + limit);
+            return {
+                data: paginatedTaxpayers,
+                total,
+                page,
+                totalPages: Math.ceil(total / limit),
+                limit
+            };
+        }
+
+        return {
+            data: taxpayers,
+            total,
+            page,
+            totalPages: Math.ceil(total / limit),
+            limit
+        };
     }
     
     async findUserWithTaxpayerStats(userId: string, tx?: TxClient) {
@@ -624,28 +653,45 @@ export class TaxpayerRepository {
         });
     }
 
-    async findAll(tx?: TxClient) {
+    async findAll(page: number = 1, limit: number = 50, tx?: TxClient) {
         const client = tx ?? db;
-        return client.taxpayer.findMany({
-            select: {
-                id: true,
-                name: true,
-                rif: true,
-                address: true,
-                process: true,
-                providenceNum: true,
-                contract_type: true,
-                emition_date: true,
-                taxpayer_category: true,
-                parish: true,
-                user: {
-                    select: {
-                        id: true,
-                        name: true,
+        const skip = (page - 1) * limit;
+        
+        const [taxpayers, total] = await Promise.all([
+            client.taxpayer.findMany({
+                skip,
+                take: limit,
+                where: { status: true },
+                select: {
+                    id: true,
+                    name: true,
+                    rif: true,
+                    address: true,
+                    process: true,
+                    providenceNum: true,
+                    contract_type: true,
+                    emition_date: true,
+                    taxpayer_category: true,
+                    parish: true,
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                        }
                     }
-                }
-            }
-        });
+                },
+                orderBy: { created_at: 'desc' }
+            }),
+            client.taxpayer.count({ where: { status: true } })
+        ]);
+        
+        return {
+            data: taxpayers,
+            total,
+            page,
+            totalPages: Math.ceil(total / limit),
+            limit
+        };
     }
 
     async findById(taxpayerId: string, tx?: TxClient): Promise<Taxpayer | null> {

@@ -1,5 +1,5 @@
 import { compareSync } from "bcryptjs";
-import { Prisma } from "@prisma/client";
+import { Prisma, user_roles } from "@prisma/client";
 import { db, runTransaction } from "../utils/db.server";
 import { generateAcessToken, NewUserInput, passwordHashing, UpdateUserByNameInput, User } from "./user.utils";
 import bcrypt from 'bcryptjs';
@@ -226,11 +226,18 @@ export async function updatePassword(userId: string, password: string) {
  * ✅ CORRECCIÓN 2026: Filtro de año implementado correctamente
  * - Si se especifica año, solo retorna fiscales que tienen casos (taxpayers) de ese año
  * - Si no se especifica año, retorna todos los fiscales
+ * ✅ Paginación: page (default 1), limit (default 50). Retorna { data, total, page, totalPages, limit }
  */
-export async function getFiscalsForReview(userId: string, userRole: string, year?: number) {
-
-
+export async function getFiscalsForReview(
+    userId: string,
+    userRole: string,
+    year?: number,
+    page: number = 1,
+    limit: number = 50
+) {
     try {
+        const skip = (page - 1) * limit;
+
         // ✅ Construir filtro de año para taxpayers si se especifica
         let taxpayerYearFilter: any = undefined;
         if (year !== undefined) {
@@ -251,34 +258,39 @@ export async function getFiscalsForReview(userId: string, userRole: string, year
         }
 
         let fiscals: User[] = [];
+        let total: number = 0;
 
         if (userRole === "ADMIN") {
-            const users = await db.user.findMany({
-                where: {
-                    role: { in: ["SUPERVISOR", "FISCAL"] },
-                    // ✅ Filtrar por fiscales que tienen casos del año especificado
-                    ...(taxpayerYearFilter ? {
-                        taxpayer: taxpayerYearFilter
-                    } : {}),
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    group: {
-                        select: {
-                            name: true,
+            const where = {
+                role: { in: [user_roles.SUPERVISOR, user_roles.FISCAL] },
+                ...(taxpayerYearFilter ? { taxpayer: taxpayerYearFilter } : {}),
+            };
+            const [users, count] = await Promise.all([
+                db.user.findMany({
+                    where,
+                    skip,
+                    take: limit,
+                    select: {
+                        id: true,
+                        name: true,
+                        group: {
+                            select: {
+                                name: true,
+                            },
+                        },
+                        role: true,
+                        personId: true,
+                        supervisor: {
+                            select: {
+                                name: true,
+                            }
                         },
                     },
-                    role: true,
-                    personId: true,
-                    supervisor: {
-                        select: {
-                            name: true,
-                        }
-                    },
-                },
-            });
+                }),
+                db.user.count({ where }),
+            ]);
             fiscals = users;
+            total = count;
         } else if (userRole === "COORDINATOR") {
             // ✅ CORRECCIÓN: Obtener todos los miembros primero, luego filtrar por año fiscal
             const group = await db.fiscalGroup.findUnique({
@@ -330,6 +342,7 @@ export async function getFiscalsForReview(userId: string, userRole: string, year
             } else {
                 fiscals = (group?.members || []) as unknown as User[];
             }
+            total = fiscals.length;
         } else if (userRole === "SUPERVISOR") {
             const supervisor = await db.user.findUnique({
                 where: {
@@ -364,9 +377,10 @@ export async function getFiscalsForReview(userId: string, userRole: string, year
             });
 
             fiscals = supervisor?.supervised_members || [];
-        };
+            total = fiscals.length;
+        }
 
-        if (!fiscals) throw new Error("No se obtuvieron fiscales.")
+        if (!fiscals) throw new Error("No se obtuvieron fiscales.");
 
         // ✅ Agregar información del año filtrado si se especifica
         const fiscalsWithYear = fiscals.map(fiscal => ({
@@ -374,9 +388,25 @@ export async function getFiscalsForReview(userId: string, userRole: string, year
             filterYear: year || null, // Añadir el año del filtro si existe
         }));
 
-        return fiscalsWithYear;
+        // Para COORDINATOR y SUPERVISOR: aplicar paginación en memoria
+        if (userRole !== "ADMIN") {
+            const paginated = fiscalsWithYear.slice(skip, skip + limit);
+            return {
+                data: paginated,
+                total,
+                page,
+                totalPages: Math.ceil(total / limit),
+                limit,
+            };
+        }
 
-
+        return {
+            data: fiscalsWithYear,
+            total,
+            page,
+            totalPages: Math.ceil(total / limit),
+            limit,
+        };
     } catch (e: any) {
         logger.error(e.message);
         throw new Error(e.message);

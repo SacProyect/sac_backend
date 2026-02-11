@@ -845,20 +845,20 @@ export const getFiscalTaxpayersForStats = async (userId: string) => {
     }
 };
 
-export const getTaxpayersForEvents = async (userId: string, userRole: string) => {
+export const getTaxpayersForEvents = async (userId: string, userRole: string, page: number = 1, limit: number = 50) => {
     try {
-        const taxpayers = await taxpayerRepository.findTaxpayersForEvents(userId, userRole);
-        return taxpayers;
+        const result = await taxpayerRepository.findTaxpayersForEvents(userId, userRole, page, limit);
+        return result;
     } catch (e: any) {
         logger.error(e);
         throw new Error(e.message || "Error al obtener contribuyentes");
     }
 }
 
-export const getTaxpayers = async () => {
+export const getTaxpayers = async (page: number = 1, limit: number = 50) => {
     try {
-        const taxpayers = await taxpayerRepository.findAll();
-        return taxpayers;
+        const result = await taxpayerRepository.findAll(page, limit);
+        return result;
     } catch (e) {
         logger.error(e);
         throw new Error("No se pudo obtener la lista de contribuyentes.")

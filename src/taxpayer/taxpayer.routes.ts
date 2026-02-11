@@ -34,10 +34,12 @@ taxpayerRouter.get('/get-taxpayers-for-events',
 
         const userId = user.id;
         const userRole = user.role;
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
 
         try {
-            const taxpayer = await TaxpayerServices.getTaxpayersForEvents(userId, userRole);
-            return res.status(200).json(taxpayer)
+            const result = await TaxpayerServices.getTaxpayersForEvents(userId, userRole, page, limit);
+            return res.status(200).json(result)
         } catch (error: any) {
             console.error(error);
             return res.status(500).json(error)
@@ -73,9 +75,13 @@ taxpayerRouter.get('/get-taxpayers',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
+        
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+        
         try {
-            const taxpayer = await TaxpayerServices.getTaxpayers();
-            return res.status(200).json(taxpayer)
+            const result = await TaxpayerServices.getTaxpayers(page, limit);
+            return res.status(200).json(result)
         } catch (error: any) {
             console.error("No se pudieron obtener los taxpayers: ", error);
             return res.status(500).json(error)
