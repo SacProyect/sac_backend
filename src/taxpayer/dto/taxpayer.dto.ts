@@ -2,19 +2,19 @@ import { taxpayer_contract_type, taxpayer_process, Taxpayer_Fases } from "@prism
 import { InvestigationPdf } from "../taxpayer.utils";
 
 export class CreateTaxpayerDto {
-    providenceNum: bigint;
-    process: taxpayer_process;
-    name: string;
-    rif: string;
-    emition_date: Date;
-    contract_type: taxpayer_contract_type;
-    officerId: string;
-    address: string;
+    providenceNum!: bigint;
+    process!: taxpayer_process;
+    name!: string;
+    rif!: string;
+    emition_date!: Date;
+    contract_type!: taxpayer_contract_type;
+    officerId!: string;
+    address!: string;
     pdfs?: InvestigationPdf[];
     userId?: string;
     role?: string;
-    categoryId: string;
-    parishId: string;
+    categoryId!: string;
+    parishId!: string;
 }
 
 export class UpdateTaxpayerDto {

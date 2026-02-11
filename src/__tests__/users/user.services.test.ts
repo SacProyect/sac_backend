@@ -34,7 +34,7 @@ describe("User Services", () => {
       expect(result.user).toBeDefined();
       expect(result.token).toBeDefined();
       expect(result.user.id).toBe("u1");
-      expect(result.user.password).toBe("");
+      expect((result.user as { password?: string }).password).toBe("");
     });
 
     it("rejects when personId not found", async () => {
@@ -57,7 +57,7 @@ describe("User Services", () => {
       const user = { id: "u1", personId: 1, name: "A", role: "ADMIN", password: "secret", coordinatedGroup: null };
       (mockDb.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(user);
       const result = await UserServices.logIn(1, "pass");
-      expect(result.user.password).toBe("");
+      expect((result.user as { password?: string }).password).toBe("");
     });
   });
 
