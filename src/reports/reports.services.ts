@@ -2870,10 +2870,12 @@ export async function getCompleteReport(data?: CompleteReportInput) {
                     include: {
                         taxpayer: {
                             where: {
-                                // emition_date: {
-                                //     gte: startTaxpayer,
-                                //     lte: endTaxpayer,
-                                // },
+                                ...(start && end ? {
+                                    emition_date: {
+                                        gte: start,
+                                        lte: end,
+                                    },
+                                } : {}),
                                 ...(data?.process ? { process: data.process } : {}),
                             },
                             include: {
