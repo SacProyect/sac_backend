@@ -1,15 +1,11 @@
-import express from "express";
 import { Router } from "express";
 import type { Request, Response } from "express";
 import * as CensusServices from "./census.services"
 import { body, validationResult } from 'express-validator';
 import { authenticateToken, AuthRequest } from "../users/user.utils";
-// import multer, { StorageEngine } from "multer";
-// import path from "path";
-import fs from 'fs'
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { createLocalUpload } from "../utils/multer.local";
-import { uploadMemory } from "../utils/multer.memory";
+import logger from "../utils/logger";
+import { ApiError } from "../utils/apiResponse";
+
 export const censusRouter = Router();
 
 
@@ -28,7 +24,7 @@ censusRouter.post(
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            console.log("Validation Errors:", errors.array()); // 👈 imprime en consola del backend
+            logger.warn("census validación fallida", { details: errors.array() });
             return res.status(400).json({ errors: errors.array() });
         }
 
@@ -56,8 +52,8 @@ censusRouter.post(
 
             return res.status(200).json(newTaxpayerCensus);
         } catch (error: any) {
-            console.error(error);
-            return res.status(500).json({ message: "Server error", error: error.message });
+            logger.error("create-census error", { message: error?.message, stack: error?.stack });
+            return ApiError.internal(res, error.message || "Error al crear el censo");
         }
     }
 );

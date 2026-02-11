@@ -1,9 +1,9 @@
-import { JwtPayload, sign, verify } from "jsonwebtoken"
+import { JwtPayload, sign, verify, JsonWebTokenError, TokenExpiredError } from "jsonwebtoken"
 import { NextFunction, Request, Response } from "express"
 import { hash } from "bcryptjs";
 import { Taxpayer } from "../taxpayer/taxpayer.utils";
 import { Taxpayer_Fases, user_roles } from "@prisma/client";
-//TODO ESTO ES UNA PRUEBA PARA VER SI FUNCIONA EN LOCAL ESTO SE VA A ELIMINAR MAS ADELANTE
+import logger from "../utils/logger";
 
 import * as dotenv from "dotenv";
 import path from "path";
@@ -72,27 +72,113 @@ export const generateAcessToken = (user: User) => {
 }
 
 export const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
+    const requestId = (req as any).requestId;
+
     try {
         const authHeader = req.headers["authorization"];
         const token = authHeader && authHeader.split(" ")[1];
 
         if (!token) {
-            return res.status(401).json({ message: "Access denied. No token provided." });
+            logger.warn('[AUTH] Petición sin token', {
+                path: req.originalUrl,
+                method: req.method,
+                ip: req.ip || req.headers['x-forwarded-for'],
+                userAgent: req.headers['user-agent']?.substring(0, 100),
+                requestId,
+            });
+            return res.status(401).json({
+                success: false,
+                error: {
+                    code: 'UNAUTHORIZED',
+                    message: 'Acceso denegado. No se proporcionó token.',
+                    requestId,
+                },
+            });
+        }
+
+        // Verificar que TOKEN_SECRET esté configurado
+        if (!TOKEN_SECRET) {
+            logger.error('[AUTH] TOKEN_SECRET no configurado en variables de entorno');
+            return res.status(500).json({
+                success: false,
+                error: {
+                    code: 'INTERNAL_ERROR',
+                    message: 'Error de configuración del servidor.',
+                    requestId,
+                },
+            });
         }
 
         const decoded = verify(token, TOKEN_SECRET) as { type: string; user: string };
 
         if (!decoded || !decoded.user || !decoded.type) {
-            return res.status(401).json({ message: "Invalid token." });
+            logger.warn('[AUTH] Token con payload inválido', {
+                path: req.originalUrl,
+                requestId,
+            });
+            return res.status(401).json({
+                success: false,
+                error: {
+                    code: 'UNAUTHORIZED',
+                    message: 'Token inválido.',
+                    requestId,
+                },
+            });
         }
 
-        // ✅ Correctly attach user data by explicitly casting `req`
+        // Adjuntar datos del usuario al request
         (req as AuthRequest).user = { id: decoded.user, role: decoded.type };
 
         next();
     } catch (error) {
-        console.error("Authentication error:", error);
-        return res.status(401).json({ message: "Error while authenticating." });
+        // Errores específicos de JWT para dar mensajes más claros
+        if (error instanceof TokenExpiredError) {
+            logger.warn('[AUTH] Token expirado', {
+                path: req.originalUrl,
+                requestId,
+                expiredAt: error.expiredAt,
+            });
+            return res.status(401).json({
+                success: false,
+                error: {
+                    code: 'UNAUTHORIZED',
+                    message: 'La sesión ha expirado. Inicie sesión nuevamente.',
+                    requestId,
+                },
+            });
+        }
+
+        if (error instanceof JsonWebTokenError) {
+            logger.warn('[AUTH] Token malformado o inválido', {
+                path: req.originalUrl,
+                requestId,
+                errorMessage: error.message,
+            });
+            return res.status(401).json({
+                success: false,
+                error: {
+                    code: 'UNAUTHORIZED',
+                    message: 'Token inválido. Inicie sesión nuevamente.',
+                    requestId,
+                },
+            });
+        }
+
+        // Error inesperado
+        logger.error('[AUTH] Error inesperado al autenticar', {
+            message: (error as Error).message,
+            stack: (error as Error).stack,
+            path: req.originalUrl,
+            requestId,
+        });
+        return res.status(401).json({
+            success: false,
+            error: {
+                code: 'UNAUTHORIZED',
+                message: 'Error al verificar credenciales.',
+                requestId,
+            },
+        });
     }
 };
 

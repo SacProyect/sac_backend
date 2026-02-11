@@ -444,7 +444,7 @@ export async function updateUserByName(name: string, data: UpdateUserByNameInput
 
         return updatedUser;
     } catch (e: any) {
-        console.error(e);
+        logger.error("updateUserByName error", { message: e?.message, stack: e?.stack });
         throw new Error("Couldn't update the user.");
     }
 }

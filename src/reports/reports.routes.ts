@@ -4,13 +4,12 @@ import * as ReportService from './reports.services'
 import { authenticateToken, AuthRequest } from "../users/user.utils";
 import { body, validationResult, query } from 'express-validator';
 import { createError } from "./reports.services";
-import multer, { StorageEngine } from "multer";
-import path from "path";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getS3Client } from "../utils/s3.client";
 import { createLocalUpload } from "../utils/multer.local";
 import fs from 'fs';
-import { report } from "process";
+import logger from "../utils/logger";
+import { ApiError } from "../utils/apiResponse";
 
 // Helper function to parse date parameter - handles both year numbers and date strings
 function parseDateParam(dateParam: string | undefined): Date {
@@ -114,9 +113,9 @@ reportRouter.post('/errors',
 
             return res.status(200).json(err);
 
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json({ error: "Error interno del servidor" });
+        } catch (e: any) {
+            logger.error("create-error report error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Error al crear el reporte de error");
         }
     }
 );
@@ -222,9 +221,9 @@ reportRouter.get('/fiscal-groups',
             const getGroups = await ReportService.getFiscalGroups({ role, userId, ...filterParams })
 
             return res.status(200).json(getGroups);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Error returning groups")
+        } catch (e: any) {
+            logger.error("fiscal-groups error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Error al obtener grupos fiscales");
         }
 
     }
@@ -253,9 +252,9 @@ reportRouter.get('/get-group-records',
         try {
             const groupRecords = await ReportService.getGroupRecord(input);
             return res.status(200).json(groupRecords);
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json("Server error.");
+        } catch (e: any) {
+            logger.error("get-group-records error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Error al obtener registros del grupo");
         }
 
     }
@@ -278,9 +277,9 @@ reportRouter.get('/global-performance',
             const globalPerformance = await ReportService.getGlobalPerformance(date);
 
             return res.json(globalPerformance)
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Unexpected error")
+        } catch (e: any) {
+            logger.error("global-performance error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Error al obtener el rendimiento global");
         }
 
     }
@@ -304,9 +303,9 @@ reportRouter.get("/global-taxpayer-performance",
 
             return res.status(200).json(response)
 
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json({ message: "Internal server error" });
+        } catch (e: any) {
+            logger.error("global-taxpayer-performance error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Error al obtener rendimiento de contribuyentes");
         }
 
     }
@@ -328,9 +327,9 @@ reportRouter.get("/debug-query",
 
             return res.status(200).json(response)
 
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json({ message: "Internal server error" });
+        } catch (e: any) {
+            logger.error("debug-query error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Error en debug query");
         }
 
     }
@@ -353,9 +352,9 @@ reportRouter.get("/group-performance",
 
             return res.status(200).json(response);
 
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error al realizar la petición.")
+        } catch (e: any) {
+            logger.error("group-performance error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Ha ocurrido un error al obtener el rendimiento del grupo");
         }
 
     }
@@ -378,9 +377,9 @@ reportRouter.get("/global-kpi",
 
             return res.status(200).json(response);
 
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
 
     }
@@ -405,9 +404,9 @@ reportRouter.get("/individual-iva-report/:id",
             const response = await ReportService.getIndividualIvaReport(id, date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 )
@@ -428,9 +427,9 @@ reportRouter.get('/get-best-supervisor-by-group',
             const response = await ReportService.getBestSupervisorByGroups(date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 )
@@ -451,9 +450,9 @@ reportRouter.get('/get-top-fiscals',
             const response = await ReportService.getTopFiscals(date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 )
@@ -474,9 +473,9 @@ reportRouter.get('/get-top-five-by-group',
             const response = await ReportService.getTopFiveByGroup(date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 )
@@ -497,9 +496,9 @@ reportRouter.get('/get-monthly-growth',
             const response = await ReportService.getMonthlyCompliance(date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 )
@@ -520,9 +519,9 @@ reportRouter.get('/get-taxpayers-compliance',
             const response = await ReportService.getTaxpayerCompliance(date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 )
@@ -543,9 +542,9 @@ reportRouter.get('/get-expected-amount',
             const response = await ReportService.getExpectedAmount(date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 );
@@ -567,9 +566,9 @@ reportRouter.get('/get-fiscal-info/:id',
             const response = await ReportService.getFiscalInfo(id, date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 );
@@ -591,9 +590,9 @@ reportRouter.get('/get-fiscal-taxpayers/:id',
             const response = await ReportService.getFiscalTaxpayers(id, date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 );
@@ -615,9 +614,9 @@ reportRouter.get('/get-fiscal-monthly-collect/:id',
             const response = await ReportService.getMonthyCollect(id, date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 )
@@ -639,9 +638,9 @@ reportRouter.get('/get-fiscal-monthly-performance/:id',
             const response = await ReportService.getMontlyPerformance(id, date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 )
@@ -663,9 +662,9 @@ reportRouter.get('/get-fiscal-compliance-by-process/:id',
             const response = await ReportService.getComplianceByProcess(id, date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 );
@@ -687,9 +686,9 @@ reportRouter.get('/get-fiscal-compliance/:id',
             const response = await ReportService.getFiscalTaxpayerCompliance(id, date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 );
@@ -711,9 +710,9 @@ reportRouter.get('/get-fiscal-collect-analisis/:id',
             const response = await ReportService.getFiscalCollectAnalisis(id, date);
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
         }
     }
 );
@@ -743,8 +742,6 @@ reportRouter.get('/get-complete-report',
             userRole = user.role;
         }
 
-        console.log(userId);
-
         try {
             // Pass to the service 
             const response = await ReportService.getCompleteReport({
@@ -757,9 +754,9 @@ reportRouter.get('/get-complete-report',
             });
 
             return res.status(200).json(response);
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json("Ha ocurrido un error.");
+        } catch (e: any) {
+            logger.error("get-complete-report error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Ha ocurrido un error al generar el reporte completo");
         }
     }
 

@@ -1,5 +1,5 @@
 import * as dotenv from "dotenv"
-import logger from "./src/utils/logger"
+import logger, { flushLogger } from "./src/utils/logger"
 import app from "./src/app"
 
 dotenv.config()
@@ -23,15 +23,70 @@ function logDatabaseConnection() {
     }
 }
 
+/** Verificar variables de entorno críticas al arrancar */
+function checkRequiredEnvVars() {
+    const required = ['DATABASE_URL', 'TOKEN_SECRET']
+    const missing = required.filter(v => !process.env[v])
+
+    if (missing.length > 0) {
+        logger.error(`[STARTUP] Variables de entorno faltantes: ${missing.join(', ')}`)
+        logger.error('[STARTUP] El servidor puede no funcionar correctamente sin estas variables')
+    }
+
+    // Variables opcionales pero recomendadas
+    const optional = ['BETTERSTACK_SOURCE_TOKEN', 'NODE_ENV']
+    const missingOptional = optional.filter(v => !process.env[v])
+    if (missingOptional.length > 0) {
+        logger.warn(`[STARTUP] Variables opcionales no definidas: ${missingOptional.join(', ')}`)
+    }
+
+    logger.info(`[STARTUP] NODE_ENV=${process.env.NODE_ENV ?? 'development'}`)
+}
+
+checkRequiredEnvVars()
 logDatabaseConnection()
 
+// Capturar errores no manejados que matarían el proceso
+process.on("uncaughtException", (error) => {
+    logger.error("[FATAL] Uncaught Exception", {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+    })
+    flushLogger().finally(() => process.exit(1))
+})
+
+process.on("unhandledRejection", (reason: unknown) => {
+    const err = reason instanceof Error ? reason : new Error(String(reason))
+    logger.error("[FATAL] Unhandled Promise Rejection", {
+        message: err.message,
+        stack: err.stack,
+        name: err.name,
+    })
+})
+
+// Graceful shutdown para SIGTERM (producción: PM2, Docker, Render, etc.)
+process.on("SIGTERM", async () => {
+    logger.info("[SHUTDOWN] SIGTERM recibido, cerrando servidor...")
+    await flushLogger()
+    process.exit(0)
+})
+
+// Graceful shutdown para SIGINT (desarrollo: Ctrl+C)
+process.on("SIGINT", async () => {
+    logger.info("[SHUTDOWN] SIGINT recibido, cerrando servidor...")
+    await flushLogger()
+    process.exit(0)
+})
+
 if (!process.env.PORT) {
-    logger.warn('No port value specified...')
+    logger.warn('[STARTUP] No port value specified, defaulting to 3000')
 }
-const PORT = parseInt(process.env.PORT as string, 10)
+const PORT = parseInt(process.env.PORT as string, 10) || 3000
 
 app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`Server is listening on port: ${PORT}`)
+    logger.info(`[STARTUP] Server is listening on port: ${PORT}`)
+    logger.info(`[STARTUP] Health check: http://localhost:${PORT}/health`)
 })
 
 export default app

@@ -4,8 +4,6 @@ import * as TaxpayerServices from "./taxpayer.services"
 import { body, validationResult } from 'express-validator';
 import { EventType } from "./taxpayer.utils";
 import { authenticateToken, AuthRequest } from "../users/user.utils";
-// import multer, { StorageEngine } from "multer";
-// import path from "path";
 import fs from 'fs'
 import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getS3Client } from "../utils/s3.client";
@@ -14,7 +12,7 @@ import { uploadMemory } from "../utils/multer.memory";
 import { Decimal } from "@prisma/client/runtime/library";
 import { db } from "../utils/db.server";
 import logger from "../utils/logger";
-// import { commonParams } from "@aws-sdk/client-s3/dist-types/endpoint/EndpointParameters";
+import { ApiError } from "../utils/apiResponse";
 
 const s3 = getS3Client();
 export const taxpayerRouter = express.Router();
@@ -102,9 +100,9 @@ taxpayerRouter.get('/download-repair-report/:key',
 
             return res.status(201).json(presignedUrl);
 
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json({ message: "Couldn't generate a repair report url" })
+        } catch (e: any) {
+            logger.error("download-repair-report error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "No se pudo generar la URL del acta de reparo");
         }
 
     }
@@ -130,9 +128,9 @@ taxpayerRouter.get("/download-investigation",
 
             return res.status(200).json(presignedUrl);
 
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json({ message: "Error del servidor." })
+        } catch (e: any) {
+            logger.error("download-investigation error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Error al generar URL de investigación");
         }
     }
 )
@@ -213,8 +211,8 @@ taxpayerRouter.post(
 
             return res.status(200).json(newTaxpayer);
         } catch (error: any) {
-            console.error(error);
-            return res.status(500).json({ message: "Server error", error: error.message });
+            logger.error("create-taxpayer-post error", { message: error?.message, stack: error?.stack });
+            return ApiError.internal(res, error.message || "Error al crear el contribuyente");
         }
     }
 );
@@ -280,8 +278,8 @@ taxpayerRouter.post(
                     }
                 }
             } catch (accessError: any) {
-                console.error("Error verificando acceso:", accessError);
-                return res.status(500).json({ error: "Error al verificar permisos de acceso" });
+                logger.error("repair-report acceso error", { message: accessError?.message, stack: accessError?.stack });
+                return ApiError.internal(res, "Error al verificar permisos de acceso");
             }
         }
 
@@ -306,8 +304,8 @@ taxpayerRouter.post(
             const newRepairReport = await TaxpayerServices.uploadRepairReport(taxpayerId, "");
 
             if (!newRepairReport || !newRepairReport.id) {
-                console.error("❌ Failed to create RepairReport record for taxpayer:", taxpayerId);
-                return res.status(500).json({ error: "No se pudo crear el registro del acta de reparo" });
+                logger.error("repair-report: no se pudo crear registro", { taxpayerId });
+                return ApiError.internal(res, "No se pudo crear el registro del acta de reparo");
             }
 
             repairReportId = newRepairReport.id;
@@ -327,24 +325,27 @@ taxpayerRouter.post(
 
             return res.status(201).json(updatedRepairReport);
         } catch (error: any) {
-            console.error("❌ Error during repair report upload flow:", error);
+            logger.error("repair-report upload error", { 
+                message: error?.message, 
+                stack: error?.stack, 
+                taxpayerId,
+                repairReportId,
+            });
 
             // Intentar limpiar el registro si ya fue creado
             if (repairReportId) {
                 try {
                     await TaxpayerServices.deleteRepairReportById(repairReportId);
-                    console.warn(`⚠️ Deleted RepairReport with ID ${repairReportId} due to failure`);
-                } catch (deleteError) {
-                    console.error(`❌ Failed to delete RepairReport with ID ${repairReportId}:`, deleteError);
+                    logger.warn(`repair-report: limpieza de registro ${repairReportId} tras fallo`);
+                } catch (deleteError: any) {
+                    logger.error(`repair-report: no se pudo limpiar registro ${repairReportId}`, { 
+                        message: deleteError?.message 
+                    });
                 }
             }
 
-            // ✅ CORRECCIÓN: Mensaje de error más claro
             const errorMessage = error.message || "Error desconocido al subir el acta de reparo";
-            return res.status(500).json({
-                error: errorMessage,
-                details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-            });
+            return ApiError.internal(res, errorMessage, error.stack);
         }
     }
 );
@@ -365,9 +366,9 @@ taxpayerRouter.get("/get-taxpayer-categories",
 
             return res.status(200).json(categories);
 
-        } catch (e) {
-            console.error(e)
-            return res.status(500).json("couldn't get the taxpayer categories.")
+        } catch (e: any) {
+            logger.error("get-taxpayer-categories error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "No se pudieron obtener las categorías de contribuyentes");
         }
     }
 )
@@ -390,9 +391,9 @@ taxpayerRouter.get('/get-parish-list',
 
             return res.status(200).json(parishList);
 
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json("Couldn't get the list of parish.")
+        } catch (e: any) {
+            logger.error("get-parish-list error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "No se pudo obtener la lista de parroquias");
         }
 
     }
@@ -431,13 +432,9 @@ taxpayerRouter.post(
             return res.status(201).json(response);
 
         } catch (error: any) {
-            console.error("API Error en create-taxpayer:", error);
-            // ✅ CORRECCIÓN: Mensaje de error más claro y útil para los fiscales
+            logger.error("create-taxpayer error", { message: error?.message, stack: error?.stack });
             const errorMessage = error.message || "Error desconocido al crear el contribuyente";
-            return res.status(500).json({ 
-                error: errorMessage,
-                details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
+            return ApiError.internal(res, errorMessage, error.stack);
         }
     }
 );
@@ -503,8 +500,8 @@ taxpayerRouter.put("/:id",
             )
             return res.status(200).json(updatedTaxpayer)
         } catch (error: any) {
-            console.error(error);
-            return res.status(500).json({ error: "Error interno del servidor" });
+            logger.error("update-taxpayer error", { message: error?.message, stack: error?.stack });
+            return ApiError.internal(res);
         }
     }
 
@@ -535,9 +532,9 @@ taxpayerRouter.put("/modify-observations/:id",
             const updatedObservation = await TaxpayerServices.updateObservation(id, newDescription);
 
             return res.status(200).json(updatedObservation);
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json("Can't update the description");
+        } catch (e: any) {
+            logger.error("modify-observations error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "No se pudo actualizar la descripción");
         }
     }
 )
@@ -573,9 +570,9 @@ taxpayerRouter.put("/update-fase/:id",
         try {
             const updatedFase = await TaxpayerServices.updateFase(data);
             return res.status(200).json(updatedFase);
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json("Could not update the taxpayer fase");
+        } catch (e: any) {
+            logger.error("update-fase error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "No se pudo actualizar la fase del contribuyente");
         }
     }
 )
@@ -599,9 +596,9 @@ taxpayerRouter.put("/notify/:id",
             const notified = await TaxpayerServices.notifyTaxpayer(id);
 
             return res.status(200).json(notified);
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json({ error: "Error reporting the taxpayer as notified" })
+        } catch (e: any) {
+            logger.error("notify error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Error al notificar al contribuyente");
         }
     }
 )
@@ -632,9 +629,9 @@ taxpayerRouter.put("/updatePayment/:id",
 
             return res.status(200).json(updatedPayment);
 
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json({ error: "Error updating payment for this fine." })
+        } catch (e: any) {
+            logger.error("updatePayment error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Error al actualizar el pago de la multa");
         }
     }
 )
@@ -669,9 +666,9 @@ taxpayerRouter.delete("/del-observation/:id",
 
             return res.status(200).json(observation);
 
-        } catch (e) {
-            console.error("Error erasing the observation");
-            return res.status(500).json("Couldn't erase the observation");
+        } catch (e: any) {
+            logger.error("del-observation error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "No se pudo eliminar la observación");
         }
     }
 )
@@ -718,9 +715,9 @@ taxpayerRouter.get('/data/:id',
 
             return res.status(200).json(data);
 
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json("Ha ocurrido un error.")
+        } catch (e: any) {
+            logger.error("data error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Ha ocurrido un error al obtener datos");
         }
     }
 )
@@ -744,9 +741,9 @@ taxpayerRouter.get("/get-observations/:id",
 
             return res.status(200).json(observations);
 
-        } catch (e) {
-            console.error("Error getting observations: " + e);
-            return res.status(500).json("Error getting the observations");
+        } catch (e: any) {
+            logger.error("get-observations error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Error al obtener las observaciones");
         }
     }
 )
@@ -770,8 +767,8 @@ taxpayerRouter.get('/get-islr/:id',
             return res.status(200).json(islrReport);
 
         } catch (e: any) {
-            console.error(e);
-            return res.status(500).json({ error: "Error interno del servidor" });
+            logger.error("get-islr error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "Error al obtener reportes ISLR");
         }
     }
 )
@@ -793,9 +790,9 @@ taxpayerRouter.get("/getTaxSummary/:id",
 
             return res.status(200).json(taxSummary);
 
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json({ error: "Can not get the Tax Summary for this taxpayer." })
+        } catch (e: any) {
+            logger.error("getTaxSummary error", { message: e?.message, stack: e?.stack });
+            return ApiError.internal(res, "No se pudo obtener el resumen tributario del contribuyente");
         }
 
     }
@@ -812,7 +809,7 @@ taxpayerRouter.post('/fine',
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            console.error(errors.array())
+            logger.warn("fine validación fallida", { details: errors.array() });
             return res.status(400).json({ errors: errors.array() });
         }
         try {
@@ -820,7 +817,7 @@ taxpayerRouter.post('/fine',
             const fine = await TaxpayerServices.createEvent(input)
             return res.status(200).json(fine)
         } catch (error: any) {
-            console.error("Error en fine:", error);
+            logger.error("fine error", { message: error?.message, stack: error?.stack });
             const errorMessage = error.message || "Error al crear la multa";
             // Retornar 400 para errores de validación, 500 solo para errores del servidor
             const statusCode = errorMessage.includes("no encontrado") || 
@@ -842,7 +839,7 @@ taxpayerRouter.post('/create-index-iva',
 
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            console.error(errors.array())
+            logger.warn("create-index-iva validación fallida", { details: errors.array() });
             return res.status(400).json({ errors: errors.array() });
         }
 
@@ -885,14 +882,11 @@ taxpayerRouter.put('/modify-individual-index-iva/:id',
             const { newIndexIva } = req.body;
             const taxpayerId: string = req.params.id;
 
-            console.log(newIndexIva);
-            console.log(taxpayerId);
-
             const index = await TaxpayerServices.modifyIndexIva(new Decimal(newIndexIva), taxpayerId);
             return res.status(200).json(index)
         } catch (error: any) {
-            console.error(error);
-            return res.status(500).json({ error: "Error interno del servidor" });
+            logger.error("modify-individual-index-iva error", { message: error?.message, stack: error?.stack });
+            return ApiError.internal(res, "Error al modificar el índice IVA");
         }
     }
 )
@@ -914,7 +908,7 @@ taxpayerRouter.post('/createIVA',
 
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            console.error(errors.array())
+            logger.warn("createIVA validación fallida", { details: errors.array() });
             return res.status(400).json({ errors: errors.array() });
         }
 
@@ -927,9 +921,6 @@ taxpayerRouter.post('/createIVA',
 
         if (!data.iva && !data.excess) return res.status(400).json("Either IVA or Excess must be provided");
 
-
-        console.log("Received IVA data:", req.body);
-
         try {
             // ✅ Pasar userId y userRole para validación de acceso de fiscales rotados
             const response = await TaxpayerServices.createIVA(data, user.id, user.role)
@@ -937,14 +928,13 @@ taxpayerRouter.post('/createIVA',
             return res.status(200).json(response);
 
         } catch (e: any) {
-            console.error(e);
-
+            logger.error("createIVA error", { message: e?.message, stack: e?.stack });
 
             if (e.message === "IVA report for this taxpayer and month already exists.") {
-                return res.status(400).json({ error: e.message });
+                return ApiError.conflict(res, e.message);
             }
 
-            return res.status(500).json({ error: "Error creating the report." })
+            return ApiError.internal(res, "Error al crear el reporte IVA");
 
         }
     }
@@ -1077,7 +1067,7 @@ taxpayerRouter.post('/payment_compromise',
             logger.info("Payment compromise sent to client");  
             return res.status(200).json(payment_compromise)
         } catch (error: any) {
-            console.error("Error en payment_compromise:", error);
+            logger.error("payment_compromise error", { message: error?.message, stack: error?.stack });
             
             if (error.name === "AmountError") {
                 logger.error(error.message);
@@ -1142,9 +1132,8 @@ taxpayerRouter.put('/fine/:eventId',
             logger.info("Fine sent to client");  
             return res.status(200).json(fine);
         } catch (error: any) {
-            console.error(error);
-            logger.error(error.message);
-            return res.status(500).json({ error: error.message });
+            logger.error("fine update error", { message: error?.message, stack: error?.stack });
+            return ApiError.internal(res, error.message || "Error al actualizar la multa");
         }
     }
 );
@@ -1163,9 +1152,8 @@ taxpayerRouter.put('/updateIva/:ivaId',
             logger.info("IVA report sent to client");  
             return res.status(200).json(updated);
         } catch (error: any) {
-            console.error(error);
-            logger.error(error.message);
-            return res.status(500).json({ message: error.message });
+            logger.error("updateIva error", { message: error?.message, stack: error?.stack });
+            return ApiError.internal(res, error.message || "Error al actualizar reporte IVA");
         }
     }
 );
@@ -1230,9 +1218,9 @@ taxpayerRouter.put(
             const updated = await TaxpayerServices.updateTaxpayer(id, data, user.id, user.role);
 
             return res.status(201).json(updated);
-        } catch (err) {
-            console.error(err);
-            return res.status(500).json("Error al actualizar el contribuyente");
+        } catch (err: any) {
+            logger.error("update-taxpayer-put error", { message: err?.message, stack: err?.stack });
+            return ApiError.internal(res, "Error al actualizar el contribuyente");
         }
     }
 );
@@ -1352,8 +1340,6 @@ taxpayerRouter.delete('/event/:id',
 
         try {
             const id: string = (req.params.id);
-
-            console.log("ID: " + id);
 
             const event = await TaxpayerServices.deleteEvent(id)
             logger.info("Event deleted successfully");
