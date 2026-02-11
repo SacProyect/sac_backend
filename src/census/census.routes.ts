@@ -5,6 +5,7 @@ import { body, validationResult } from 'express-validator';
 import { authenticateToken, AuthRequest } from "../users/user.utils";
 import logger from "../utils/logger";
 import { ApiError } from "../utils/apiResponse";
+import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache.middleware";
 
 export const censusRouter = Router();
 
@@ -12,6 +13,7 @@ export const censusRouter = Router();
 censusRouter.post(
     '/',
     authenticateToken,
+    invalidateCacheMiddleware(['census', 'census-list']),
     body("number").isNumeric(),
     body("process").isString(),
     body("name").isString(),
@@ -61,7 +63,7 @@ censusRouter.post(
 
 censusRouter.get('/getCensus',
     authenticateToken,
-
+    cacheMiddleware({ ttl: 120000, tags: ['census', 'census-list'], includeUser: true }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest;
@@ -84,7 +86,7 @@ censusRouter.get('/getCensus',
 
 censusRouter.delete('/delete-census/:id',
     authenticateToken,
-
+    invalidateCacheMiddleware(['census', 'census-list']),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest;

@@ -10,6 +10,7 @@ import { createLocalUpload } from "../utils/multer.local";
 import fs from 'fs';
 import logger from "../utils/logger";
 import { ApiError } from "../utils/apiResponse";
+import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache.middleware";
 
 // Helper function to parse date parameter - handles both year numbers and date strings
 function parseDateParam(dateParam: string | undefined): Date {
@@ -51,7 +52,8 @@ const uploadLocal = createLocalUpload([
 
 reportRouter.post('/errors',
     authenticateToken,
-    uploadLocal.array("images", 10), // Se permite subir hasta 10 imágenes
+    uploadLocal.array("images", 10),
+    invalidateCacheMiddleware(['reports']),
     body("title").isString().optional(),
     body("description").isString().notEmpty(),
     body("type").isString(),
@@ -124,6 +126,7 @@ reportRouter.post('/errors',
 
 reportRouter.get('/kpi',
     authenticateToken,
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'kpi'], includeUser: true }),
     async (req: Request, res: Response) => {
         try {
             const KPI = await ReportService.getGlobalKPI()
@@ -136,6 +139,7 @@ reportRouter.get('/kpi',
 
 reportRouter.get('/fine/:id?',
     authenticateToken,
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'fine-history'] }),
     async (req: Request, res: Response) => {
         try {
             let id: string | undefined = undefined;
@@ -152,6 +156,7 @@ reportRouter.get('/fine/:id?',
 
 reportRouter.get('/payments/:id?',
     authenticateToken,
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'payment-history'] }),
     async (req: Request, res: Response) => {
         try {
             let id: string | undefined = undefined;
@@ -176,6 +181,7 @@ reportRouter.get('/payments/:id?',
 
 reportRouter.get('/pending/:id?',
     authenticateToken,
+    cacheMiddleware({ ttl: 60000, tags: ['reports', 'pending-payments'], includeUser: true }),
     async (req: Request, res: Response) => {
         try {
             const { user } = req as AuthRequest
@@ -194,6 +200,7 @@ reportRouter.get('/pending/:id?',
 
 reportRouter.get('/fiscal-groups',
     authenticateToken,
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'fiscal-groups'], includeUser: true }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -231,6 +238,7 @@ reportRouter.get('/fiscal-groups',
 
 reportRouter.get('/get-group-records',
     authenticateToken,
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'group-records'] }),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest
 
@@ -263,6 +271,7 @@ reportRouter.get('/get-group-records',
 reportRouter.get('/global-performance',
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest
 
@@ -288,6 +297,7 @@ reportRouter.get('/global-performance',
 reportRouter.get("/global-taxpayer-performance",
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest
 
@@ -338,6 +348,7 @@ reportRouter.get("/debug-query",
 reportRouter.get("/group-performance",
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'group-performance'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -363,6 +374,7 @@ reportRouter.get("/group-performance",
 reportRouter.get("/global-kpi",
     authenticateToken,
     query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'kpi'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -719,7 +731,7 @@ reportRouter.get('/get-fiscal-collect-analisis/:id',
 
 reportRouter.get('/get-complete-report',
     authenticateToken,
-
+    cacheMiddleware({ ttl: 60000, tags: ['reports', 'complete-report'], includeUser: true }),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest;
 

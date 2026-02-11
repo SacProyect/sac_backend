@@ -4,12 +4,14 @@ import * as UserService from "./user.services";
 import { body, validationResult, query } from "express-validator";
 import { authenticateToken, AuthRequest } from "./user.utils";
 import logger from "../utils/logger";
+import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache.middleware";
 
 export const userRouter = express.Router();
 
 
 userRouter.get('/all',
     authenticateToken,
+    cacheMiddleware({ ttl: 120000, tags: ['users', 'users-list'], includeUser: true }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -63,6 +65,7 @@ userRouter.post('/',
 const VALID_ROLES = ['FISCAL', 'ADMIN', 'COORDINATOR', 'SUPERVISOR'] as const;
 
 userRouter.post('/sign-up',
+    invalidateCacheMiddleware(['users', 'users-list', 'fiscals']),
     body("personId").isNumeric(),
     body("password").isString(),
     body("name").isString(),
@@ -97,6 +100,7 @@ userRouter.post('/sign-up',
 
 userRouter.get("/me",
     authenticateToken,
+    cacheMiddleware({ ttl: 60000, tags: ['users'], includeUser: true }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -127,6 +131,7 @@ userRouter.get("/me",
  */
 userRouter.get('/get-fiscals-for-review',
     authenticateToken,
+    cacheMiddleware({ ttl: 120000, tags: ['users', 'fiscals'], includeUser: true }),
     query("year").optional().isInt().withMessage("Year must be an integer"),
     query("page").optional().isInt({ min: 1 }).withMessage("Page must be a positive integer"),
     query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("Limit must be between 1 and 100"),
@@ -174,6 +179,7 @@ userRouter.get('/get-fiscals-for-review',
 
 userRouter.put('/update-by-name/:name',
     authenticateToken,
+    invalidateCacheMiddleware(['users', 'users-list']),
     body("name").optional(),
     body("personId").optional(),
     body("email").optional(),
@@ -208,6 +214,7 @@ userRouter.put('/update-by-name/:name',
 
 userRouter.put('/update-password/:id',
     authenticateToken,
+    invalidateCacheMiddleware(['users']),
     body("password").notEmpty(),
 
     async (req: Request, res: Response) => {

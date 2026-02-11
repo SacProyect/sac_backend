@@ -10,8 +10,11 @@ import { censusRouter } from "./census/census.routes";
 import { requestLogger } from "./utils/requestLogger";
 import { notFoundHandler, globalErrorHandler } from "./utils/errorHandler";
 import { requestIdMiddleware } from "./utils/requestId";
+import { cacheStatsMiddleware, cacheClearMiddleware } from "./utils/cache.middleware";
+import { cacheService } from "./utils/cache.service";
 import { db } from "./utils/db.server";
 import logger from "./utils/logger";
+import { authenticateToken } from "./users/user.utils";
 
 const app = express();
 
@@ -171,18 +174,35 @@ app.get("/health", async (req, res) => {
     logger.error("[HEALTH] Base de datos desconectada", { error: (e as Error).message });
   }
 
+  // Cache metrics (optional, for monitoring)
+  try {
+    const cacheStats = cacheService.getStats();
+    health.cache = {
+      size: cacheStats.size,
+      hitRate: `${cacheStats.hitRate.toFixed(1)}%`,
+      hits: cacheStats.metrics.hits,
+      misses: cacheStats.metrics.misses,
+    };
+  } catch {
+    health.cache = { status: "unavailable" };
+  }
+
   const statusCode = health.status === "ok" ? 200 : 503;
   res.status(statusCode as number).json(health);
 });
 
-// ─── 9. RUTAS DE LA APLICACIÓN ───────────────────────────────────────────────
+// ─── 9. RUTAS DE CACHE (estadísticas y limpieza) ──────────────────────────────
+app.get("/cache/stats", authenticateToken, cacheStatsMiddleware);
+app.post("/cache/clear", authenticateToken, cacheClearMiddleware);
+
+// ─── 10. RUTAS DE LA APLICACIÓN ───────────────────────────────────────────────
 app.use("/user", userRouter);
 app.use("/taxpayer", taxpayerRouter);
 app.use("/reports", reportRouter);
 app.use("/census", censusRouter);
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// ─── 10. ERROR HANDLERS (SIEMPRE AL FINAL) ──────────────────────────────────
+// ─── 11. ERROR HANDLERS (SIEMPRE AL FINAL) ──────────────────────────────────
 app.use(notFoundHandler);
 app.use(globalErrorHandler);
 

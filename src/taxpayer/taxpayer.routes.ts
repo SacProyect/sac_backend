@@ -13,6 +13,7 @@ import { Decimal } from "@prisma/client/runtime/library";
 import { db } from "../utils/db.server";
 import logger from "../utils/logger";
 import { ApiError } from "../utils/apiResponse";
+import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache.middleware";
 
 const s3 = getS3Client();
 export const taxpayerRouter = express.Router();
@@ -26,6 +27,7 @@ const uploadLocal = createLocalUpload([
 
 taxpayerRouter.get('/get-taxpayers-for-events',
     authenticateToken,
+    cacheMiddleware({ ttl: 120000, tags: ['taxpayers-events'], includeUser: true }),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest
 
@@ -48,7 +50,7 @@ taxpayerRouter.get('/get-taxpayers-for-events',
 
 taxpayerRouter.get('/get-fiscal-taxpayers-for-stats/:id',
     authenticateToken,
-
+    cacheMiddleware({ ttl: 120000, tags: ['fiscal-stats'] }),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest
 
@@ -69,7 +71,7 @@ taxpayerRouter.get('/get-fiscal-taxpayers-for-stats/:id',
 
 taxpayerRouter.get('/get-taxpayers',
     authenticateToken,
-
+    cacheMiddleware({ ttl: 120000, tags: ['taxpayers-list'], includeUser: true }),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest
 
@@ -142,6 +144,7 @@ taxpayerRouter.post(
     '/',
     authenticateToken,
     uploadLocal.array("pdfs", 20),
+    invalidateCacheMiddleware(['taxpayers', 'taxpayers-list', 'taxpayer-categories']),
     body("providenceNum").isNumeric().withMessage("providenceNum must be numeric"),
     body("process").isString().withMessage("process must be a string"),
     body("name").isString().withMessage("name must be a string"),
@@ -221,6 +224,7 @@ taxpayerRouter.post(
     "/repair-report/:id",
     authenticateToken,
     uploadMemory.single("repairReport"),
+    invalidateCacheMiddleware(['taxpayers', 'repair-reports']),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest;
         
@@ -352,7 +356,7 @@ taxpayerRouter.post(
 
 taxpayerRouter.get("/get-taxpayer-categories",
     authenticateToken,
-
+    cacheMiddleware({ ttl: 300000, tags: ['taxpayer-categories'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -375,7 +379,7 @@ taxpayerRouter.get("/get-taxpayer-categories",
 
 taxpayerRouter.get('/get-parish-list',
     authenticateToken,
-
+    cacheMiddleware({ ttl: 300000, tags: ['parish-list'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -383,7 +387,6 @@ taxpayerRouter.get('/get-parish-list',
         if (!user) return res.status(401).json("Unauthorized access")
 
         if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden")
-
 
         try {
 
@@ -403,6 +406,7 @@ taxpayerRouter.get('/get-parish-list',
 taxpayerRouter.post(
     '/create-taxpayer',
     authenticateToken,
+    invalidateCacheMiddleware(['taxpayers', 'taxpayers-list']),
     body("providenceNum").isNumeric().withMessage("providenceNum must be numeric"),
     body("process").isString().withMessage("process must be a string"),
     body("name").isString().withMessage("name must be a string"),
@@ -442,6 +446,7 @@ taxpayerRouter.post(
 
 taxpayerRouter.get('/:id',
     authenticateToken,
+    cacheMiddleware({ ttl: 60000, tags: ['taxpayers'] }),
     async (req: Request, res: Response) => {
         try {
             const id: string = (req.params.id);
@@ -461,6 +466,7 @@ taxpayerRouter.get('/:id',
 
 taxpayerRouter.get('/all/:id',
     authenticateToken,
+    cacheMiddleware({ ttl: 120000, tags: ['taxpayers-list'] }),
     async (req: Request, res: Response) => {
         try {
             const id: string = req.params.id;
@@ -476,6 +482,7 @@ taxpayerRouter.get('/all/:id',
 
 taxpayerRouter.put("/:id",
     authenticateToken,
+    invalidateCacheMiddleware(['taxpayers', 'taxpayers-list']),
     body("providenceNum").isInt().optional({ values: 'falsy' }),
     body("process").isString().optional({ values: 'falsy' }),
     body("name").isString().optional({ values: 'falsy' }),
@@ -509,6 +516,7 @@ taxpayerRouter.put("/:id",
 
 taxpayerRouter.put("/modify-observations/:id",
     authenticateToken,
+    invalidateCacheMiddleware(['observations']),
     body("newDescription").notEmpty().isString(),
 
     async (req: Request, res: Response) => {
@@ -541,6 +549,7 @@ taxpayerRouter.put("/modify-observations/:id",
 
 taxpayerRouter.put("/update-fase/:id",
     authenticateToken,
+    invalidateCacheMiddleware(['taxpayers', 'fase']),
     body("fase").notEmpty().isString(),
 
 
@@ -579,7 +588,7 @@ taxpayerRouter.put("/update-fase/:id",
 
 taxpayerRouter.put("/notify/:id",
     authenticateToken,
-
+    invalidateCacheMiddleware(['taxpayers']),
     async (req: Request, res: Response) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -606,6 +615,7 @@ taxpayerRouter.put("/notify/:id",
 
 taxpayerRouter.put("/updatePayment/:id",
     authenticateToken,
+    invalidateCacheMiddleware(['payments', 'taxpayers-events']),
     body("status").isString(),
 
     async (req: Request, res: Response) => {
@@ -639,6 +649,7 @@ taxpayerRouter.put("/updatePayment/:id",
 
 taxpayerRouter.delete('/:id',
     authenticateToken,
+    invalidateCacheMiddleware(['taxpayers', 'taxpayers-list']),
     async (req: Request, res: Response) => {
         try {
             const id: string = (req.params.id);
@@ -652,6 +663,7 @@ taxpayerRouter.delete('/:id',
 
 taxpayerRouter.delete("/del-observation/:id",
     authenticateToken,
+    invalidateCacheMiddleware(['observations']),
     async (req: Request, res: Response) => {
         try {
 
@@ -675,6 +687,7 @@ taxpayerRouter.delete("/del-observation/:id",
 
 taxpayerRouter.get('/event/all',
     authenticateToken,
+    cacheMiddleware({ ttl: 120000, tags: ['events'] }),
     async (req: Request, res: Response) => {
         try {
             const events = await TaxpayerServices.getEventsbyTaxpayer()
@@ -687,11 +700,11 @@ taxpayerRouter.get('/event/all',
 
 taxpayerRouter.get('/event/:id/:type?',
     authenticateToken,
+    cacheMiddleware({ ttl: 60000, tags: ['events', 'taxpayers-events'] }),
     async (req: Request, res: Response) => {
         try {
             const id: string = (req.params.id);
             const type: string = req.params.type
-
 
             const events = await TaxpayerServices.getEventsbyTaxpayer(id, type)
             // console.log("EVENTS: " + JSON.stringify(events))
@@ -704,7 +717,7 @@ taxpayerRouter.get('/event/:id/:type?',
 
 taxpayerRouter.get('/data/:id',
     authenticateToken,
-
+    cacheMiddleware({ ttl: 60000, tags: ['taxpayers'] }),
     async (req: Request, res: Response) => {
 
         try {
@@ -726,7 +739,7 @@ taxpayerRouter.get('/data/:id',
 
 taxpayerRouter.get("/get-observations/:id",
     authenticateToken,
-
+    cacheMiddleware({ ttl: 60000, tags: ['observations'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -750,7 +763,7 @@ taxpayerRouter.get("/get-observations/:id",
 
 taxpayerRouter.get('/get-islr/:id',
     authenticateToken,
-
+    cacheMiddleware({ ttl: 60000, tags: ['islr-reports'] }),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -775,7 +788,7 @@ taxpayerRouter.get('/get-islr/:id',
 
 taxpayerRouter.get("/getTaxSummary/:id",
     authenticateToken,
-
+    cacheMiddleware({ ttl: 60000, tags: ['taxpayers'] }),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest
 
@@ -802,6 +815,7 @@ taxpayerRouter.get("/getTaxSummary/:id",
 
 taxpayerRouter.post('/fine',
     authenticateToken,
+    invalidateCacheMiddleware(['events', 'taxpayers-events']),
     body("date").isISO8601().toDate(),
     body("amount").isDecimal(),
     body("taxpayerId").isString().notEmpty(),
@@ -895,6 +909,7 @@ taxpayerRouter.put('/modify-individual-index-iva/:id',
 
 taxpayerRouter.post('/createIVA',
     authenticateToken,
+    invalidateCacheMiddleware(['iva-reports', 'taxpayers']),
     body("taxpayerId").isString().notEmpty(),
     body("iva").optional(),
     body("purchases").notEmpty().isNumeric(),
@@ -944,6 +959,7 @@ taxpayerRouter.post('/createIVA',
 
 taxpayerRouter.post('/create-islr-report',
     authenticateToken,
+    invalidateCacheMiddleware(['islr-reports', 'taxpayers']),
     body("incomes").isDecimal(),
     body("costs").isDecimal(),
     body("expent").isDecimal(),
@@ -990,6 +1006,7 @@ taxpayerRouter.post('/create-islr-report',
 
 taxpayerRouter.post('/payment',
     authenticateToken,
+    invalidateCacheMiddleware(['payments', 'events']),
     body("date").isISO8601().toDate(),
     body("amount").isDecimal(),
     body("eventId").isString().notEmpty(),
@@ -1017,6 +1034,7 @@ taxpayerRouter.post('/payment',
 
 taxpayerRouter.post("/observations",
     authenticateToken,
+    invalidateCacheMiddleware(['observations']),
     body("description").notEmpty().isString(),
     body("date").notEmpty().isString().isISO8601(),
     body("taxpayerId").notEmpty().isString(),
@@ -1049,6 +1067,7 @@ taxpayerRouter.post("/observations",
 
 taxpayerRouter.post('/payment_compromise',
     authenticateToken,
+    invalidateCacheMiddleware(['events', 'taxpayers-events']),
     body("date").isISO8601().toDate(),
     body("amount").isDecimal(),
     body("taxpayerId").isString().notEmpty(),
@@ -1088,6 +1107,7 @@ taxpayerRouter.post('/payment_compromise',
 
 taxpayerRouter.post('/warning',
     authenticateToken,
+    invalidateCacheMiddleware(['events', 'taxpayers-events']),
     body("date").isISO8601().toDate(),
     body("amount").isNumeric(),
     body("taxpayerId").isString().notEmpty(),
@@ -1114,6 +1134,7 @@ taxpayerRouter.post('/warning',
 
 taxpayerRouter.put('/fine/:eventId',
     authenticateToken,
+    invalidateCacheMiddleware(['events', 'taxpayers-events']),
     body("date").isISO8601().toDate().optional({ checkFalsy: true }),
     body("amount").isDecimal().optional({ checkFalsy: true }),
     body("description").isString().optional({ checkFalsy: true }),
@@ -1140,7 +1161,7 @@ taxpayerRouter.put('/fine/:eventId',
 
 taxpayerRouter.put('/updateIva/:ivaId',
     authenticateToken,
-    // Agrega validaciones opcionales si deseas (date, iva, etc.)
+    invalidateCacheMiddleware(['iva-reports', 'taxpayers']),
     async (req: Request, res: Response) => {
         try {
             const { user } = req as AuthRequest;
@@ -1160,6 +1181,7 @@ taxpayerRouter.put('/updateIva/:ivaId',
 
 taxpayerRouter.put('/payment/:eventId',
     authenticateToken,
+    invalidateCacheMiddleware(['payments', 'events']),
     body("date").isISO8601().toDate().optional({ checkFalsy: true }),
     body("amount").isDecimal().optional({ checkFalsy: true }),
     async (req: Request, res: Response) => {
@@ -1180,6 +1202,7 @@ taxpayerRouter.put('/payment/:eventId',
 taxpayerRouter.put(
     '/update-taxpayer/:id',
     authenticateToken,
+    invalidateCacheMiddleware(['taxpayers', 'taxpayers-list']),
     body("address").optional(),
     body("providenceNum").optional(),
     body("process").optional(),
@@ -1232,6 +1255,7 @@ taxpayerRouter.put(
  */
 taxpayerRouter.put('/update-culminated/:id',
     authenticateToken,
+    invalidateCacheMiddleware(['taxpayers']),
     body("culminated").isBoolean().notEmpty(), 
 
     async (req: Request, res: Response) => {
@@ -1270,6 +1294,7 @@ taxpayerRouter.put('/update-culminated/:id',
 
 taxpayerRouter.put('/payment_compromise/:eventId',
     authenticateToken,
+    invalidateCacheMiddleware(['events']),
     body("date").isISO8601().toDate().optional({ checkFalsy: true }),
     body("amount").isDecimal().optional({ checkFalsy: true }),
     async (req: Request, res: Response) => {
@@ -1289,6 +1314,7 @@ taxpayerRouter.put('/payment_compromise/:eventId',
 
 taxpayerRouter.put('/warning/:eventId',
     authenticateToken,
+    invalidateCacheMiddleware(['events']),
     body("date").isISO8601().toDate().optional({ checkFalsy: true }),
     async (req: Request, res: Response) => {
         try {
@@ -1307,7 +1333,7 @@ taxpayerRouter.put('/warning/:eventId',
 
 taxpayerRouter.put("/update-islr/:id",
     authenticateToken,
-
+    invalidateCacheMiddleware(['islr-reports', 'taxpayers']),
     async (req: Request, res: Response) => {
         const autorizados = ["ADMIN", "COORDINATOR", "FISCAL", "SUPERVISOR"];
         try {
@@ -1376,6 +1402,7 @@ taxpayerRouter.delete('/payment/:id',
 
 taxpayerRouter.delete("/delete-iva/:id",
     authenticateToken,
+    invalidateCacheMiddleware(['iva-reports', 'taxpayers']),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -1403,6 +1430,7 @@ taxpayerRouter.delete("/delete-iva/:id",
 
 taxpayerRouter.delete("/delete-islr/:id",
     authenticateToken,
+    invalidateCacheMiddleware(['islr-reports', 'taxpayers']),
     async (req: Request, res: Response) => {
 
         const { user } = req as AuthRequest
@@ -1427,6 +1455,7 @@ taxpayerRouter.delete("/delete-islr/:id",
 
 taxpayerRouter.post("/create-taxpayer-category",
     authenticateToken,
+    invalidateCacheMiddleware(['taxpayer-categories']),
     body("name"),
 
     async (req: Request, res: Response) => {

@@ -1,4 +1,4 @@
-import { event_type } from "@prisma/client"
+import { event_type, Prisma } from "@prisma/client"
 import { db } from "../utils/db.server"
 import { avgValue, CompleteReportInput, getComplianceRate, getLatestEvents, getPunctuallityAnalysis, getTaxpayerComplianceRate, InputError, InputGroupRecords, MonthIva, MonthlyRow, sumTransactions } from "./report.utils"
 import { Event, Payment } from "../taxpayer/taxpayer.utils"
@@ -712,6 +712,14 @@ export const getGroupRecord = async (data: InputGroupRecords) => {
 
 
 
+/**
+ * 🚀 OPTIMIZED VERSION - Uses database aggregations instead of loading data into memory
+ * Performance improvements:
+ * 1. Raw SQL queries for aggregations
+ * 2. Minimal data loading
+ * 3. Database-level computations
+ * 4. No nested forEach loops
+ */
 export const getFiscalGroups = async (data: InputFiscalGroups) => {
     const { id, role, startDate, endDate, supervisorId } = data;
     const filters: any = {};
@@ -750,6 +758,7 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
         if (role === "COORDINATOR") {
             const coordinatorGroup = await db.fiscalGroup.findUnique({
                 where: { coordinatorId: data.userId },
+                select: { id: true }
             });
 
             if (!coordinatorGroup) throw new Error("Este usuario no coordina ningún grupo.");
@@ -766,80 +775,72 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
 
         // 🔍 Supervisor-specific report: stats for the group supervised by `supervisorId`
         if (supervisorId) {
+            // 🚀 OPTIMIZED: Use database aggregation queries
             const supervisor = await db.user.findUnique({
                 where: { id: supervisorId },
-                include: {
-                    group: { select: { coordinator: { select: { name: true } }, name: true } },
-                    supervised_members: {
-                        include: {
-                            taxpayer: {
-                                where: {
-                                    emition_date: {
-                                        gte: start,
-                                        lte: end,
-                                    },
-                                },
-                                include: {
-                                    event: {
-                                        where: { date: { gte: start, lt: end } },
-                                        select: { id: true, type: true, amount: true, debt: true },
-                                    },
-                                    IVAReports: {
-                                        where: { date: { gte: start, lt: end } },
-                                        select: { id: true, paid: true },
-                                    },
-                                    ISLRReports: {
-                                        where: { emition_date: { gte: start, lt: end } },
-                                        select: { id: true, paid: true },
-                                    },
-                                },
-                            },
-                        },
-                    },
+                select: {
+                    id: true,
+                    groupId: true,
+                    group: { select: { id: true, name: true, coordinator: { select: { name: true } } } }
                 },
             });
 
-            if (!supervisor) throw new Error("Supervisor no encontrado");
+            if (!supervisor || !supervisor.groupId) throw new Error("Supervisor no encontrado");
 
-            // 🧮 Aggregated stats for this supervisor's group
-            let groupCollected = new Decimal(0);
-            let totalFines = new Decimal(0);
-            let collectedFines = new Decimal(0);
-            let totalIva = new Decimal(0);
-            let totalIslr = new Decimal(0);
+            // 🚀 OPTIMIZED: split aggregations to avoid heavy multi-join cross products
+            const [supervisorFineStats, supervisorIvaStats, supervisorIslrStats] = await Promise.all([
+                db.$queryRaw<Array<{ total_fines: bigint; collected_fines: any }>>`
+                    SELECT
+                        COALESCE(COUNT(*), 0) as total_fines,
+                        COALESCE(SUM(e.amount), 0) as collected_fines
+                    FROM user u
+                    INNER JOIN taxpayer t ON t.officerId = u.id
+                    INNER JOIN event e ON e.taxpayerId = t.id
+                    WHERE u.supervisor_id = ${supervisorId}
+                      AND e.type = 'FINE'
+                      AND e.debt = 0
+                      AND e.date >= ${start}
+                      AND e.date < ${end}
+                `,
+                db.$queryRaw<Array<{ total_iva: any }>>`
+                    SELECT
+                        COALESCE(SUM(iva.paid), 0) as total_iva
+                    FROM user u
+                    INNER JOIN taxpayer t ON t.officerId = u.id
+                    INNER JOIN IVAReports iva ON iva.taxpayerId = t.id
+                    WHERE u.supervisor_id = ${supervisorId}
+                      AND iva.date >= ${start}
+                      AND iva.date < ${end}
+                `,
+                db.$queryRaw<Array<{ total_islr: any }>>`
+                    SELECT
+                        COALESCE(SUM(islr.paid), 0) as total_islr
+                    FROM user u
+                    INNER JOIN taxpayer t ON t.officerId = u.id
+                    INNER JOIN ISLRReports islr ON islr.taxpayerId = t.id
+                    WHERE u.supervisor_id = ${supervisorId}
+                      AND islr.emition_date >= ${start}
+                      AND islr.emition_date < ${end}
+                `,
+            ]);
 
-            // 🔄 Loop over supervised taxpayers
-            supervisor.supervised_members.forEach((member) => {
-                member.taxpayer.forEach((taxpayer) => {
-                    taxpayer.event?.forEach((e) => {
-                        if (e.type === "FINE" && e.debt.equals(0)) {
-                            totalFines = totalFines.plus(1);
-                            collectedFines = collectedFines.plus(e.amount);
-                            groupCollected = groupCollected.plus(e.amount);
-                        }
-                    });
+            const totalFines = new Decimal((supervisorFineStats[0]?.total_fines ?? BigInt(0)).toString());
+            const collectedFines = new Decimal(supervisorFineStats[0]?.collected_fines?.toString() || "0");
+            const totalIva = new Decimal(supervisorIvaStats[0]?.total_iva?.toString() || "0");
+            const totalIslr = new Decimal(supervisorIslrStats[0]?.total_islr?.toString() || "0");
+            const groupCollected = collectedFines.plus(totalIva).plus(totalIslr);
 
-                    taxpayer.IVAReports?.forEach((rep) => {
-                        if (rep.paid) {
-                            totalIva = totalIva.plus(rep.paid);
-                            groupCollected = groupCollected.plus(rep.paid);
-                        }
-                    });
-
-                    taxpayer.ISLRReports?.forEach((rep) => {
-                        if (rep.paid) {
-                            totalIslr = totalIslr.plus(rep.paid);
-                            groupCollected = groupCollected.plus(rep.paid);
-                        }
-                    });
-                });
+            // Get supervised members for the response (minimal data)
+            const supervisedMembers = await db.user.findMany({
+                where: { supervisorId: supervisorId },
+                select: { id: true, name: true, role: true }
             });
 
-            // ✅ Return only this supervisor’s group performance
+            // ✅ Return only this supervisor's group performance
             return [{
                 id: supervisor.groupId,
                 name: supervisor.group?.name,
-                members: supervisor.supervised_members,
+                members: supervisedMembers,
                 totalFines,
                 collectedFines,
                 totalIva,
@@ -850,199 +851,292 @@ export const getFiscalGroups = async (data: InputFiscalGroups) => {
             }];
         }
 
-        // 🔍 Admins and coordinators: fetch all matching groups (optimized: select only fields used for aggregation)
+        // 🔍 Admins and coordinators: fetch all matching groups with optimized queries
+        // First, get the list of groups
         const groups = await db.fiscalGroup.findMany({
             where: filters,
-            include: {
+            select: {
+                id: true,
+                name: true,
                 coordinator: { select: { name: true } },
-                members: {
-                    include: {
-                        taxpayer: {
-                            // where: {
-                            //     emition_date: {
-                            //         gte: start,
-                            //         lte: end,
-                            //     },
-                            // },
-                            include: {
-                                event: {
-                                    where: { date: { gte: start, lt: end } },
-                                    select: { id: true, type: true, amount: true, debt: true },
-                                },
-                                IVAReports: {
-                                    where: { date: { gte: start, lt: end } },
-                                    select: { id: true, paid: true },
-                                },
-                                ISLRReports: {
-                                    where: { emition_date: { gte: start, lt: end } },
-                                    select: { id: true, paid: true },
-                                },
-                            },
-                        },
-                        supervised_members: {
-                            include: {
-                                taxpayer: {
-                                    include: {
-                                        ISLRReports: {
-                                            where: { emition_date: { gte: start, lte: end } },
-                                            select: { id: true, paid: true },
-                                        },
-                                        IVAReports: {
-                                            where: { date: { gte: start, lte: end } },
-                                            select: { id: true, paid: true },
-                                        },
-                                        event: {
-                                            where: { date: { gte: start, lte: end } },
-                                            select: { id: true, type: true, amount: true, debt: true },
-                                        },
-                                    },
-                                },
-                            },
-                        }
-                    },
-                },
             },
         });
 
-        // 🔄 For each group, calculate collection and breakdown per supervisor
-        const updatedGroups = groups.map((group) => {
-            let groupCollected = new Decimal(0);
-            let totalFines = new Decimal(0); // número de multas
-            let collectedFines = new Decimal(0); // monto recaudado por multas
-            let totalIva = new Decimal(0);
-            let totalIslr = new Decimal(0);
+        if (groups.length === 0) {
+            return [];
+        }
 
-            const supervisorStats: {
+        const groupIds = groups.map(g => g.id);
+
+        // 🚀 Split group aggregations by source table to avoid expensive cross products
+        const [groupFineStats, groupIvaStats, groupIslrStats] = await Promise.all([
+            db.$queryRaw<Array<{ groupId: string; total_fines: bigint; collected_fines: any }>>`
+                SELECT
+                    u.groupId as groupId,
+                    COALESCE(COUNT(*), 0) as total_fines,
+                    COALESCE(SUM(e.amount), 0) as collected_fines
+                FROM user u
+                INNER JOIN taxpayer t ON t.officerId = u.id
+                INNER JOIN event e ON e.taxpayerId = t.id
+                WHERE u.groupId IN (${Prisma.join(groupIds)})
+                  AND e.type = 'FINE'
+                  AND e.debt = 0
+                  AND e.date >= ${start}
+                  AND e.date < ${end}
+                GROUP BY u.groupId
+            `,
+            db.$queryRaw<Array<{ groupId: string; total_iva: any }>>`
+                SELECT
+                    u.groupId as groupId,
+                    COALESCE(SUM(iva.paid), 0) as total_iva
+                FROM user u
+                INNER JOIN taxpayer t ON t.officerId = u.id
+                INNER JOIN IVAReports iva ON iva.taxpayerId = t.id
+                WHERE u.groupId IN (${Prisma.join(groupIds)})
+                  AND iva.date >= ${start}
+                  AND iva.date < ${end}
+                GROUP BY u.groupId
+            `,
+            db.$queryRaw<Array<{ groupId: string; total_islr: any }>>`
+                SELECT
+                    u.groupId as groupId,
+                    COALESCE(SUM(islr.paid), 0) as total_islr
+                FROM user u
+                INNER JOIN taxpayer t ON t.officerId = u.id
+                INNER JOIN ISLRReports islr ON islr.taxpayerId = t.id
+                WHERE u.groupId IN (${Prisma.join(groupIds)})
+                  AND islr.emition_date >= ${start}
+                  AND islr.emition_date < ${end}
+                GROUP BY u.groupId
+            `,
+        ]);
+
+        // 🚀 Same optimization for supervisor stats inside each group
+        const [supervisorFineStats, supervisorIvaStats, supervisorIslrStats] = await Promise.all([
+            db.$queryRaw<Array<{
+                groupId: string;
                 supervisorId: string;
                 supervisorName: string;
-                collectedIva: Decimal;
-                collectedISLR: Decimal;
-                collectedFines: Decimal;
-                totalFines: Decimal;
-                totalCollected: Decimal;
-            }[] = [];
+                collected_fines: any;
+                total_fines: bigint;
+            }>>`
+                SELECT
+                    supervisor.groupId as groupId,
+                    supervisor.id as supervisorId,
+                    supervisor.name as supervisorName,
+                    COALESCE(SUM(e.amount), 0) as collected_fines,
+                    COALESCE(COUNT(*), 0) as total_fines
+                FROM user supervisor
+                INNER JOIN user member ON member.supervisor_id = supervisor.id
+                INNER JOIN taxpayer t ON t.officerId = member.id
+                INNER JOIN event e ON e.taxpayerId = t.id
+                WHERE supervisor.role = 'SUPERVISOR'
+                  AND supervisor.groupId IN (${Prisma.join(groupIds)})
+                  AND e.type = 'FINE'
+                  AND e.debt = 0
+                  AND e.date >= ${start}
+                  AND e.date < ${end}
+                GROUP BY supervisor.groupId, supervisor.id, supervisor.name
+            `,
+            db.$queryRaw<Array<{
+                groupId: string;
+                supervisorId: string;
+                supervisorName: string;
+                collected_iva: any;
+            }>>`
+                SELECT
+                    supervisor.groupId as groupId,
+                    supervisor.id as supervisorId,
+                    supervisor.name as supervisorName,
+                    COALESCE(SUM(iva.paid), 0) as collected_iva
+                FROM user supervisor
+                INNER JOIN user member ON member.supervisor_id = supervisor.id
+                INNER JOIN taxpayer t ON t.officerId = member.id
+                INNER JOIN IVAReports iva ON iva.taxpayerId = t.id
+                WHERE supervisor.role = 'SUPERVISOR'
+                  AND supervisor.groupId IN (${Prisma.join(groupIds)})
+                  AND iva.date >= ${start}
+                  AND iva.date < ${end}
+                GROUP BY supervisor.groupId, supervisor.id, supervisor.name
+            `,
+            db.$queryRaw<Array<{
+                groupId: string;
+                supervisorId: string;
+                supervisorName: string;
+                collected_islr: any;
+            }>>`
+                SELECT
+                    supervisor.groupId as groupId,
+                    supervisor.id as supervisorId,
+                    supervisor.name as supervisorName,
+                    COALESCE(SUM(islr.paid), 0) as collected_islr
+                FROM user supervisor
+                INNER JOIN user member ON member.supervisor_id = supervisor.id
+                INNER JOIN taxpayer t ON t.officerId = member.id
+                INNER JOIN ISLRReports islr ON islr.taxpayerId = t.id
+                WHERE supervisor.role = 'SUPERVISOR'
+                  AND supervisor.groupId IN (${Prisma.join(groupIds)})
+                  AND islr.emition_date >= ${start}
+                  AND islr.emition_date < ${end}
+                GROUP BY supervisor.groupId, supervisor.id, supervisor.name
+            `,
+        ]);
 
-            const supervisors = group.members.filter((m) => m.role === "SUPERVISOR");
+        const supervisorStats = new Map<string, {
+            groupId: string;
+            supervisorId: string;
+            supervisorName: string;
+            collected_iva: any;
+            collected_islr: any;
+            collected_fines: any;
+            total_fines: bigint;
+        }>();
 
-            if (supervisors.length === 0) {
-                supervisorStats.push({
-                    supervisorId: "SUPERVISOR_1",
-                    supervisorName: "NO ENCONTRADO",
-                    collectedIva: new Decimal(0),
-                    collectedISLR: new Decimal(0),
-                    collectedFines: new Decimal(0),
-                    totalFines: new Decimal(0),
-                    totalCollected: new Decimal(0),
-                });
-                supervisorStats.push({
-                    supervisorId: "SUPERVISOR_2",
-                    supervisorName: "NO ENCONTRADO",
-                    collectedIva: new Decimal(0),
-                    collectedISLR: new Decimal(0),
-                    collectedFines: new Decimal(0),
-                    totalFines: new Decimal(0),
-                    totalCollected: new Decimal(0),
-                });
+        for (const row of supervisorFineStats) {
+            const key = row.supervisorId;
+            supervisorStats.set(key, {
+                groupId: row.groupId,
+                supervisorId: row.supervisorId,
+                supervisorName: row.supervisorName,
+                collected_iva: 0,
+                collected_islr: 0,
+                collected_fines: row.collected_fines,
+                total_fines: row.total_fines,
+            });
+        }
+        for (const row of supervisorIvaStats) {
+            const key = row.supervisorId;
+            const current = supervisorStats.get(key);
+            if (current) {
+                current.collected_iva = row.collected_iva;
             } else {
-                for (const supervisor of supervisors) {
-                    let collectedIva = new Decimal(0);
-                    let collectedISLR = new Decimal(0);
-                    let collectedFinesSup = new Decimal(0);
-                    let totalFinesSup = new Decimal(0);
-                    let totalCollected = new Decimal(0);
+                supervisorStats.set(key, {
+                    groupId: row.groupId,
+                    supervisorId: row.supervisorId,
+                    supervisorName: row.supervisorName,
+                    collected_iva: row.collected_iva,
+                    collected_islr: 0,
+                    collected_fines: 0,
+                    total_fines: BigInt(0),
+                });
+            }
+        }
+        for (const row of supervisorIslrStats) {
+            const key = row.supervisorId;
+            const current = supervisorStats.get(key);
+            if (current) {
+                current.collected_islr = row.collected_islr;
+            } else {
+                supervisorStats.set(key, {
+                    groupId: row.groupId,
+                    supervisorId: row.supervisorId,
+                    supervisorName: row.supervisorName,
+                    collected_iva: 0,
+                    collected_islr: row.collected_islr,
+                    collected_fines: 0,
+                    total_fines: BigInt(0),
+                });
+            }
+        }
 
-                    const supervised_members = supervisor.supervised_members
+        // 🚀 Get members for each group (minimal data)
+        const members = await db.user.findMany({
+            where: {
+                groupId: { in: groupIds }
+            },
+            select: {
+                id: true,
+                name: true,
+                role: true,
+                groupId: true
+            }
+        });
 
-                    for (const member of supervised_members) {
+        const membersByGroupId = new Map<string, typeof members>();
+        for (const member of members) {
+            const groupMembers = membersByGroupId.get(member.groupId ?? "") ?? [];
+            groupMembers.push(member);
+            membersByGroupId.set(member.groupId ?? "", groupMembers);
+        }
 
-                        for (const taxp of member.taxpayer) {
-                            taxp.ISLRReports.forEach((rep) => {
-                                if (rep.paid) {
-                                    collectedISLR = collectedISLR.plus(rep.paid);
-                                    totalCollected = totalCollected.plus(rep.paid);
-                                }
-                            });
+        const groupFineStatsMap = new Map(groupFineStats.map((row) => [row.groupId, row]));
+        const groupIvaStatsMap = new Map(groupIvaStats.map((row) => [row.groupId, row]));
+        const groupIslrStatsMap = new Map(groupIslrStats.map((row) => [row.groupId, row]));
 
-                            taxp.IVAReports.forEach((rep) => {
-                                if (rep.paid) {
-                                    collectedIva = collectedIva.plus(rep.paid);
-                                    totalCollected = totalCollected.plus(rep.paid);
-                                }
-                            });
+        const supervisorStatsByGroupId = new Map<string, Array<{
+            groupId: string;
+            supervisorId: string;
+            supervisorName: string;
+            collected_iva: any;
+            collected_islr: any;
+            collected_fines: any;
+            total_fines: bigint;
+        }>>();
+        for (const supervisorStat of supervisorStats.values()) {
+            const groupStats = supervisorStatsByGroupId.get(supervisorStat.groupId) ?? [];
+            groupStats.push(supervisorStat);
+            supervisorStatsByGroupId.set(supervisorStat.groupId, groupStats);
+        }
 
-                            taxp.event.forEach((ev) => {
-                                if (ev.type === "FINE" && ev.debt.equals(0)) {
-                                    collectedFinesSup = collectedFinesSup.plus(ev.amount);
-                                    totalFinesSup = totalFinesSup.plus(1);
-                                    totalCollected = totalCollected.plus(ev.amount);
-                                }
-                            });
-                        }
-                    }
+        // Build the response
+        const result = groups.map(group => {
+            const fineStats = groupFineStatsMap.get(group.id);
+            const ivaStats = groupIvaStatsMap.get(group.id);
+            const islrStats = groupIslrStatsMap.get(group.id);
 
-                    supervisorStats.push({
-                        supervisorId: supervisor.id,
-                        supervisorName: supervisor.name,
-                        collectedIva,
-                        collectedISLR,
-                        collectedFines: collectedFinesSup,
-                        totalFines: totalFinesSup,
-                        totalCollected,
-                    });
-                }
+            const groupSupervisors = supervisorStatsByGroupId.get(group.id) ?? [];
+            
+            // Format supervisor stats
+            const formattedSupervisorStats = groupSupervisors.map(sup => ({
+                supervisorId: sup.supervisorId,
+                supervisorName: sup.supervisorName,
+                collectedIva: new Decimal(sup.collected_iva?.toString() || "0"),
+                collectedISLR: new Decimal(sup.collected_islr?.toString() || "0"),
+                collectedFines: new Decimal(sup.collected_fines?.toString() || "0"),
+                totalFines: new Decimal(sup.total_fines.toString()),
+                totalCollected: new Decimal(sup.collected_iva?.toString() || "0")
+                    .plus(new Decimal(sup.collected_islr?.toString() || "0"))
+                    .plus(new Decimal(sup.collected_fines?.toString() || "0"))
+            }));
+
+            // Add placeholders if no supervisors found
+            while (formattedSupervisorStats.length < 2) {
+                formattedSupervisorStats.push({
+                    supervisorId: `SUPERVISOR_${formattedSupervisorStats.length + 1}`,
+                    supervisorName: "NO ENCONTRADO",
+                    collectedIva: new Decimal(0),
+                    collectedISLR: new Decimal(0),
+                    collectedFines: new Decimal(0),
+                    totalFines: new Decimal(0),
+                    totalCollected: new Decimal(0),
+                });
             }
 
-            // Estadísticas del grupo
-            group.members.forEach((member) => {
-
-                // console.log(`📊 [${group.name}] Miembro: ${member.name}`);
-                let memberIslrTotal = new Decimal(0);
-
-                member.taxpayer.forEach((contributor) => {
-                    contributor.event.forEach((e) => {
-                        if (e.type === "FINE" && e.debt.equals(0)) {
-                            totalFines = totalFines.plus(1);
-                            collectedFines = collectedFines.plus(e.amount);
-                            groupCollected = groupCollected.plus(e.amount);
-                        }
-                    });
-
-                    contributor.IVAReports.forEach((report) => {
-                        if (report.paid) {
-                            totalIva = totalIva.plus(report.paid);
-                            groupCollected = groupCollected.plus(report.paid);
-                        }
-                    });
-
-                    // console.log("Member:", member.name);
-                    // console.log("ISLRReports count:", member.taxpayer.flatMap(t => t.ISLRReports).length);
-
-                    contributor.ISLRReports.forEach((report) => {
-                        // console.log(`— ISLR pagado por ${contributor.name || contributor.rif}: ${report.paid}`);
-                        if (report.paid) {
-                            totalIslr = totalIslr.plus(report.paid);
-                            groupCollected = groupCollected.plus(report.paid);
-                            memberIslrTotal = memberIslrTotal.plus(report.paid); // ← FALTABA ESTA LÍNEA
-                        }
-                    });
-                });
-
-                // console.log(`✅ Total ISLR de ${member.name}: ${totalIslr.toFixed(2)}\n`)
-                // console.log(`✅ Total IVA de ${member.name}: ${totalIva.toFixed(2)}\n`)
-            });
+            const totalFines = new Decimal((fineStats?.total_fines ?? BigInt(0)).toString());
+            const collectedFines = new Decimal(fineStats?.collected_fines?.toString() || "0");
+            const totalIva = new Decimal(ivaStats?.total_iva?.toString() || "0");
+            const totalIslr = new Decimal(islrStats?.total_islr?.toString() || "0");
+            const collected = collectedFines.plus(totalIva).plus(totalIslr);
 
             return {
-                ...group,
+                id: group.id,
+                name: group.name,
+                coordinatorId: group.coordinator ? undefined : null, // Match original structure
+                coordinator: group.coordinator,
+                members: membersByGroupId.get(group.id) ?? [],
+                created_at: undefined, // Match original structure
+                GroupRecordMonth: undefined, // Match original structure
+                GroupRecordYear: undefined, // Match original structure
                 totalFines,
                 collectedFines,
                 totalIva,
                 totalIslr,
-                collected: groupCollected,
-                supervisorsStats: supervisorStats,
+                collected,
+                supervisorsStats: formattedSupervisorStats,
             };
         });
 
-        return updatedGroups;
+        return result;
     } catch (e) {
         logger.error("[REPORTS] getFiscalGroups failed", {
             filters,
