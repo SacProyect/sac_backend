@@ -417,8 +417,17 @@ reportRouter.get("/individual-iva-report/:id",
 
             return res.status(200).json(response);
         } catch (e: any) {
-            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
-            return ApiError.internal(res, "Ha ocurrido un error");
+            const message = e?.message ?? "";
+            if (message.includes("No se encontró un índice IVA aplicable para este contribuyente")) {
+                logger.warn("individual-iva-report without applicable index_iva", {
+                    taxpayerId: id,
+                    path: req.originalUrl,
+                });
+                // Devolvemos 404 cuando no hay índice IVA aplicable para el contribuyente
+                return res.status(404).json({ error: "No se encontró un índice IVA aplicable para este contribuyente." });
+            }
+            logger.error("individual-iva-report error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return res.status(500).json({ error: "Ha ocurrido un error al obtener el reporte individual de IVA" });
         }
     }
 )
