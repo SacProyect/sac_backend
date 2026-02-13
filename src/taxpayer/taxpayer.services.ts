@@ -846,9 +846,9 @@ export const getFiscalTaxpayersForStats = async (userId: string) => {
     }
 };
 
-export const getTaxpayersForEvents = async (userId: string, userRole: string, page: number = 1, limit: number = 50) => {
+export const getTaxpayersForEvents = async (userId: string, userRole: string, page: number = 1, limit: number = 50, search?: string) => {
     try {
-        const result = await taxpayerRepository.findTaxpayersForEvents(userId, userRole, page, limit);
+        const result = await taxpayerRepository.findTaxpayersForEvents(userId, userRole, page, limit, search);
         return result;
     } catch (e: any) {
         logger.error(e);

@@ -494,7 +494,7 @@ export class TaxpayerRepository {
         });
     }
 
-    async findTaxpayersForEvents(userId: string, userRole: string, page: number = 1, limit: number = 50, tx?: TxClient) {
+    async findTaxpayersForEvents(userId: string, userRole: string, page: number = 1, limit: number = 50, search?: string, tx?: TxClient) {
         const client = tx ?? db;
         let taxpayers: any[] = [];
         let total: number = 0;
@@ -505,14 +505,14 @@ export class TaxpayerRepository {
                 client.taxpayer.findMany({
                     skip,
                     take: limit,
-                    where: { status: true },
+                    where: { status: true, ...(search ? { OR: [{ name: { contains: search } }, { rif: { contains: search } }] } : {}) },
                     include: {
                         event: { where: { status: true } },
                         IVAReports: true,
                         ISLRReports: true,
                         user: { select: { name: true } },
                     },
-                    orderBy: { created_at: 'desc' }
+                    orderBy: { created_at: 'asc' }
                 }),
                 client.taxpayer.count({ where: { status: true } })
             ]);
@@ -702,7 +702,7 @@ export class TaxpayerRepository {
                         }
                     }
                 },
-                orderBy: { created_at: 'asc' }
+                orderBy: { created_at: 'asc' },
             }),
             client.taxpayer.count({ where: where })
         ]);

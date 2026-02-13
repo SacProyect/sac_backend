@@ -30,16 +30,17 @@ taxpayerRouter.get('/get-taxpayers-for-events',
     cacheMiddleware({ ttl: 120000, tags: ['taxpayers-events'], includeUser: true }),
     async (req: Request, res: Response) => {
         const { user } = req as AuthRequest
-
+        
         if (!user) return res.status(401).json("Unauthorized access")
-
-        const userId = user.id;
-        const userRole = user.role;
-        const page = parseInt(req.query.page as string) || 1;
-        const limit = parseInt(req.query.limit as string) || 50;
+            
+            const userId = user.id;
+            const userRole = user.role;
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 50;
+            const search = req.query.search as string || "";
 
         try {
-            const result = await TaxpayerServices.getTaxpayersForEvents(userId, userRole, page, limit);
+            const result = await TaxpayerServices.getTaxpayersForEvents(userId, userRole, page, limit, search);
             return res.status(200).json(result)
         } catch (error: any) {
             logger.error("get-taxpayers-for-events", { message: error?.message });
