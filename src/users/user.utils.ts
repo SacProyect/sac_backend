@@ -4,6 +4,7 @@ import { hash } from "bcryptjs";
 import { Taxpayer } from "../taxpayer/taxpayer.utils";
 import { Taxpayer_Fases, user_roles } from "@prisma/client";
 import logger from "../utils/logger";
+import { db } from "../utils/db.server";
 
 import * as dotenv from "dotenv";
 import path from "path";
@@ -71,10 +72,56 @@ export const generateAcessToken = (user: User) => {
     )
 }
 
+/** Header oculto para debug: si está presente y DEBUG_AUTH=true, se salta JWT y se usa el usuario indicado en debugUserId */
+const DEBUG_AUTH_HEADER = "x-debug-auth";
+const DEBUG_USER_ID_HEADER = "x-debug-user-id";
+const DEBUG_USER_ID_QUERY = "debugUserId";
+
 export const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
     const requestId = (req as any).requestId;
 
     try {
+        // Debug: saltar JWT y usar usuario por ID (solo si DEBUG_AUTH está habilitado en env)
+        if (process.env.DEBUG_AUTH === "true" && req.headers[DEBUG_AUTH_HEADER]) {
+            const debugUserId =
+                (req.headers[DEBUG_USER_ID_HEADER] as string) ||
+                (req.query[DEBUG_USER_ID_QUERY] as string);
+            if (debugUserId) {
+                const run = async () => {
+                    const user = await db.user.findUnique({
+                        where: { id: debugUserId },
+                        select: { id: true, role: true },
+                    });
+                    if (user) {
+                        (req as AuthRequest).user = { id: user.id, role: user.role };
+                        logger.debug("[AUTH] Debug: usuario impersonado", { id: user.id, role: user.role });
+                        next();
+                    } else {
+                        return res.status(404).json({
+                            success: false,
+                            error: {
+                                code: "NOT_FOUND",
+                                message: "Usuario no encontrado para debug.",
+                                requestId,
+                            },
+                        });
+                    }
+                };
+                run().catch((err) => {
+                    logger.error("[AUTH] Error en debug auth", { message: err?.message, requestId });
+                    return res.status(500).json({
+                        success: false,
+                        error: {
+                            code: "INTERNAL_ERROR",
+                            message: "Error al cargar usuario de debug.",
+                            requestId,
+                        },
+                    });
+                });
+                return;
+            }
+        }
+
         const authHeader = req.headers["authorization"];
         const token = authHeader && authHeader.split(" ")[1];
 

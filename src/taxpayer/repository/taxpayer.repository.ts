@@ -526,6 +526,7 @@ export class TaxpayerRepository {
                     members: {
                         include: {
                             taxpayer: {
+                                where: { status: true },
                                 include: {
                                     event: { where: { status: true } },
                                     IVAReports: true,
@@ -548,6 +549,7 @@ export class TaxpayerRepository {
                 },
                 include: {
                     taxpayer: {
+                        where: { status: true },
                         include: {
                             event: { where: { status: true } },
                             IVAReports: true,
@@ -558,6 +560,7 @@ export class TaxpayerRepository {
                     supervised_members: {
                         include: {
                             taxpayer: {
+                                where: { status: true },
                                 include: {
                                     event: { where: { status: true } },
                                     IVAReports: true,
@@ -583,6 +586,7 @@ export class TaxpayerRepository {
                 },
                 include: {
                     taxpayer: {
+                        where: { status: true },
                         include: {
                             event: { where: { status: true } },
                             IVAReports: true,
