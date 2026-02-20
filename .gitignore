@@ -148,3 +148,5 @@ docs/
 # Load test reports
 load-test-report-*.md
 scripts/load-test.js
+
+plans/
