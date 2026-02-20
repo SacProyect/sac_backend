@@ -62,40 +62,6 @@ userRouter.post('/',
     }
 );
 
-/** Login de debug: POST con personId (cédula), sin contraseña. Requiere DEBUG_AUTH y header de env. */
-userRouter.post('/debug-login',
-    async (req: Request, res: Response) => {
-        const debugLoginHeader = process.env.DEBUG_LOGIN_HEADER;
-
-        if (
-            process.env.DEBUG_AUTH !== "true" ||
-            !debugLoginHeader ||
-            !req.headers[debugLoginHeader.toLowerCase()]
-        ) {
-            return res.status(404).json({ error: "Ruta no encontrada" });
-        }
-
-        const personIdRaw = req.body?.personId ?? req.query?.personId;
-        const personId = typeof personIdRaw === "string" ? parseInt(personIdRaw, 10) : personIdRaw;
-        if (personId == null || Number.isNaN(personId)) {
-            return res.status(400).json({
-                error: "Falta personId (cédula). Envía body: { personId: 123 } o query: ?personId=123",
-            });
-        }
-
-        try {
-            const data = await UserService.debugLogIn(personId);
-            logger.debug("[AUTH] Debug login exitoso", { personId });
-            return res.status(200).json(data);
-        } catch (error: any) {
-            if (error.message === "Usuario no encontrado") {
-                return res.status(404).json({ error: error.message });
-            }
-            logger.error("Debug login error", { personId, message: error?.message });
-            return res.status(500).json({ error: error?.message || "Error interno del servidor" });
-        }
-    }
-);
 
 const VALID_ROLES = ['FISCAL', 'ADMIN', 'COORDINATOR', 'SUPERVISOR'] as const;
 
