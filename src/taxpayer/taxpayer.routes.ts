@@ -937,7 +937,7 @@ taxpayerRouter.post('/createIVA',
 
         const data = req.body;
 
-        if (!data.iva && !data.excess) return res.status(400).json("Either IVA or Excess must be provided");
+        if (data.iva == null && data.excess == null) return res.status(400).json("Either IVA or Excess must be provided");
 
         try {
             // ✅ Pasar userId y userRole para validación de acceso de fiscales rotados
@@ -948,8 +948,16 @@ taxpayerRouter.post('/createIVA',
         } catch (e: any) {
             logger.error("createIVA error", { message: e?.message, stack: e?.stack });
 
-            if (e.message === "IVA report for this taxpayer and month already exists.") {
+            if (
+                e.message === "IVA report for this taxpayer and month already exists." ||
+                e.message?.includes("Ya existe un reporte IVA")
+            ) {
                 return ApiError.conflict(res, e.message);
+            }
+
+            // ✅ Retornar 403 cuando el fiscal no tiene permisos (en vez de 500)
+            if (e.message?.includes("No tienes permisos")) {
+                return res.status(403).json({ error: e.message });
             }
 
             return ApiError.internal(res, "Error al crear el reporte IVA");

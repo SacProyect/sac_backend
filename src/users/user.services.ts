@@ -41,6 +41,27 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
     return { user, token };
 };
 
+// /**
+//  * Login de debug: devuelve { user, token } por personId (cédula) sin validar contraseña.
+//  * Solo para uso con DEBUG_AUTH=true. No usar en producción.
+//  */
+// export const debugLogIn = async (personId: number): Promise<{ user: User; token: string }> => {
+//     const user = await db.user.findUnique({
+//         where: { personId },
+//         include: {
+//             coordinatedGroup: { select: { id: true } }, 
+//         },
+//     });
+
+//     if (!user) {
+//         throw new Error("Usuario no encontrado");
+//     }
+
+//     const token = generateAcessToken(user);
+//     (user as any).password = "";
+
+//     return { user: user as User, token };
+// };
 
 /**
  * Creates a new user.

@@ -54,6 +54,14 @@ web_modules/
 .npm
 
 .env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.test.local
+.env.production.local
+.env.local
+.env.example
 # Optional eslint cache
 .eslintcache
 

@@ -72,20 +72,24 @@ export const generateAcessToken = (user: User) => {
     )
 }
 
-/** Header oculto para debug: si está presente y DEBUG_AUTH=true, se salta JWT y se usa el usuario indicado en debugUserId */
-const DEBUG_AUTH_HEADER = "x-debug-auth";
-const DEBUG_USER_ID_HEADER = "x-debug-user-id";
-const DEBUG_USER_ID_QUERY = "debugUserId";
+/** Debug: nombres de header/query vienen de env para no exponerlos en código. Ver docs/DEBUG-AUTH.md */
 
 export const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
     const requestId = (req as any).requestId;
 
     try {
-        // Debug: saltar JWT y usar usuario por ID (solo si DEBUG_AUTH está habilitado en env)
-        if (process.env.DEBUG_AUTH === "true" && req.headers[DEBUG_AUTH_HEADER]) {
+        const debugAuthHeader = process.env.DEBUG_AUTH_HEADER;
+        const debugUserIdHeader = process.env.DEBUG_USER_ID_HEADER;
+        const debugUserIdQuery = process.env.DEBUG_USER_ID_QUERY;
+
+        if (
+            process.env.DEBUG_AUTH === "true" &&
+            debugAuthHeader &&
+            req.headers[debugAuthHeader.toLowerCase()]
+        ) {
             const debugUserId =
-                (req.headers[DEBUG_USER_ID_HEADER] as string) ||
-                (req.query[DEBUG_USER_ID_QUERY] as string);
+                (debugUserIdHeader && (req.headers[debugUserIdHeader.toLowerCase()] as string)) ||
+                (debugUserIdQuery && (req.query[debugUserIdQuery] as string));
             if (debugUserId) {
                 const run = async () => {
                     const user = await db.user.findUnique({

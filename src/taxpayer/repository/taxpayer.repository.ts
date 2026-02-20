@@ -494,6 +494,25 @@ export class TaxpayerRepository {
         });
     }
 
+    /** Filtra en memoria por nombre, RIF, nombre del fiscal o providenceNum (si search es numérico). */
+    private filterTaxpayersBySearch(taxpayers: any[], search: string | undefined): any[] {
+        if (!search || typeof search !== "string") return taxpayers;
+        const s = search.trim().toLowerCase();
+        if (!s) return taxpayers;
+        const searchNum = s.replace(/\D/g, "");
+        return taxpayers.filter((t: any) => {
+            const name = (t.name || "").toLowerCase();
+            const rif = (t.rif || "").toLowerCase();
+            const userName = (t.user?.name || "").toLowerCase();
+            if (name.includes(s) || rif.includes(s) || userName.includes(s)) return true;
+            if (searchNum && t.providenceNum != null) {
+                const prov = String(t.providenceNum);
+                if (prov.includes(searchNum)) return true;
+            }
+            return false;
+        });
+    }
+
     async findTaxpayersForEvents(userId: string, userRole: string, page: number = 1, limit: number = 50, search?: string, tx?: TxClient) {
         const client = tx ?? db;
         let taxpayers: any[] = [];
@@ -501,11 +520,23 @@ export class TaxpayerRepository {
         const skip = (page - 1) * limit;
 
         if (userRole === "ADMIN") {
+            const adminWhere: any = { status: true };
+            if (search && search.trim()) {
+                const searchFilters: any[] = [
+                    { name: { contains: search } },
+                    { rif: { contains: search } },
+                    { user: { name: { contains: search } } },
+                ];
+                if (!isNaN(Number(search))) {
+                    searchFilters.push({ providenceNum: BigInt(search) });
+                }
+                adminWhere.AND = [{ OR: searchFilters }];
+            }
             [taxpayers, total] = await Promise.all([
                 client.taxpayer.findMany({
                     skip,
                     take: limit,
-                    where: { status: true, ...(search ? { OR: [{ name: { contains: search } }, { rif: { contains: search } }] } : {}) },
+                    where: adminWhere,
                     include: {
                         event: { where: { status: true } },
                         IVAReports: true,
@@ -514,7 +545,7 @@ export class TaxpayerRepository {
                     },
                     orderBy: { created_at: 'asc' }
                 }),
-                client.taxpayer.count({ where: { status: true } })
+                client.taxpayer.count({ where: adminWhere })
             ]);
         } else if (userRole === "COORDINATOR") {
             const group = await client.fiscalGroup.findUnique({
@@ -540,8 +571,12 @@ export class TaxpayerRepository {
             })
             if (!group) throw new Error("Grupo no encontrado para el coordinador");
 
-            // Aplanamos los taxpayers de todos los miembros
-            taxpayers = group.members.flatMap((member) => member.taxpayer);
+            // Aplanamos los taxpayers de todos los miembros y aplicamos búsqueda
+            taxpayers = this.filterTaxpayersBySearch(
+                group.members.flatMap((member) => member.taxpayer),
+                search
+            );
+            total = taxpayers.length;
         } else if (userRole === "SUPERVISOR") {
             const user = await client.user.findUnique({
                 where: {
@@ -575,9 +610,12 @@ export class TaxpayerRepository {
 
             if (!user) throw new Error("Usuario no encontrado.");
 
-            // Combine supervised members' taxpayers and supervisor's own taxpayers
+            // Combine supervised members' taxpayers and supervisor's own taxpayers, luego filtrar por búsqueda
             const supervisedTaxpayers = user.supervised_members.flatMap((member) => member.taxpayer);
-            taxpayers = [...user.taxpayer, ...supervisedTaxpayers];
+            taxpayers = this.filterTaxpayersBySearch(
+                [...user.taxpayer, ...supervisedTaxpayers],
+                search
+            );
             total = taxpayers.length;
         } else if (userRole === "FISCAL") {
             const fiscal = await client.user.findUnique({
@@ -598,7 +636,7 @@ export class TaxpayerRepository {
             });
             if (!fiscal) throw new Error("Usuario no encontrado.");
 
-            taxpayers = fiscal?.taxpayer;
+            taxpayers = this.filterTaxpayersBySearch(fiscal?.taxpayer ?? [], search);
             total = taxpayers.length;
         }
 
