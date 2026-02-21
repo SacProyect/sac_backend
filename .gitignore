@@ -150,3 +150,5 @@ load-test-report-*.md
 scripts/load-test.js
 
 plans/
+scripts/delete-iva-report.ts 
+scripts/
