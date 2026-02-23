@@ -1,5 +1,5 @@
 import { response } from "express";
-import { db } from "../db.server";
+import { db } from "../db-server";
 
 interface changeUserEvents {
     id: string;

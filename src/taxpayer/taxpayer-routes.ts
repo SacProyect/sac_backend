@@ -1,19 +1,19 @@
 import express from "express";
 import type { Request, Response } from "express";
-import * as TaxpayerServices from "./taxpayer.services"
+import * as TaxpayerServices from "./taxpayer-services"
 import { body, validationResult } from 'express-validator';
-import { EventType } from "./taxpayer.utils";
-import { authenticateToken, AuthRequest } from "../users/user.utils";
+import { EventType } from "./taxpayer-utils";
+import { authenticateToken, AuthRequest } from "../users/user-utils";
 import fs from 'fs'
 import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getS3Client } from "../utils/s3.client";
-import { createLocalUpload } from "../utils/multer.local";
-import { uploadMemory } from "../utils/multer.memory";
+import { getS3Client } from "../utils/s3-client";
+import { createLocalUpload } from "../utils/multer-local";
+import { uploadMemory } from "../utils/multer-memory";
 import { Decimal } from "@prisma/client/runtime/library";
-import { db } from "../utils/db.server";
+import { db } from "../utils/db-server";
 import logger from "../utils/logger";
-import { ApiError } from "../utils/apiResponse";
-import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache.middleware";
+import { ApiError } from "../utils/api-response";
+import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache-middleware";
 
 const s3 = getS3Client();
 export const taxpayerRouter = express.Router();
@@ -882,13 +882,6 @@ taxpayerRouter.put('/modify-individual-index-iva/:id',
     body("newIndexIva"),
 
     async (req: Request, res: Response) => {
-
-        // const errors = validationResult(req);
-        // if (!errors.isEmpty()) {
-        //     console.error(errors.array())
-        //     return res.status(400).json({ errors: errors.array() });
-        // }
-
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")

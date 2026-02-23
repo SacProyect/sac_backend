@@ -1,11 +1,11 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import * as CensusServices from "./census.services"
+import * as CensusServices from "./census-services"
 import { body, validationResult } from 'express-validator';
-import { authenticateToken, AuthRequest } from "../users/user.utils";
+import { authenticateToken, AuthRequest } from "../users/user-utils";
 import logger from "../utils/logger";
-import { ApiError } from "../utils/apiResponse";
-import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache.middleware";
+import { ApiError } from "../utils/api-response";
+import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache-middleware";
 
 export const censusRouter = Router();
 

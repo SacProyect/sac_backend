@@ -1,7 +1,7 @@
 import { TaxpayerCensus } from "@prisma/client";
-import { NewTaxpayerCensus } from "../taxpayer/taxpayer.utils";
-import { db, runTransaction } from "../utils/db.server";
-import { NewTaxpayerCensusInput } from "./census.utils";
+import { NewTaxpayerCensus } from "../taxpayer/taxpayer-utils";
+import { db, runTransaction } from "../utils/db-server";
+import { NewTaxpayerCensusInput } from "./census-utils";
 import logger from "../utils/logger";
 
 
@@ -37,9 +37,18 @@ export const getTaxpayerCensus = async () => {
     try {
         logger.info('Obteniendo contribuyentes de censo');
         const taxpayersCensus = await db.taxpayerCensus.findMany({
-            include: {
-                fiscal: {select: {name: true}},
-            }
+            select: {
+                id: true,
+                number: true,
+                process: true,
+                name: true,
+                rif: true,
+                type: true,
+                address: true,
+                emition_date: true,
+                userId: true,
+                fiscal: { select: { name: true } },
+            },
         });
 
         logger.info('Contribuyentes de censo obtenidos', { count: taxpayersCensus.length });

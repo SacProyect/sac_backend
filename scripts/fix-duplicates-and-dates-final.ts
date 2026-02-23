@@ -6,7 +6,7 @@ dotenv.config({
     override: true 
 });
 
-import { db } from '../src/utils/db.server';
+import { db } from '../src/utils/db-server';
 
 /**
  * Script CRÍTICO para eliminar duplicados y corregir fechas del 2026

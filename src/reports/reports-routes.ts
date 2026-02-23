@@ -1,16 +1,16 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import * as ReportService from './reports.services'
-import { authenticateToken, AuthRequest } from "../users/user.utils";
+import * as ReportService from './reports-services'
+import { authenticateToken, AuthRequest } from "../users/user-utils";
 import { body, validationResult, query } from 'express-validator';
-import { createError } from "./reports.services";
+import { createError } from "./reports-services";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { getS3Client } from "../utils/s3.client";
-import { createLocalUpload } from "../utils/multer.local";
+import { getS3Client } from "../utils/s3-client";
+import { createLocalUpload } from "../utils/multer-local";
 import fs from 'fs';
 import logger from "../utils/logger";
-import { ApiError } from "../utils/apiResponse";
-import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache.middleware";
+import { ApiError } from "../utils/api-response";
+import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache-middleware";
 
 // Helper function to parse date parameter - handles both year numbers and date strings
 function parseDateParam(dateParam: string | undefined): Date {

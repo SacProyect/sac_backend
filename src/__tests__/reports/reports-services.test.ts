@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockDb } from "../setup";
-import * as ReportsServices from "../../reports/reports.services";
+import * as ReportsServices from "../../reports/reports-services";
 
 describe("Reports Services", () => {
   beforeEach(() => {

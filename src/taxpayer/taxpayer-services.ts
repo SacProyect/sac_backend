@@ -1,8 +1,8 @@
-import { db, runTransaction } from "../utils/db.server";
-import { CreateIndexIva, Event, FiscalTaxpayerStat, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer } from "./taxpayer.utils";
-import { BadRequestError } from "../utils/errors/BadRequestError";
+import { db, runTransaction } from "../utils/db-server";
+import { CreateIndexIva, Event, FiscalTaxpayerStat, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer } from "./taxpayer-utils";
+import { BadRequestError } from "../utils/errors/bad-request-error";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { getS3Client } from "../utils/s3.client";
+import { getS3Client } from "../utils/s3-client";
 import { Resend } from 'resend';
 import { differenceInDays } from "date-fns"
 import {
@@ -418,14 +418,6 @@ export const createTaxpayerExcel = async (data: NewTaxpayerExcelInput) => {
                 // Para año actual (2026), bloquear duplicado (comportamiento normal)
                 throw new Error(`No puedes registrar dos FP con el mismo número de providencia en el mismo año ${inputYear}.`);
             }
-
-            // // Para restricciones por meses
-            // const monthsDiff = (new Date(emition_date).getTime() - new Date(entry.emition_date).getTime()) / (1000 * 60 * 60 * 24 * 30);
-            // const threshold = ['VDF', 'FP'].includes(process) ? 14 : 15;
-
-            // if (existingProcess === process && monthsDiff < threshold) {
-            //     throw new Error(`No han pasado los ${threshold} meses requeridos para crear otro contribuyente con el proceso ${process} y el mismo número de providencia.`);
-            // }
         }
 
         // Verificación por nombre similar en el mismo año
@@ -1915,8 +1907,8 @@ export const CreateTaxpayerCategory = async (name: string) => {
 }
 
 
-import { staticDataRepository } from "./repository/static-data.repository";
-import { taxpayerRepository } from "./repository/taxpayer.repository";
+import { staticDataRepository } from "./repository/static-data-repository";
+import { taxpayerRepository } from "./repository/taxpayer-repository";
 
 // ... other imports
 

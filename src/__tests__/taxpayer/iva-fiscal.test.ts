@@ -16,7 +16,7 @@ import { sign } from "jsonwebtoken";
 import { Decimal } from "@prisma/client/runtime/library";
 import app from "../../app";
 import { mockDb } from "../setup";
-import * as TaxpayerServices from "../../taxpayer/taxpayer.services";
+import * as TaxpayerServices from "../../taxpayer/taxpayer-services";
 
 const TOKEN_SECRET = process.env.TOKEN_SECRET || "test-secret-for-routes";
 const TAXPAYER_ID = "taxpayer-iva-test-001";

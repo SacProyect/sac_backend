@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
-import { cacheService, CacheConfig } from "./cache.service";
-import { AuthRequest } from "../users/user.utils";
+import { cacheService, CacheConfig } from "./cache-service";
+import { AuthRequest } from "../users/user-utils";
 import logger from "./logger";
 
 /**

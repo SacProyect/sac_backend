@@ -1,5 +1,5 @@
 import { taxpayer_contract_type, taxpayer_process, Taxpayer_Fases } from "@prisma/client";
-import { InvestigationPdf } from "../taxpayer.utils";
+import { InvestigationPdf } from "../taxpayer-utils";
 
 export class CreateTaxpayerDto {
     providenceNum!: bigint;

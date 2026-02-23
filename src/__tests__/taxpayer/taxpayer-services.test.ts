@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Decimal } from "@prisma/client/runtime/library";
 import { mockTaxpayerRepository, mockDb } from "../setup";
-import * as TaxpayerServices from "../../taxpayer/taxpayer.services";
+import * as TaxpayerServices from "../../taxpayer/taxpayer-services";
 
 const EVENT_ID = "event-uuid-123";
 const TAXPAYER_ID = "taxpayer-uuid-456";
