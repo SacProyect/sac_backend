@@ -57,7 +57,7 @@ const allowedOrigins = [
   "https://www.sac-app.com",
   "http://localhost:39733",
 ];
-
+ 
 app.use(
   cors({
     origin: (origin, callback) => {
