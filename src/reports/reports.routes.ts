@@ -531,6 +531,8 @@ reportRouter.get('/get-monthly-growth',
 reportRouter.get('/get-taxpayers-compliance',
     authenticateToken,
     query("date").optional(),
+    query('page').optional(),
+    query('limit').optional(),
     cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
     async (req: Request, res: Response) => {
 
@@ -542,7 +544,7 @@ reportRouter.get('/get-taxpayers-compliance',
 
         try {
             const date = parseDateParam(req.query.date as string | undefined);
-            const response = await ReportService.getTaxpayerCompliance(date);
+            const response = await ReportService.getTaxpayerCompliance(date, req.query.page as string | undefined, req.query.limit as string | undefined);
 
             return res.status(200).json(response);
         } catch (e: any) {
