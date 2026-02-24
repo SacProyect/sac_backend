@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { cacheService } from "../../utils/cache.service";
+import { cacheService } from "../../utils/cache-service";
 
 describe("CacheService", () => {
   beforeEach(() => {

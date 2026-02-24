@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { mockDb } from "../setup";
-import * as UserServices from "../../users/user.services";
+import * as UserServices from "../../users/user-services";
 import { compareSync } from "bcryptjs";
 
 vi.mock("bcryptjs", () => ({

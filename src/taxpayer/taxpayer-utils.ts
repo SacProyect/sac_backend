@@ -1,5 +1,5 @@
 import { Decimal } from "@prisma/client/runtime/library"
-import { db } from "../utils/db.server"
+import { db } from "../utils/db-server"
 import { Parish, taxpayer_contract_type, Taxpayer_Fases, taxpayer_process, TaxpayerCategory } from "@prisma/client"
 
 export type Taxpayer = {

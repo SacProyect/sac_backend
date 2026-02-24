@@ -1,10 +1,10 @@
 import { JwtPayload, sign, verify, JsonWebTokenError, TokenExpiredError } from "jsonwebtoken"
 import { NextFunction, Request, Response } from "express"
 import { hash } from "bcryptjs";
-import { Taxpayer } from "../taxpayer/taxpayer.utils";
+import { Taxpayer } from "../taxpayer/taxpayer-utils";
 import { Taxpayer_Fases, user_roles } from "@prisma/client";
 import logger from "../utils/logger";
-import { db } from "../utils/db.server";
+import { db } from "../utils/db-server";
 
 import * as dotenv from "dotenv";
 import path from "path";

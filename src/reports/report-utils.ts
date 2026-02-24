@@ -1,6 +1,6 @@
 import { Decimal } from "@prisma/client/runtime/library";
-import { Event, Payment, Taxpayer } from "../taxpayer/taxpayer.utils";
-import { User } from "../users/user.utils";
+import { Event, Payment, Taxpayer } from "../taxpayer/taxpayer-utils";
+import { User } from "../users/user-utils";
 import { app_error } from "@prisma/client";
 
 

@@ -1,6 +1,6 @@
 import * as readline from "readline";
-import * as UserService from "../src/users/user.services";
-import { db } from "../src/utils/db.server";
+import * as UserService from "../src/users/user-services";
+import { db } from "../src/utils/db-server";
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 

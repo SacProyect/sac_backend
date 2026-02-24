@@ -1,13 +1,25 @@
 import { Taxpayer_Fases } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
-import { db, TxClient } from "../../utils/db.server";
-import { Taxpayer } from "../taxpayer.utils";
+import { db, TxClient } from "../../utils/db-server";
+import { Taxpayer } from "../taxpayer-utils";
 
 export class TaxpayerRepository {
 
     async findManyUsers(tx?: TxClient) {
         const client = tx ?? db;
-        return client.user.findMany();
+        return client.user.findMany({
+            select: {
+                id: true,
+                name: true,
+                role: true,
+                personId: true,
+                status: true,
+                email: true,
+                groupId: true,
+                supervisorId: true,
+                updated_at: true,
+            },
+        });
     }
 
     /** Usado para emails: obtiene usuario (oficial) con grupo y coordinador. */
@@ -15,10 +27,15 @@ export class TaxpayerRepository {
         const client = tx ?? db;
         return client.user.findUnique({
             where: { id: userId },
-            include: {
+            select: {
+                id: true,
+                name: true,
+                email: true,
                 group: {
-                    include: {
-                        coordinator: { select: { email: true } },
+                    select: {
+                        id: true,
+                        name: true,
+                        coordinator: { select: { email: true, name: true } },
                     },
                 },
             },
@@ -40,6 +57,7 @@ export class TaxpayerRepository {
         const client = tx ?? db;
         return client.user.findMany({
             where: { role: "ADMIN" },
+            select: { id: true, name: true, email: true },
         });
     }
 
@@ -178,9 +196,8 @@ export class TaxpayerRepository {
     async findIndexIvaExpired(tx?: TxClient) {
         const client = tx ?? db;
         return client.indexIva.findMany({
-            where: {
-                expires_at: null,
-            },
+            where: { expires_at: null },
+            select: { id: true, contract_type: true, base_amount: true, created_at: true, expires_at: true },
         });
     }
 
@@ -257,7 +274,26 @@ export class TaxpayerRepository {
         const client = tx ?? db;
         return client.payment.findUnique({
             where: { id: paymentId },
-            include: { event: true },
+            select: {
+                id: true,
+                amount: true,
+                date: true,
+                status: true,
+                eventId: true,
+                taxpayerId: true,
+                updated_at: true,
+                event: {
+                    select: {
+                        id: true,
+                        amount: true,
+                        type: true,
+                        date: true,
+                        debt: true,
+                        taxpayerId: true,
+                        status: true,
+                    },
+                },
+            },
         });
     }
 
@@ -265,6 +301,18 @@ export class TaxpayerRepository {
         const client = tx ?? db;
         return client.event.findFirst({
             where: { id: eventId, status: true },
+            select: {
+                id: true,
+                date: true,
+                amount: true,
+                type: true,
+                status: true,
+                debt: true,
+                description: true,
+                taxpayerId: true,
+                expires_at: true,
+                updated_at: true,
+            },
         });
     }
 
@@ -376,18 +424,26 @@ export class TaxpayerRepository {
     async findIvaReportsByTaxpayer(taxpayerId: string, tx?: TxClient) {
         const client = tx ?? db;
         return client.iVAReports.findMany({
-            where: {
-                taxpayerId: taxpayerId,
-            }
+            where: { taxpayerId },
+            select: {
+                id: true,
+                date: true,
+                paid: true,
+                iva: true,
+                excess: true,
+                purchases: true,
+                sells: true,
+                taxpayerId: true,
+                updated_at: true,
+            },
         });
     }
 
     async findObservationsByTaxpayer(taxpayerId: string, tx?: TxClient) {
         const client = tx ?? db;
         return client.observations.findMany({
-            where: {
-                taxpayerId: taxpayerId,
-            }
+            where: { taxpayerId },
+            select: { id: true, description: true, date: true, taxpayerId: true },
         });
     }
 
@@ -665,12 +721,16 @@ export class TaxpayerRepository {
         const client = tx ?? db;
         return client.user.findUnique({
             where: { id: userId },
-            include: {
+            select: {
+                id: true,
+                name: true,
+                role: true,
                 taxpayer: {
-                    include: {
-                        IVAReports: true,
-                        ISLRReports: true,
-                        event: true,
+                    select: {
+                        id: true,
+                        IVAReports: { select: { id: true, paid: true, date: true } },
+                        ISLRReports: { select: { id: true, paid: true, emition_date: true } },
+                        event: { select: { id: true, amount: true, type: true, date: true } },
                     },
                 },
             },
@@ -680,10 +740,27 @@ export class TaxpayerRepository {
     async findByUser(userId: string, tx?: TxClient) {
         const client = tx ?? db;
         return client.taxpayer.findMany({
-            where: {
-                officerId: userId,
-                status: true
-            }
+            where: { officerId: userId, status: true },
+            select: {
+                id: true,
+                name: true,
+                rif: true,
+                status: true,
+                officerId: true,
+                process: true,
+                address: true,
+                emition_date: true,
+                contract_type: true,
+                providenceNum: true,
+                fase: true,
+                notified: true,
+                culminated: true,
+                created_at: true,
+                updated_at: true,
+                index_iva: true,
+                parish_id: true,
+                taxpayer_category_id: true,
+            },
         });
     }
 
@@ -761,14 +838,34 @@ export class TaxpayerRepository {
     async findById(taxpayerId: string, tx?: TxClient): Promise<Taxpayer | null> {
         const client = tx ?? db;
         const taxpayer = await client.taxpayer.findUnique({
-            where: { id: taxpayerId }
+            where: { id: taxpayerId },
+            select: {
+                id: true,
+                providenceNum: true,
+                address: true,
+                process: true,
+                name: true,
+                rif: true,
+                emition_date: true,
+                contract_type: true,
+                status: true,
+                fase: true,
+                notified: true,
+                culminated: true,
+                officerId: true,
+                created_at: true,
+                updated_at: true,
+                index_iva: true,
+                parish_id: true,
+                taxpayer_category_id: true,
+            },
         });
 
         if (!taxpayer || !taxpayer.status) {
             return null;
         }
 
-        return taxpayer;
+        return taxpayer as Taxpayer;
     }
 }
 

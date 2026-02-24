@@ -4,7 +4,7 @@ import request from "supertest";
 import { sign } from "jsonwebtoken";
 import app from "../../app";
 import { mockTaxpayerRepository, mockDb } from "../setup";
-import * as TaxpayerServices from "../../taxpayer/taxpayer.services";
+import * as TaxpayerServices from "../../taxpayer/taxpayer-services";
 
 const TOKEN_SECRET = process.env.TOKEN_SECRET || "test-secret-for-routes";
 const EVENT_ID = "event-uuid-123";

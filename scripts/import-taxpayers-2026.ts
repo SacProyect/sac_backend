@@ -17,8 +17,8 @@ if (!process.env.DATABASE_URL) {
     process.exit(1);
 }
 
-import { db } from '../src/utils/db.server';
-import { createTaxpayerExcel } from '../src/taxpayer/taxpayer.services';
+import { db } from '../src/utils/db-server';
+import { createTaxpayerExcel } from '../src/taxpayer/taxpayer-services';
 
 /**
  * Script para importar los primeros 47 contribuyentes del año 2026 desde Excel

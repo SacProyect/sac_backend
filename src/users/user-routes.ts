@@ -1,10 +1,10 @@
 import express from "express";
 import type { Request, Response } from "express";
-import * as UserService from "./user.services";
+import * as UserService from "./user-services";
 import { body, validationResult, query } from "express-validator";
-import { authenticateToken, AuthRequest } from "./user.utils";
+import { authenticateToken, AuthRequest } from "./user-utils";
 import logger from "../utils/logger";
-import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache.middleware";
+import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache-middleware";
 
 export const userRouter = express.Router();
 

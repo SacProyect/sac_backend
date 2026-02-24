@@ -6,7 +6,7 @@ dotenv.config({
     override: true 
 });
 
-import { db } from '../src/utils/db.server';
+import { db } from '../src/utils/db-server';
 
 /**
  * Script de VERIFICACIÓN - Solo muestra el estado actual sin hacer cambios

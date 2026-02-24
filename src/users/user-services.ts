@@ -1,7 +1,7 @@
 import { compareSync } from "bcryptjs";
 import { Prisma, user_roles } from "@prisma/client";
-import { db, runTransaction } from "../utils/db.server";
-import { generateAcessToken, NewUserInput, passwordHashing, UpdateUserByNameInput, User } from "./user.utils";
+import { db, runTransaction } from "../utils/db-server";
+import { generateAcessToken, NewUserInput, passwordHashing, UpdateUserByNameInput, User } from "./user-utils";
 import bcrypt from 'bcryptjs';
 import logger from "../utils/logger";
 
@@ -14,16 +14,20 @@ import logger from "../utils/logger";
  */
 export const logIn = async (personId: number, password: string): Promise<{ user: User; token: string }> => {
     const user = await db.user.findUnique({
-        where: {
-            personId,
+        where: { personId },
+        select: {
+            id: true,
+            name: true,
+            role: true,
+            personId: true,
+            password: true,
+            status: true,
+            email: true,
+            groupId: true,
+            supervisorId: true,
+            updated_at: true,
+            coordinatedGroup: { select: { id: true } },
         },
-        include: {
-            coordinatedGroup: {
-                select: {
-                    id: true,
-                }
-            }
-        }
     });
 
     if (!user) {
@@ -108,30 +112,72 @@ export const getAllUsers = async (user: { id: string, role: string }): Promise<U
         let users: User[] = [];
 
         if (user.role == "ADMIN") {
-            users = await db.user.findMany();
+            users = await db.user.findMany({
+                select: {
+                    id: true,
+                    name: true,
+                    role: true,
+                    personId: true,
+                    status: true,
+                    email: true,
+                    groupId: true,
+                    supervisorId: true,
+                    updated_at: true,
+                },
+            });
         } else if (user.role == "COORDINATOR") {
             const coordinator = await db.user.findUnique({
-                where: {
-                    id: user.id
-                },
-                include: {
+                where: { id: user.id },
+                select: {
+                    id: true,
                     coordinatedGroup: {
-                        include: {
-                            members: true,
-                        }
-                    }
-                }
+                        select: {
+                            members: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    role: true,
+                                    personId: true,
+                                    status: true,
+                                    email: true,
+                                    groupId: true,
+                                    supervisorId: true,
+                                    updated_at: true,
+                                },
+                            },
+                        },
+                    },
+                },
             })
             if (coordinator?.coordinatedGroup?.members) {
                 users = coordinator.coordinatedGroup.members;
             }
         } else if (user.role === "SUPERVISOR") {
             const supervisor = await db.user.findUnique({
-                where: {
-                    id: user.id,
-                },
-                include: {
-                    supervised_members: true,
+                where: { id: user.id },
+                select: {
+                    id: true,
+                    name: true,
+                    role: true,
+                    personId: true,
+                    status: true,
+                    email: true,
+                    groupId: true,
+                    supervisorId: true,
+                    updated_at: true,
+                    supervised_members: {
+                        select: {
+                            id: true,
+                            name: true,
+                            role: true,
+                            personId: true,
+                            status: true,
+                            email: true,
+                            groupId: true,
+                            supervisorId: true,
+                            updated_at: true,
+                        },
+                    },
                 },
             });
 
@@ -151,46 +197,28 @@ export const getUser = async (id: string): Promise<{ user: User; token: string }
     try {
         const user = await db.user.findUnique({
             where: { id: id },
-            include: {
-                coordinatedGroup: {
-                    select: {
-                        id: true,
-                    }
-                }
-            }
-
+            select: {
+                id: true,
+                name: true,
+                role: true,
+                personId: true,
+                password: true,
+                status: true,
+                email: true,
+                groupId: true,
+                supervisorId: true,
+                updated_at: true,
+                coordinatedGroup: { select: { id: true } },
+            },
         });
 
         if (!user) {
             throw new Error('Usuario no encontrado');
         }
 
-        // user.taxpayer = await db.taxpayer.findMany({
-        //     where: { status: true },
-        //     include: {
-        //         IVAReports: true,
-        //         user: {
-        //             select: {
-        //                 name: true,
-        //                 group: { select: { coordinatorId: true } },
-        //                 supervisor: {
-        //                     select: {
-        //                         id: true,
-        //                     }
-        //                 }
-        //             },
-
-        //         },
-        //     }
-        // });
-
-        // 3) remove password before sending back
         (user as any).password = "";
 
-        // 4) issue a fresh token (you can tweak expiry here)
         const token = generateAcessToken(user);
-
-        // 5) respond just like your login endpoint
         return { user, token };
 
     } catch (e: any) {

@@ -1,4 +1,4 @@
-import { db, TxClient } from "../../utils/db.server";
+import { db, TxClient } from "../../utils/db-server";
 
 export class StaticDataRepository {
 
