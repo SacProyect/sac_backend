@@ -726,6 +726,7 @@ export class TaxpayerRepository {
                 name: true,
                 role: true,
                 taxpayer: {
+                    where: { status: true },
                     select: {
                         id: true,
                         IVAReports: { select: { id: true, paid: true, date: true } },

@@ -3160,6 +3160,7 @@ export async function getFiscalTaxpayers(fiscalId: string, date?: Date) {
                 gte: start,
                 lte: end,
             };
+            whereClause.status = true; // ✅ Excluir contribuyentes eliminados
         }
 
         const taxpayers = await db.taxpayer.findMany({

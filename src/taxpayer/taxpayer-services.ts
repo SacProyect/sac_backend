@@ -12,6 +12,8 @@ import {
 import { Decimal } from "@prisma/client/runtime/library";
 import { ISLRReports, IVAReports, Prisma, taxpayer, taxpayer_contract_type, taxpayer_process } from "@prisma/client";
 import logger from "../utils/logger";
+import { invalidateTaxpayerCache } from "../utils/cache-invalidation";
+
 
 
 // Resend v4: `emails` exists on the instance, not the class.
@@ -886,6 +888,10 @@ export const getTaxpayersByUser = async (userId: string): Promise<Taxpayer[] | E
 export const deleteTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Error> => {
     try {
         const removedTaxpayer = await runTransaction((tx) => taxpayerRepository.deleteById(taxpayerId, tx));
+        
+        // Invalidar caché para que las estadísticas se actualicen inmediatamente
+        invalidateTaxpayerCache();
+        
         return removedTaxpayer;
     } catch (error: any) {
         logger.error("Error deleteTaxpayerById", { taxpayerId, message: error?.message, stack: error?.stack });
