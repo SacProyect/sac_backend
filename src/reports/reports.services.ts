@@ -2487,6 +2487,7 @@ export async function getTaxpayerCompliance(date?: Date, page?: string, limit?: 
             id: string;
             taxpayer_name: string;
             rif: string;
+            emition_date: Date;
             meses_activos: number;
             tarifa_activa: any;
             total_esperado: any;
@@ -2558,7 +2559,7 @@ export async function getTaxpayerCompliance(date?: Date, page?: string, limit?: 
                             END
                     END AS meses_activos
                 FROM taxpayer
-                WHERE status = 1 AND YEAR(emition_date) <= ${selectedYear}
+                WHERE status = 1 AND YEAR(emition_date) = ${selectedYear}  
             ),
             IndiceGeneral AS (
                 SELECT i1.contract_type, i1.base_amount 
@@ -2587,6 +2588,7 @@ export async function getTaxpayerCompliance(date?: Date, page?: string, limit?: 
                 id,
                 name AS taxpayer_name,
                 rif,
+                emition_date,
                 meses_activos,
                 indice_aplicable AS tarifa_activa,
                 total_esperado,
@@ -2624,6 +2626,7 @@ export async function getTaxpayerCompliance(date?: Date, page?: string, limit?: 
             const totalCollected = totalIVA + totalISLR + totalFines + (isNaN(Number(row.total_pagado)) ? 0 : Number(row.total_pagado));
 
             const taxpayerResult = {
+                id: row.id,
                 name: row.taxpayer_name || "",
                 rif: row.rif || "",
                 compliance: complianceScore,
@@ -2631,7 +2634,8 @@ export async function getTaxpayerCompliance(date?: Date, page?: string, limit?: 
                 mesesExigibles: Number(row.meses_activos) || 1,
                 pagosValidos: 0, // Not accurately retrievable from the raw query easily, but UI may not strictly depend on it 
                 clasificacion: row.clasificacion || "BAJO",
-                fechaFiscalizacion: new Date().toISOString(), // Fallback
+                fechaFiscalizacion: row.emition_date ? new Date(row.emition_date).toISOString() : new Date().toISOString(),
+                indiceIvaAplicado: Number(row.tarifa_activa) || 0,
                 totalIVA: Number(totalIVA.toFixed(2)),
                 totalISLR: Number(totalISLR.toFixed(2)),
                 totalFines: Number(totalFines.toFixed(2)),
