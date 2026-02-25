@@ -17,7 +17,7 @@ dayjs.extend(isBetween);
  * - Para cada mes exigible se calcula un esperado usando el índice IVA activo para el tipo de contrato.
  * - Si en un mes no existe índice activo (esperado=0), ese mes no se penaliza (se excluye del denominador).
  */
-function calculateComplianceScore(
+export function calculateComplianceScore(
     taxpayer: any,
     fechaFin: Date,
     yearFilter: number | undefined,
