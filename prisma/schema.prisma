@@ -1,343 +1,402 @@
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider          = "mysql"
-    url               = env("DATABASE_URL")
-    shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+  provider          = "mysql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 model user {
-    id         String     @id @default(uuid())
-    name       String
-    role       user_roles
-    personId   Int        @unique(map: "usuario_cedula_key")
-    password   String
-    status     Boolean    @default(true)
-    email      String     @default("")
-    taxpayer   taxpayer[]
-    errors     errors[]   @relation("UserErrors")
-    updated_at DateTime   @default(now()) @updatedAt
+  id                                                  String                @id @default(uuid())
+  name                                                String
+  role                                                user_roles
+  personId                                            Int                   @unique(map: "usuario_cedula_key")
+  password                                            String
+  status                                              Boolean               @default(true)
+  updated_at                                          DateTime              @default(now()) @updatedAt
+  groupId                                             String?
+  email                                               String                @default("")
+  supervisorId                                        String?               @map("supervisor_id")
+  coordinatedGroup                                    FiscalGroup?          @relation("GroupCoordinator")
+  GroupFiscalStat                                     GroupFiscalStat[]
+  GroupFiscalYearStat                                 GroupFiscalYearStat[]
+  Census                                              TaxpayerCensus[]
+  UserHistory_UserHistory_supervisor_id_historyTouser UserHistory[]         @relation("UserHistory_supervisor_id_historyTouser")
+  UserHistory_UserHistory_userIdTouser                UserHistory[]         @relation("UserHistory_userIdTouser")
+  errors                                              errors[]              @relation("UserErrors")
+  taxpayer                                            taxpayer[]
+  group                                               FiscalGroup?          @relation("GroupMembers", fields: [groupId], references: [id])
+  supervisor                                          user?                 @relation("UserSupervisor", fields: [supervisorId], references: [id])
+  supervised_members                                  user[]                @relation("UserSupervisor")
+  indexIvaAssignments                                 TaxpayerIndexIva[]    @relation("IndexIvaAssignments")
 
-    groupId String?
-    group   FiscalGroup? @relation("GroupMembers", fields: [groupId], references: [id])
-
-    coordinatedGroup    FiscalGroup?          @relation("GroupCoordinator")
-    GroupFiscalStat     GroupFiscalStat[]
-    GroupFiscalYearStat GroupFiscalYearStat[]
-    Census              TaxpayerCensus[]
-    supervisorId        String?               @map("supervisor_id")
-    supervisor          user?                 @relation("UserSupervisor", fields: [supervisorId], references: [id])
-    supervised_members  user[]                @relation("UserSupervisor")
+  @@index([groupId], map: "user_groupId_fkey")
+  @@index([supervisorId], map: "user_supervisor_id_fkey")
 }
 
 model FiscalGroup {
-    id               String             @id @default(uuid())
-    name             String             @default("")
-    coordinatorId    String?            @unique
-    coordinator      user?              @relation("GroupCoordinator", fields: [coordinatorId], references: [id])
-    members          user[]             @relation("GroupMembers")
-    created_at       DateTime           @default(now())
-    GroupRecordMonth GroupRecordMonth[]
-    GroupRecordYear  GroupRecordYear[]
+  id               String             @id @default(uuid())
+  name             String             @default("")
+  coordinatorId    String?            @unique
+  created_at       DateTime           @default(now())
+  coordinator      user?              @relation("GroupCoordinator", fields: [coordinatorId], references: [id])
+  GroupRecordMonth GroupRecordMonth[]
+  GroupRecordYear  GroupRecordYear[]
+  UserHistory      UserHistory[]
+  members          user[]             @relation("GroupMembers")
 }
 
 model GroupRecordMonth {
-    id         String            @id @default(uuid())
-    groupId    String
-    group      FiscalGroup       @relation(fields: [groupId], references: [id])
-    year       Int
-    month      Int
-    records    GroupFiscalStat[] @relation("MonthToStat")
-    created_at DateTime          @default(now())
+  id         String            @id @default(uuid())
+  groupId    String
+  year       Int
+  month      Int
+  created_at DateTime          @default(now())
+  records    GroupFiscalStat[] @relation("MonthToStat")
+  group      FiscalGroup       @relation(fields: [groupId], references: [id])
 
-    @@index([groupId, year, month])
+  @@index([groupId, year, month])
 }
 
 model GroupRecordYear {
-    id         String      @id @default(uuid())
-    groupId    String
-    group      FiscalGroup @relation(fields: [groupId], references: [id])
-    year       Int
-    created_at DateTime    @default(now())
+  id         String                @id @default(uuid())
+  groupId    String
+  year       Int
+  created_at DateTime              @default(now())
+  records    GroupFiscalYearStat[] @relation("YearToStat")
+  group      FiscalGroup           @relation(fields: [groupId], references: [id])
 
-    records GroupFiscalYearStat[] @relation("YearToStat")
+  @@index([groupId], map: "GroupRecordYear_groupId_fkey")
 }
 
 model GroupFiscalYearStat {
-    id                String          @id @default(uuid())
-    groupRecordYearId String
-    groupRecordYear   GroupRecordYear @relation("YearToStat", fields: [groupRecordYearId], references: [id], onDelete: Cascade)
+  id                String           @id @default(uuid())
+  groupRecordYearId String
+  fiscalId          String
+  process           taxpayer_process
+  collectedFines    Decimal          @default(0.000000000000000000000000000000)
+  collectedIVA      Decimal          @default(0.000000000000000000000000000000)
+  collectedISLR     Decimal          @default(0.000000000000000000000000000000)
+  warnings          Int              @default(0)
+  fines             Int              @default(0)
+  compromises       Int              @default(0)
+  taxpayers         Int              @default(0)
+  fiscal            user             @relation(fields: [fiscalId], references: [id])
+  groupRecordYear   GroupRecordYear  @relation("YearToStat", fields: [groupRecordYearId], references: [id], onDelete: Cascade)
 
-    fiscalId String
-    fiscal   user   @relation(fields: [fiscalId], references: [id])
-
-    process taxpayer_process
-
-    collectedFines Decimal @default(0)
-    collectedIVA   Decimal @default(0)
-    collectedISLR  Decimal @default(0)
-    warnings       Int     @default(0)
-    fines          Int     @default(0)
-    compromises    Int     @default(0)
-    taxpayers      Int     @default(0)
-
-    @@index([groupRecordYearId, fiscalId, process])
+  @@index([groupRecordYearId, fiscalId, process])
+  @@index([fiscalId], map: "GroupFiscalYearStat_fiscalId_fkey")
 }
 
 model GroupFiscalStat {
-    id                 String           @id @default(uuid())
-    groupRecordMonthId String
-    groupRecordMonth   GroupRecordMonth @relation("MonthToStat", fields: [groupRecordMonthId], references: [id], onDelete: Cascade)
+  id                 String           @id @default(uuid())
+  groupRecordMonthId String
+  fiscalId           String
+  process            taxpayer_process
+  collectedFines     Decimal          @default(0.000000000000000000000000000000)
+  collectedIVA       Decimal          @default(0.000000000000000000000000000000)
+  collectedISLR      Decimal          @default(0.000000000000000000000000000000)
+  warnings           Int              @default(0)
+  fines              Int              @default(0)
+  compromises        Int              @default(0)
+  taxpayers          Int              @default(0)
+  fiscal             user             @relation(fields: [fiscalId], references: [id])
+  groupRecordMonth   GroupRecordMonth @relation("MonthToStat", fields: [groupRecordMonthId], references: [id], onDelete: Cascade)
 
-    fiscalId String
-    fiscal   user   @relation(fields: [fiscalId], references: [id])
-
-    process taxpayer_process
-
-    collectedFines Decimal @default(0)
-    collectedIVA   Decimal @default(0)
-    collectedISLR  Decimal @default(0)
-    warnings       Int     @default(0)
-    fines          Int     @default(0)
-    compromises    Int     @default(0)
-    taxpayers      Int     @default(0)
-
-    @@index([groupRecordMonthId, fiscalId, process])
+  @@index([groupRecordMonthId, fiscalId, process])
+  @@index([fiscalId], map: "GroupFiscalStat_fiscalId_fkey")
 }
 
 model event {
-    id          String     @id @default(uuid())
-    date        DateTime   @default(now()) @db.DateTime(0)
-    amount      Decimal    @default(0.00) @db.Decimal(20, 2)
-    type        event_type
-    status      Boolean    @default(true)
-    debt        Decimal    @default(0)
-    description String     @default("")
-    taxpayerId  String
-    taxpayer    taxpayer   @relation(fields: [taxpayerId], references: [id], map: "evento_contribuyenteId_fkey", onDelete: Cascade)
-    payment     payment[]
-    expires_at  DateTime   @default(now())
-    updated_at  DateTime   @default(now()) @updatedAt
+  id          String     @id @default(uuid())
+  date        DateTime   @default(now()) @db.DateTime(0)
+  amount      Decimal    @default(0.00) @db.Decimal(20, 2)
+  type        event_type
+  status      Boolean    @default(true)
+  debt        Decimal    @default(0.000000000000000000000000000000)
+  taxpayerId  String
+  expires_at  DateTime   @default(now())
+  updated_at  DateTime   @default(now()) @updatedAt
+  fineEventId String?
+  description String     @default("")
+  fineEvent   event?     @relation("EventToFine", fields: [fineEventId], references: [id])
+  fineEvents  event[]    @relation("EventToFine")
+  taxpayer    taxpayer   @relation(fields: [taxpayerId], references: [id], onDelete: Cascade, map: "evento_contribuyenteId_fkey")
+  payment     payment[]
 
-    // Self-referential relation for linking to a fine event
-    fineEventId String? // Link to the parent fine event
-    fineEvent   event?  @relation("EventToFine", fields: [fineEventId], references: [id])
-    fineEvents  event[] @relation("EventToFine")
-
-    @@index([taxpayerId], map: "evento_contribuyenteId_fkey")
-    @@index([fineEventId], map: "evento_fineEventId_fkey") // Index to speed up queries based on fineEventId
-    @@index([type], map: "evento_type_idx") // Index for filtering by type (e.g., "FINE")
-    @@index([debt], map: "evento_debt_idx") // Index for filtering by debt (e.g., `debt == 0`)
-    @@index([date, type], map: "evento_date_type_idx") // Composite index for filtering by both `date` and `type`
+  @@index([taxpayerId], map: "evento_contribuyenteId_fkey")
+  @@index([fineEventId], map: "evento_fineEventId_fkey")
+  @@index([type], map: "evento_type_idx")
+  @@index([debt], map: "evento_debt_idx")
+  @@index([date, type], map: "evento_date_type_idx")
 }
 
 model payment {
-    id         String   @id @default(uuid())
-    amount     Decimal  @default(0.00) @db.Decimal(20, 2)
-    date       DateTime @default(now()) @db.DateTime(0)
-    status     Boolean  @default(true)
-    eventId    String
-    taxpayerId String
-    taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], map: "pago_contribuyenteId_fkey", onDelete: Cascade)
-    event      event    @relation(fields: [eventId], references: [id], map: "pago_eventoId_fkey", onDelete: Cascade)
-    updated_at DateTime @default(now()) @updatedAt
+  id         String   @id @default(uuid())
+  amount     Decimal  @default(0.00) @db.Decimal(20, 2)
+  date       DateTime @default(now()) @db.DateTime(0)
+  status     Boolean  @default(true)
+  eventId    String
+  taxpayerId String
+  updated_at DateTime @default(now()) @updatedAt
+  taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade, map: "pago_contribuyenteId_fkey")
+  event      event    @relation(fields: [eventId], references: [id], onDelete: Cascade, map: "pago_eventoId_fkey")
 
-    @@index([taxpayerId], map: "pago_contribuyenteId_fkey")
-    @@index([date], map: "pago_date_idx") // Index for filtering by `date` ranges
+  @@index([taxpayerId], map: "pago_contribuyenteId_fkey")
+  @@index([date], map: "pago_date_idx")
+  @@index([eventId], map: "pago_eventoId_fkey")
 }
 
 model taxpayer {
-    id                   String                 @id @default(uuid())
-    providenceNum        BigInt
-    address              String                 @default("Caracas")
-    process              taxpayer_process       @default(NA)
-    name                 String
-    rif                  String
-    emition_date         DateTime               @default(now())
-    contract_type        taxpayer_contract_type @default(ORDINARY)
-    status               Boolean                @default(true)
-    fase                 Taxpayer_Fases         @default(FASE_1)
-    notified             Boolean                @default(false)
-    culminated           Boolean                @default(false)
-    officerId            String?
-    event                event[]
-    payment              payment[]
-    user                 user?                  @relation(fields: [officerId], references: [id], map: "contribuyente_funcionarioId_fkey", onDelete: Cascade)
-    created_at           DateTime               @default(now())
-    updated_at           DateTime               @default(now()) @updatedAt
-    index_iva            Decimal?
-    parish_id            String?
-    parish               Parish?                  @relation(fields: [parish_id], references: [id]) 
-    taxpayer_category_id String?
-    taxpayer_category    TaxpayerCategory?        @relation(fields: [taxpayer_category_id], references: [id])
-    investigation_pdfs   InvestigationPdf[]
-    observations         Observations[]
-    IVAReports           IVAReports[]
-    ISLRReports          ISLRReports[]
-    RepairReports        RepairReport[]
+  id                   String                 @id @default(uuid())
+  providenceNum        BigInt
+  address              String                 @default("Caracas")
+  process              taxpayer_process       @default(NA)
+  name                 String
+  rif                  String
+  contract_type        taxpayer_contract_type @default(ORDINARY)
+  status               Boolean                @default(true)
+  officerId            String?
+  updated_at           DateTime               @default(now()) @updatedAt
+  emition_date         DateTime               @default(now())
+  fase                 Taxpayer_Fases         @default(FASE_1)
+  notified             Boolean                @default(false)
+  created_at           DateTime               @default(now())
+  culminated           Boolean                @default(false)
+  index_iva            Decimal?
+  parish_id            String?
+  taxpayer_category_id String?
+  ISLRReports          ISLRReports[]
+  IVAReports           IVAReports[]
+  investigation_pdfs   InvestigationPdf[]
+  observations         Observations[]
+  RepairReports        RepairReport[]
+  event                event[]
+  payment              payment[]
+  user                 user?                  @relation(fields: [officerId], references: [id], onDelete: Cascade, map: "contribuyente_funcionarioId_fkey")
+  parish               Parish?                @relation(fields: [parish_id], references: [id])
+  taxpayer_category    TaxpayerCategory?      @relation(fields: [taxpayer_category_id], references: [id])
+  taxpayerIndexIva     TaxpayerIndexIva[]
 
-    @@index([officerId], map: "contribuyente_funcionarioId_fkey")
-    @@index([process], map: "contribuyente_procedimiento_idx")
-    @@index([contract_type], map: "contribuyente_tipoContrato_idx")
-    @@index([parish_id])
+  @@index([officerId], map: "contribuyente_funcionarioId_fkey")
+  @@index([process], map: "contribuyente_procedimiento_idx")
+  @@index([contract_type], map: "contribuyente_tipoContrato_idx")
+  @@index([parish_id])
+  @@index([taxpayer_category_id], map: "taxpayer_taxpayer_category_id_fkey")
 }
 
 model Parish {
-    id        String     @id @default(uuid())
-    name      String
-    taxpayers taxpayer[]
+  id        String     @id @default(uuid())
+  name      String
+  taxpayers taxpayer[]
 }
 
 model TaxpayerCategory {
-    id        String     @id @default(uuid())
-    name      String
-    taxpayers taxpayer[]
+  id        String     @id @default(uuid())
+  name      String
+  taxpayers taxpayer[]
 }
 
 model IndexIva {
-    id            String                 @id @default(uuid())
-    contract_type taxpayer_contract_type
-    base_amount   Decimal
-    created_at    DateTime               @default(now())
-    expires_at    DateTime?
-    updated_at    DateTime               @default(now()) @updatedAt
+  id            String                 @id @default(uuid())
+  contract_type taxpayer_contract_type
+  base_amount   Decimal
+  created_at    DateTime               @default(now())
+  expires_at    DateTime?
+  updated_at    DateTime               @default(now()) @updatedAt
 }
 
 model TaxpayerCensus {
-    id           String                 @id @default(uuid())
-    number       Int
-    process      taxpayer_process       @default(FP)
-    name         String
-    rif          String
-    type         taxpayer_contract_type @default(ORDINARY)
-    address      String                 @default("Caracas")
-    emition_date DateTime               @default(now())
-    fiscal       user                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-    userId       String
+  id           String                 @id @default(uuid())
+  number       Int
+  process      taxpayer_process       @default(FP)
+  name         String
+  rif          String
+  type         taxpayer_contract_type @default(ORDINARY)
+  address      String                 @default("Caracas")
+  emition_date DateTime               @default(now())
+  userId       String
+  fiscal       user                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "TaxpayerCensus_userId_fkey")
 }
 
 model RepairReport {
-    id         String   @id @default(uuid())
-    pdf_url    String
-    taxpayerId String
-    taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  pdf_url    String
+  taxpayerId String
+  taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@index([taxpayerId], map: "RepairReport_taxpayerId_fkey")
 }
 
 model ISLRReports {
-    id           String   @id @default(uuid())
-    incomes      Decimal
-    costs        Decimal
-    expent       Decimal
-    paid         Decimal  @default(0)
-    emition_date DateTime @default(now())
-    updatedAt    DateTime @default(now()) @updatedAt
-    taxpayerId   String
-    taxpayer     taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  id           String   @id @default(uuid())
+  incomes      Decimal
+  costs        Decimal
+  expent       Decimal
+  emition_date DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+  taxpayerId   String
+  paid         Decimal  @default(0.000000000000000000000000000000)
+  taxpayer     taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@index([taxpayerId], map: "ISLRReports_taxpayerId_fkey")
 }
 
 model IVAReports {
-    id         String   @id @default(uuid())
-    iva        Decimal?
-    purchases  Decimal
-    sells      Decimal
-    excess     Decimal?
-    paid       Decimal  @default(0)
-    date       DateTime @default(now())
-    taxpayerId String
-    taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
-    updated_at DateTime @default(now()) @updatedAt
+  id         String   @id @default(uuid())
+  iva        Decimal?
+  purchases  Decimal
+  sells      Decimal
+  excess     Decimal?
+  date       DateTime @default(now())
+  taxpayerId String
+  updated_at DateTime @default(now()) @updatedAt
+  paid       Decimal  @default(0.000000000000000000000000000000)
+  taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@index([taxpayerId], map: "IVAReports_taxpayerId_fkey")
 }
 
 model Observations {
-    id          String   @id @default(uuid())
-    description String
-    date        DateTime @default(now())
-    taxpayerId  String
-    taxpayer    taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  id          String   @id @default(uuid())
+  description String
+  date        DateTime @default(now())
+  taxpayerId  String
+  taxpayer    taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@index([taxpayerId], map: "Observations_taxpayerId_fkey")
 }
 
 model InvestigationPdf {
-    id         String   @id @default(uuid())
-    pdf_url    String
-    taxpayerId String
-    taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  pdf_url    String
+  taxpayerId String
+  taxpayer   taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@index([taxpayerId], map: "InvestigationPdf_taxpayerId_fkey")
+}
+
+model TaxpayerIndexIva {
+  id            String    @id @default(uuid())
+  base_amount   Decimal   @db.Decimal(20, 2)
+  taxpayerId    String
+  taxpayer      taxpayer  @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  assignedById  String
+  assignedBy    user      @relation("IndexIvaAssignments", fields: [assignedById], references: [id])
+  notes         String?   @default("")
+  active        Boolean   @default(true)
+  created_at    DateTime  @default(now())
+  expires_at    DateTime?
+
+  @@index([taxpayerId])
+  @@index([taxpayerId, active])
 }
 
 model errors {
-    id          String       @id @default(uuid())
-    type        app_error
-    title       String       @default("error")
-    description String
-    status      Boolean      @default(true)
-    user        user         @relation("UserErrors", fields: [userId], references: [id], onDelete: Cascade)
-    userId      String
-    created_at  DateTime     @default(now()) @db.DateTime(0)
-    closed_at   DateTime?    @db.DateTime(0)
-    updated_at  DateTime     @default(now()) @updatedAt
-    errorImages ErrorImage[] // One-to-many relationship with ErrorImage
+  id          String       @id @default(uuid())
+  type        app_error
+  title       String       @default("error")
+  description String
+  status      Boolean      @default(true)
+  userId      String
+  created_at  DateTime     @default(now()) @db.DateTime(0)
+  closed_at   DateTime?    @db.DateTime(0)
+  updated_at  DateTime     @default(now()) @updatedAt
+  errorImages ErrorImage[]
+  user        user         @relation("UserErrors", fields: [userId], references: [id], onDelete: Cascade)
 
-    @@index([userId])
+  @@index([userId])
 }
 
 model ErrorImage {
-    id      String @id @default(uuid())
-    img_src String
-    img_alt String
-    errorId String
-    error   errors @relation(fields: [errorId], references: [id])
+  id      String @id @default(uuid())
+  img_src String
+  img_alt String
+  errorId String
+  error   errors @relation(fields: [errorId], references: [id])
+
+  @@index([errorId], map: "ErrorImage_errorId_fkey")
 }
 
 model GlobalStatistics {
-    id        String @id @default(uuid())
-    month     String
-    year      Int
-    collected BigInt
+  id        String @id @default(uuid())
+  month     String
+  year      Int
+  collected BigInt
 
-    @@unique([month, year], name: "month_year")
+  @@unique([month, year], name: "month_year")
+}
+
+model UserHistory {
+  id                                           String           @id
+  userId                                       String
+  groupId                                      String?
+  role                                         UserHistory_role
+  year                                         Int
+  supervisor_id_history                        String?
+  meta                                         Json?
+  created_at                                   DateTime         @default(now())
+  FiscalGroup                                  FiscalGroup?     @relation(fields: [groupId], references: [id])
+  user_UserHistory_supervisor_id_historyTouser user?            @relation("UserHistory_supervisor_id_historyTouser", fields: [supervisor_id_history], references: [id])
+  user_UserHistory_userIdTouser                user             @relation("UserHistory_userIdTouser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year])
+  @@index([groupId, year])
+  @@index([supervisor_id_history], map: "UserHistory_supervisor_id_history_fkey")
+  @@index([userId, year])
 }
 
 enum taxpayer_process {
-    FP
-    AF
-    VDF
-    NA
+  FP
+  AF
+  VDF
+  NA
 }
 
 enum event_type {
-    FINE
-    WARNING
-    PAYMENT_COMPROMISE
+  FINE
+  WARNING
+  PAYMENT_COMPROMISE
 }
 
 enum taxpayer_contract_type {
-    SPECIAL
-    ORDINARY
+  SPECIAL
+  ORDINARY
 }
 
 enum app_error {
-    HOME
-    TAXPAYER_DETAILS
-    TAXPAYERS
-    WARNING
-    FINES
-    PAYMENT
-    PAYMENT_COMPROMISE
-    STATS
-    OTHER
+  HOME
+  TAXPAYER_DETAILS
+  TAXPAYERS
+  WARNING
+  FINES
+  PAYMENT
+  PAYMENT_COMPROMISE
+  STATS
+  OTHER
 }
 
 enum user_roles {
-    FISCAL
-    ADMIN
-    COORDINATOR
-    SUPERVISOR
+  FISCAL
+  ADMIN
+  COORDINATOR
+  SUPERVISOR
 }
 
 enum Taxpayer_Fases {
-    FASE_1
-    FASE_2
-    FASE_3
-    FASE_4
+  FASE_1
+  FASE_2
+  FASE_3
+  FASE_4
+}
+
+enum UserHistory_role {
+  FISCAL
+  ADMIN
+  COORDINATOR
+  SUPERVISOR
 }
