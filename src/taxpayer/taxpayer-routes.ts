@@ -885,7 +885,8 @@ taxpayerRouter.put('/modify-individual-index-iva/:id',
         const { user } = req as AuthRequest
 
         if (!user) return res.status(401).json("Unauthorized access")
-        if (user.role !== "COORDINATOR" && user.role !== "ADMIN") return res.status(403).json("Forbidden")
+        const allowedRoles = ["ADMIN", "SUPERVISOR", "COORDINATOR", "FISCAL"];
+        if (!allowedRoles.includes(user.role)) return res.status(403).json("Forbidden")
 
         try {
 

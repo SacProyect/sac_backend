@@ -1,5 +1,5 @@
 import { db, runTransaction } from "../utils/db-server";
-import { CreateIndexIva, Event, FiscalTaxpayerStat, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer } from "./taxpayer-utils";
+import { CreateIndexIva, Event, FiscalTaxpayerStat, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer, TaxpayerDetailResponse } from "./taxpayer-utils";
 import { BadRequestError } from "../utils/errors/bad-request-error";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getS3Client } from "../utils/s3-client";
@@ -749,12 +749,39 @@ export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): P
 
 
 /**
+ * Índice Soberano: resuelve el índice efectivo para un contribuyente.
+ * 1. Si index_iva no es nulo y > 0 → se usa ese valor.
+ * 2. Si no → fallback al índice general (tabla IndexIva) según contract_type en refDate.
+ * @param refDate Fecha de referencia (por defecto: hoy). Usado para el fallback al índice general.
+ * @returns Valor numérico del índice o null si no hay ninguno aplicable.
+ */
+export async function resolveCurrentEffectiveIndex(
+    taxpayer: { index_iva?: unknown; contract_type: string },
+    refDate: Date = new Date()
+): Promise<number | null> {
+    const safeNum = (v: unknown): number => {
+        if (v == null) return 0;
+        const n = typeof v === "number" ? v : Number(v);
+        return Number.isFinite(n) ? n : 0;
+    };
+    if (taxpayer.index_iva != null && safeNum(taxpayer.index_iva) > 0) {
+        return safeNum(taxpayer.index_iva);
+    }
+    const contractType = taxpayer.contract_type === "SPECIAL" || taxpayer.contract_type === "ORDINARY"
+        ? taxpayer.contract_type
+        : "ORDINARY";
+    const general = await taxpayerRepository.findActiveGeneralIndexIva(contractType, refDate);
+    return general ? safeNum(general.base_amount) : null;
+}
+
+/**
  * Gets a taxpayer by its ID.
+ * Incluye currentEffectiveIndex (Índice Soberano) ya resuelto para el frontend.
  *
  * @param {string} taxpayerId - The ID of the taxpayer.
  * @returns {Promise<Taxpayer | Error>} A Promise resolving to the taxpayer or an error.
  */
-export const getTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Error> => {
+export const getTaxpayerById = async (taxpayerId: string): Promise<TaxpayerDetailResponse | Error> => {
     try {
         const taxpayer = await taxpayerRepository.findById(taxpayerId);
 
@@ -762,7 +789,8 @@ export const getTaxpayerById = async (taxpayerId: string): Promise<Taxpayer | Er
             throw new Error(`No active taxpayer found with ID ${taxpayerId}`);
         }
 
-        return taxpayer;
+        const currentEffectiveIndex = await resolveCurrentEffectiveIndex(taxpayer, new Date());
+        return { ...taxpayer, currentEffectiveIndex };
     } catch (error: any) {
         logger.error("Error getTaxpayerById", { taxpayerId, message: error?.message, stack: error?.stack });
         throw error;
@@ -1590,13 +1618,16 @@ export const getPendingPayments = async (taxpayerId?: string): Promise<Event[]> 
 }
 
 export async function getTaxpayerData(id: string) {
-
     try {
-
         const taxpayerData = await taxpayerRepository.getTaxpayerData(id);
-
-        return taxpayerData
-
+        if (!taxpayerData) {
+            return null;
+        }
+        const currentEffectiveIndex = await resolveCurrentEffectiveIndex(
+            { index_iva: taxpayerData.index_iva, contract_type: taxpayerData.contract_type },
+            new Date()
+        );
+        return { ...taxpayerData, currentEffectiveIndex };
     } catch (e: any) {
         logger.error("Error getting the taxpayer data", { message: e?.message, stack: e?.stack });
         throw new Error("Error getting the taxpayer data ");

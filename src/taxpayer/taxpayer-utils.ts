@@ -16,7 +16,12 @@ export type Taxpayer = {
     category?: TaxpayerCategory;
     parish_id?: string | null;             // ✅ corregido
     taxpayer_category_id?: string | null;  // ✅ corregido
+    /** Índice IVA propio del contribuyente (null = usar índice general). */
+    index_iva?: unknown;
 }
+
+/** Respuesta de detalle de contribuyente con Índice Soberano ya resuelto (para frontend). */
+export type TaxpayerDetailResponse = Taxpayer & { currentEffectiveIndex: number | null }
 
 export type CreateIndexIva = {
     specialAmount: Decimal;

@@ -243,6 +243,27 @@ export class TaxpayerRepository {
         });
     }
 
+    /**
+     * Índice Soberano: obtiene el índice general activo para un tipo de contrato en una fecha.
+     * Usado como fallback cuando el contribuyente no tiene index_iva propio.
+     */
+    async findActiveGeneralIndexIva(contractType: string, refDate: Date, tx?: TxClient): Promise<{ base_amount: Decimal } | null> {
+        const client = tx ?? db;
+        const record = await client.indexIva.findFirst({
+            where: {
+                contract_type: contractType as "SPECIAL" | "ORDINARY",
+                created_at: { lte: refDate },
+                OR: [
+                    { expires_at: null },
+                    { expires_at: { gt: refDate } },
+                ],
+            },
+            select: { base_amount: true },
+            orderBy: { created_at: "desc" },
+        });
+        return record;
+    }
+
     async createPayment(input: any, tx?: TxClient) { // Consider using a DTO for input here
         const client = tx ?? db;
         return client.payment.create({
