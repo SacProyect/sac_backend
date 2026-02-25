@@ -1,50 +1,24 @@
-import * as dotenv from "dotenv"
+import { env } from "./src/config/env-config"
 import logger, { flushLogger } from "./src/utils/logger"
 import app from "./src/app"
 
-dotenv.config()
-
 /** Log de conexión a BD al iniciar: host, nombre de BD y entorno (NODE_ENV) */
 function logDatabaseConnection() {
-    const url = process.env.DATABASE_URL
-    if (!url) {
-        logger.warn("[DB] DATABASE_URL no definida")
-        return
-    }
+    const url = env.DATABASE_URL
     try {
         const u = new URL(url.replace(/^mysql:\/\//, "https://"))
         const host = u.hostname
         const port = u.port || "3306"
         const dbName = (u.pathname || "").replace(/^\//, "") || "(sin nombre)"
-        const env = process.env.NODE_ENV ?? "development"
-        logger.info(`[DB] Conexión activa — Host: ${host}:${port} | BD: ${dbName} | Entorno: ${env}`)
+        const nodeEnv = env.NODE_ENV
+        logger.info(`[DB] Conexión activa — Host: ${host}:${port} | BD: ${dbName} | Entorno: ${nodeEnv}`)
     } catch {
         logger.warn("[DB] No se pudo interpretar DATABASE_URL (solo se muestra que está definida)")
     }
 }
 
-/** Verificar variables de entorno críticas al arrancar */
-function checkRequiredEnvVars() {
-    const required = ['DATABASE_URL', 'TOKEN_SECRET']
-    const missing = required.filter(v => !process.env[v])
-
-    if (missing.length > 0) {
-        logger.error(`[STARTUP] Variables de entorno faltantes: ${missing.join(', ')}`)
-        logger.error('[STARTUP] El servidor puede no funcionar correctamente sin estas variables')
-    }
-
-    // Variables opcionales pero recomendadas
-    const optional = ['BETTERSTACK_SOURCE_TOKEN', 'NODE_ENV']
-    const missingOptional = optional.filter(v => !process.env[v])
-    if (missingOptional.length > 0) {
-        logger.warn(`[STARTUP] Variables opcionales no definidas: ${missingOptional.join(', ')}`)
-    }
-
-    logger.info(`[STARTUP] NODE_ENV=${process.env.NODE_ENV ?? 'development'}`)
-}
-
-checkRequiredEnvVars()
 logDatabaseConnection()
+logger.info(`[STARTUP] NODE_ENV=${env.NODE_ENV}`)
 
 // Capturar errores no manejados que matarían el proceso
 process.on("uncaughtException", (error) => {
@@ -79,10 +53,7 @@ process.on("SIGINT", async () => {
     process.exit(0)
 })
 
-if (!process.env.PORT) {
-    logger.warn('[STARTUP] No port value specified, defaulting to 3000')
-}
-const PORT = parseInt(process.env.PORT as string, 10) || 3000
+const PORT = env.PORT
 
 app.listen(PORT, '0.0.0.0', () => {
     logger.info(`[STARTUP] Server is listening on port: ${PORT}`)

@@ -12,6 +12,8 @@
  * Para rollback: cambiar a "false" y hacer `restart sac_backend en render`
  */
 
+import { env } from './env-config';
+
 type FlagName =
   | 'FF_NEW_TAXPAYER_SERVICE'     // Fase 3.2: TaxpayerService refactorizado
   | 'FF_NEW_REPORTS_SERVICE'      // Fase 3.3: ReportsService refactorizado
@@ -25,8 +27,11 @@ type FlagName =
   | 'FF_NEW_TAXPAYER_REPOSITORY'; // Fase 4.1: Repositorio con interfaz
 
 function isEnabled(flag: FlagName): boolean {
-  const value = process.env[flag];
-  return value === 'true' || value === '1';
+  if (flag === 'FF_ENV_CONFIG') return env.FF_ZOD_ENV_VALIDATION;
+  
+  // Usar el objeto env validado
+  const value = (env as any)[flag];
+  return value === true;
 }
 
 function isEnabledForRole(flag: FlagName, role: string, allowedRoles: string[]): boolean {
