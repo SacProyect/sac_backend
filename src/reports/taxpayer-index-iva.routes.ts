@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { authenticateToken, AuthRequest } from "../users/user.utils";
+import { authenticateToken, AuthRequest } from "../users/user-utils";
 import * as TaxpayerIndexIvaService from "./taxpayer-index-iva.services";
 import logger from "../utils/logger";
 
