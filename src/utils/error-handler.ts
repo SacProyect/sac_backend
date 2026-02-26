@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import logger from './logger';
+import { BaseError } from '../core/errors/BaseError';
 
 /**
  * Middleware para rutas no encontradas (404).
@@ -98,6 +99,19 @@ export function globalErrorHandler(err: Error & { status?: number; statusCode?: 
                 message: 'Error de base de datos. Intente de nuevo.',
                 requestId,
                 ...(process.env.NODE_ENV === 'development' && { details: err.message }),
+            },
+        });
+    }
+
+    // ── Errores de Aplicación Estandarizados (BaseError) ────────────────
+    if (err instanceof BaseError) {
+        return res.status(err.statusCode).json({
+            success: false,
+            error: {
+                code: err.code,
+                message: err.message,
+                requestId,
+                ...(err.details && { details: err.details }),
             },
         });
     }
