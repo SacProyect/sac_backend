@@ -1,7 +1,7 @@
 import { compareSync } from "bcryptjs";
 import { Prisma, user_roles } from "@prisma/client";
 import { db, runTransaction } from "../utils/db-server";
-import { generateAcessToken, NewUserInput, passwordHashing, UpdateUserByNameInput, User } from "./user-utils";
+import { generateAcessToken, NewUserInput, passwordHashing, DataUserByNameInput, User } from "./user-utils";
 import bcrypt from 'bcryptjs';
 import logger from "../utils/logger";
 
@@ -446,7 +446,7 @@ export async function getFiscalsForReview(
  * Actualiza un usuario por nombre. Optimizado: no carga todos los usuarios,
  * usa búsqueda por primera palabra y luego matcheo normalizado en un conjunto acotado.
  */
-export async function updateUserByName(name: string, data: UpdateUserByNameInput) {
+export async function updateUserByName(name: string, data: DataUserByNameInput) {
     try {
         const normalizedName = normalizeText(name).toLowerCase();
         const firstWord = name.trim().split(/\s+/)[0];

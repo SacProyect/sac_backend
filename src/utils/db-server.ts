@@ -28,11 +28,6 @@ export async function runTransaction<T>(
 declare global {
     var __db: PrismaClient | undefined;
 }
-declare global {
-    interface BigInt {
-        toJSON(): Number;
-    }
-}
 
 if (!global.__db) {
     global.__db = new PrismaClient({
@@ -43,9 +38,5 @@ if (!global.__db) {
 }
 
 db = global.__db;
-
-BigInt.prototype.toJSON = function () {
-    return Number(this);
-};
 
 export { db };

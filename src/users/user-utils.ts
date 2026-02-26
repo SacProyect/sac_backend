@@ -44,7 +44,7 @@ export type UpdateUserByNameInput = {
 
 export type DataUserByNameInput = {
     name?: string;
-    personId?: string;
+    personId?: number;
     email?: string;
 }
 
@@ -82,7 +82,10 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
         const debugUserIdHeader = process.env.DEBUG_USER_ID_HEADER;
         const debugUserIdQuery = process.env.DEBUG_USER_ID_QUERY;
 
+        // Solo permitir bypass de autenticación en desarrollo (seguridad crítica)
+        const isDevelopment = process.env.NODE_ENV === "development";
         if (
+            isDevelopment &&
             process.env.DEBUG_AUTH === "true" &&
             debugAuthHeader &&
             req.headers[debugAuthHeader.toLowerCase()]

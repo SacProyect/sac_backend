@@ -4,38 +4,32 @@ import * as ReportService from './reports-services'
 import { authenticateToken, AuthRequest } from "../users/user-utils";
 import { body, validationResult, query } from 'express-validator';
 import { createError } from "./reports-services";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { getS3Client } from "../utils/s3-client";
 import { createLocalUpload } from "../utils/multer-local";
-import fs from 'fs';
+import fs from "fs";
 import logger from "../utils/logger";
 import { ApiError } from "../utils/api-response";
 import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache-middleware";
+import { storageService } from "../services/StorageService";
 
 // Helper function to parse date parameter - handles both year numbers and date strings
 function parseDateParam(dateParam: string | undefined): Date {
     if (!dateParam) {
         return new Date();
     }
-    
-    // If it's just a number (year), create a date for January 1st of that year
+
     const yearNum = parseInt(dateParam, 10);
     if (!isNaN(yearNum) && yearNum >= 2000 && yearNum <= 2100) {
         return new Date(Date.UTC(yearNum, 0, 1));
     }
-    
-    // Otherwise, try to parse as a date string
+
     const parsed = new Date(dateParam);
     if (isNaN(parsed.getTime())) {
-        // If invalid, return current date
         return new Date();
     }
-    
+
     return parsed;
 }
 
-
-const s3 = getS3Client();
 export const reportRouter = Router();
 
 
@@ -81,22 +75,16 @@ reportRouter.post('/errors',
                 const fileStream = await fs.promises.readFile(file.path);
                 const s3Key = `errors/${Date.now()}-${file.originalname}`;
 
-                // Subir archivo a S3
-                await s3.send(new PutObjectCommand({
-                    Bucket: "sacbucketgeneral", // Nombre de tu bucket
-                    Key: s3Key,
-                    Body: fileStream,
-                    ContentType: file.mimetype,
-                }));
+                await storageService.upload({
+                    key: s3Key,
+                    body: fileStream,
+                    contentType: file.mimetype,
+                });
 
-                // Generar URL pública del archivo en S3
-                const pdfUrl = `https://s3.us-east-2.amazonaws.com/sacbucketgeneral/${s3Key}`;
-
-                // Eliminar archivo local después de la subida a S3
                 await fs.promises.unlink(file.path);
 
                 return {
-                    img_src: pdfUrl, // URL pública de la imagen
+                    img_src: storageService.getPublicUrl(s3Key),
                     img_alt: file.originalname
                 };
             });

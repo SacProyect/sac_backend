@@ -21,7 +21,8 @@ describe("Taxpayer Routes (integration-light)", () => {
         .get("/taxpayer/event/all")
         .set("Accept", "application/json");
       expect(res.status).toBe(401);
-      expect(res.body?.message).toMatch(/denied|token|provided|invalid/i);
+      const message = res.body?.error?.message ?? res.body?.message ?? "";
+      expect(message).toMatch(/denied|token|provided|invalid/i);
     });
 
     it("returns 401 with invalid token", async () => {

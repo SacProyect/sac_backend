@@ -2,8 +2,15 @@ import { Taxpayer_Fases } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import { db, TxClient } from "../../utils/db-server";
 import { Taxpayer } from "../taxpayer-utils";
+import { getRoleStrategy } from "../../users/role-strategies";
+import type {
+    ITaxpayerRepository,
+    CreateTaxpayerData,
+    UpdateTaxpayerData,
+    TaxpayersPaginated,
+} from "../interfaces/ITaxpayerRepository";
 
-export class TaxpayerRepository {
+export class TaxpayerRepository implements ITaxpayerRepository {
 
     async findManyUsers(tx?: TxClient) {
         const client = tx ?? db;
@@ -592,149 +599,45 @@ export class TaxpayerRepository {
 
     async findTaxpayersForEvents(userId: string, userRole: string, page: number = 1, limit: number = 50, search?: string, tx?: TxClient) {
         const client = tx ?? db;
-        let taxpayers: any[] = [];
-        let total: number = 0;
         const skip = (page - 1) * limit;
+        const strategy = getRoleStrategy(userRole);
+        const visibilityWhere = await strategy.getTaxpayerVisibilityWhere(client, userId);
 
-        if (userRole === "ADMIN") {
-            const adminWhere: any = { status: true };
-            if (search && search.trim()) {
-                const searchFilters: any[] = [
-                    { name: { contains: search } },
-                    { rif: { contains: search } },
-                    { user: { name: { contains: search } } },
-                ];
-                if (!isNaN(Number(search))) {
-                    searchFilters.push({ providenceNum: BigInt(search) });
-                }
-                adminWhere.AND = [{ OR: searchFilters }];
+        const where: any = { status: true, ...visibilityWhere };
+        if (search && search.trim()) {
+            const searchFilters: any[] = [
+                { name: { contains: search } },
+                { rif: { contains: search } },
+                { user: { name: { contains: search } } },
+            ];
+            if (!isNaN(Number(search))) {
+                searchFilters.push({ providenceNum: BigInt(search) });
             }
-            [taxpayers, total] = await Promise.all([
-                client.taxpayer.findMany({
-                    skip,
-                    take: limit,
-                    where: adminWhere,
-                    include: {
-                        event: { where: { status: true } },
-                        IVAReports: true,
-                        ISLRReports: true,
-                        user: { select: { name: true } },
-                    },
-                    orderBy: { created_at: 'asc' }
-                }),
-                client.taxpayer.count({ where: adminWhere })
-            ]);
-        } else if (userRole === "COORDINATOR") {
-            const group = await client.fiscalGroup.findUnique({
-                where: {
-                    coordinatorId: userId
-                },
-
-                include: {
-                    members: {
-                        include: {
-                            taxpayer: {
-                                where: { status: true },
-                                include: {
-                                    event: { where: { status: true } },
-                                    IVAReports: true,
-                                    ISLRReports: true,
-                                    user: { select: { name: true } },
-                                },
-                            },
-                        },
-                    },
-                },
-            })
-            if (!group) throw new Error("Grupo no encontrado para el coordinador");
-
-            // Aplanamos los taxpayers de todos los miembros y aplicamos búsqueda
-            taxpayers = this.filterTaxpayersBySearch(
-                group.members.flatMap((member) => member.taxpayer),
-                search
-            );
-            total = taxpayers.length;
-        } else if (userRole === "SUPERVISOR") {
-            const user = await client.user.findUnique({
-                where: {
-                    id: userId,
-                },
-                include: {
-                    taxpayer: {
-                        where: { status: true },
-                        include: {
-                            event: { where: { status: true } },
-                            IVAReports: true,
-                            ISLRReports: true,
-                            user: { select: { name: true } },
-                        },
-                    },
-                    supervised_members: {
-                        include: {
-                            taxpayer: {
-                                where: { status: true },
-                                include: {
-                                    event: { where: { status: true } },
-                                    IVAReports: true,
-                                    ISLRReports: true,
-                                    user: { select: { name: true } },
-                                },
-                            },
-                        },
-                    },
-                },
-            });
-
-            if (!user) throw new Error("Usuario no encontrado.");
-
-            // Combine supervised members' taxpayers and supervisor's own taxpayers, luego filtrar por búsqueda
-            const supervisedTaxpayers = user.supervised_members.flatMap((member) => member.taxpayer);
-            taxpayers = this.filterTaxpayersBySearch(
-                [...user.taxpayer, ...supervisedTaxpayers],
-                search
-            );
-            total = taxpayers.length;
-        } else if (userRole === "FISCAL") {
-            const fiscal = await client.user.findUnique({
-                where: {
-                    id: userId,
-                },
-                include: {
-                    taxpayer: {
-                        where: { status: true },
-                        include: {
-                            event: { where: { status: true } },
-                            IVAReports: true,
-                            ISLRReports: true,
-                            user: { select: { name: true } },
-                        },
-                    },
-                },
-            });
-            if (!fiscal) throw new Error("Usuario no encontrado.");
-
-            taxpayers = this.filterTaxpayersBySearch(fiscal?.taxpayer ?? [], search);
-            total = taxpayers.length;
+            where.AND = [...(where.AND || []), { OR: searchFilters }];
         }
 
-        // Para roles COORDINATOR, SUPERVISOR y FISCAL aplicamos paginación manualmente
-        if (userRole !== "ADMIN") {
-            const paginatedTaxpayers = taxpayers.slice(skip, skip + limit);
-            return {
-                data: paginatedTaxpayers,
-                total,
-                page,
-                totalPages: Math.ceil(total / limit),
-                limit
-            };
-        }
+        const [taxpayers, total] = await Promise.all([
+            client.taxpayer.findMany({
+                skip,
+                take: limit,
+                where,
+                include: {
+                    event: { where: { status: true } },
+                    IVAReports: true,
+                    ISLRReports: true,
+                    user: { select: { name: true } },
+                },
+                orderBy: { created_at: "asc" },
+            }),
+            client.taxpayer.count({ where }),
+        ]);
 
         return {
             data: taxpayers,
             total,
             page,
             totalPages: Math.ceil(total / limit),
-            limit
+            limit,
         };
     }
     
@@ -783,6 +686,77 @@ export class TaxpayerRepository {
                 parish_id: true,
                 taxpayer_category_id: true,
             },
+        });
+    }
+
+    /** Contribuyentes del año fiscal en curso asignados al usuario (officerId = userId). */
+    async findMyCurrentYearTaxpayers(userId: string, tx?: TxClient) {
+        const client = tx ?? db;
+        const now = new Date();
+        const startOfYear = new Date(Date.UTC(now.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
+        const endOfYear = new Date(Date.UTC(now.getUTCFullYear() + 1, 0, 1, 0, 0, 0, 0));
+        return client.taxpayer.findMany({
+            where: {
+                officerId: userId,
+                status: true,
+                emition_date: { gte: startOfYear, lt: endOfYear },
+            },
+            select: {
+                id: true,
+                name: true,
+                rif: true,
+                status: true,
+                officerId: true,
+                process: true,
+                address: true,
+                emition_date: true,
+                contract_type: true,
+                providenceNum: true,
+                fase: true,
+                notified: true,
+                culminated: true,
+                user: { select: { id: true, name: true } },
+                parish: { select: { id: true, name: true } },
+                taxpayer_category: { select: { id: true, name: true } },
+            },
+            orderBy: { emition_date: "desc" },
+        });
+    }
+
+    /** Contribuyentes del año fiscal en curso del equipo (según rol, vía estrategia). */
+    async findTeamCurrentYearTaxpayers(userId: string, userRole: string, tx?: TxClient) {
+        const client = tx ?? db;
+        const now = new Date();
+        const startOfYear = new Date(Date.UTC(now.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
+        const endOfYear = new Date(Date.UTC(now.getUTCFullYear() + 1, 0, 1, 0, 0, 0, 0));
+        const strategy = getRoleStrategy(userRole);
+        const visibilityWhere = await strategy.getTaxpayerVisibilityWhere(client, userId);
+
+        return client.taxpayer.findMany({
+            where: {
+                status: true,
+                emition_date: { gte: startOfYear, lt: endOfYear },
+                ...visibilityWhere,
+            },
+            select: {
+                id: true,
+                name: true,
+                rif: true,
+                status: true,
+                officerId: true,
+                process: true,
+                address: true,
+                emition_date: true,
+                contract_type: true,
+                providenceNum: true,
+                fase: true,
+                notified: true,
+                culminated: true,
+                user: { select: { id: true, name: true } },
+                parish: { select: { id: true, name: true } },
+                taxpayer_category: { select: { id: true, name: true } },
+            },
+            orderBy: { emition_date: "desc" },
         });
     }
 
@@ -888,6 +862,61 @@ export class TaxpayerRepository {
         }
 
         return taxpayer as Taxpayer;
+    }
+
+    // ─── ITaxpayerRepository ─────────────────────────────────────────────────────
+
+    async findByRif(rif: string, tx?: TxClient): Promise<Taxpayer | null> {
+        const client = tx ?? db;
+        const taxpayer = await client.taxpayer.findFirst({
+            where: { rif, status: true },
+            select: {
+                id: true,
+                providenceNum: true,
+                address: true,
+                process: true,
+                name: true,
+                rif: true,
+                emition_date: true,
+                contract_type: true,
+                status: true,
+                fase: true,
+                notified: true,
+                culminated: true,
+                officerId: true,
+                created_at: true,
+                updated_at: true,
+                index_iva: true,
+                parish_id: true,
+                taxpayer_category_id: true,
+            },
+        });
+        return taxpayer ? (taxpayer as Taxpayer) : null;
+    }
+
+    async getAll(
+        page: number = 1,
+        limit: number = 50,
+        year?: number,
+        search?: string,
+        tx?: TxClient
+    ): Promise<TaxpayersPaginated> {
+        const result = await this.findAll(page, limit, year, search, tx);
+        return result as unknown as TaxpayersPaginated;
+    }
+
+    async create(data: CreateTaxpayerData, tx?: TxClient): Promise<Taxpayer> {
+        const created = await this.createTaxpayer(data as any, tx);
+        return created as unknown as Taxpayer;
+    }
+
+    async update(id: string, data: Partial<UpdateTaxpayerData>, tx?: TxClient): Promise<Taxpayer> {
+        const client = tx ?? db;
+        const updated = await client.taxpayer.update({
+            where: { id },
+            data: data as any,
+        });
+        return updated as unknown as Taxpayer;
     }
 }
 

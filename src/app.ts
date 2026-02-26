@@ -1,8 +1,10 @@
+import "reflect-metadata";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 import path from "path";
+import { configureContainer } from "./utils/container";
 import { userRouter } from "./users/user-routes";
 import { taxpayerRouter } from "./taxpayer/taxpayer-routes";
 import { reportRouter } from "./reports/reports-routes";
@@ -13,8 +15,11 @@ import { requestIdMiddleware } from "./utils/request-id";
 import { cacheStatsMiddleware, cacheClearMiddleware } from "./utils/cache-middleware";
 import { cacheService } from "./utils/cache-service";
 import { db } from "./utils/db-server";
+import { serializeForJson } from "./utils/bigint-serializer";
 import logger from "./utils/logger";
 import { authenticateToken } from "./users/user-utils";
+
+configureContainer();
 
 const app = express();
 
@@ -109,10 +114,21 @@ app.use(
   })
 );
 
-// ─── 6. REQUEST LOGGER ───────────────────────────────────────────────────────
+// ─── 6. SERIALIZACIÓN SEGURA DE BIGINT ───────────────────────────────────────
+// Intercepta res.json para serializar BigInt (ej. providenceNum) sin parche global.
+// Evita "Do not know how to serialize a BigInt" en respuestas de la API.
+app.use((_req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = function (body: unknown) {
+    return originalJson(serializeForJson(body));
+  };
+  next();
+});
+
+// ─── 7. REQUEST LOGGER ───────────────────────────────────────────────────────
 app.use(requestLogger);
 
-// ─── 7. TIMEOUT DE PETICIONES ────────────────────────────────────────────────
+// ─── 8. TIMEOUT DE PETICIONES ────────────────────────────────────────────────
 // Si una petición tarda más de 30 segundos, la abortamos. Esto previene
 // que conexiones colgadas consuman recursos del servidor indefinidamente.
 app.use((req, res, next) => {
@@ -137,7 +153,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─── 8. RUTAS DE SALUD ──────────────────────────────────────────────────────
+// ─── 9. RUTAS DE SALUD ──────────────────────────────────────────────────────
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
@@ -191,18 +207,18 @@ app.get("/health", async (req, res) => {
   res.status(statusCode as number).json(health);
 });
 
-// ─── 9. RUTAS DE CACHE (estadísticas y limpieza) ──────────────────────────────
+// ─── 10. RUTAS DE CACHE (estadísticas y limpieza) ──────────────────────────────
 app.get("/cache/stats", authenticateToken, cacheStatsMiddleware);
 app.post("/cache/clear", authenticateToken, cacheClearMiddleware);
 
-// ─── 10. RUTAS DE LA APLICACIÓN ───────────────────────────────────────────────
+// ─── 11. RUTAS DE LA APLICACIÓN ───────────────────────────────────────────────
 app.use("/user", userRouter);
 app.use("/taxpayer", taxpayerRouter);
 app.use("/reports", reportRouter);
 app.use("/census", censusRouter);
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// ─── 11. ERROR HANDLERS (SIEMPRE AL FINAL) ──────────────────────────────────
+// ─── 12. ERROR HANDLERS (SIEMPRE AL FINAL) ──────────────────────────────────
 app.use(notFoundHandler);
 app.use(globalErrorHandler);
 

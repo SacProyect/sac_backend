@@ -1,91 +1,20 @@
 import { db, runTransaction } from "../utils/db-server";
 import { CreateIndexIva, Event, FiscalTaxpayerStat, NewEvent, NewFase, NewIslrReport, NewIvaReport, NewObservation, NewPayment, NewTaxpayer, NewTaxpayerExcelInput, Payment, StatisticsResponse, Taxpayer, TaxpayerDetailResponse } from "./taxpayer-utils";
 import { BadRequestError } from "../utils/errors/bad-request-error";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { getS3Client } from "../utils/s3-client";
-import { Resend } from 'resend';
-import { differenceInDays } from "date-fns"
-import {
-    getSignedUrl,
-    S3RequestPresigner,
-} from "@aws-sdk/s3-request-presigner";
+import { differenceInDays } from "date-fns";
 import { Decimal } from "@prisma/client/runtime/library";
 import { ISLRReports, IVAReports, Prisma, taxpayer, taxpayer_contract_type, taxpayer_process } from "@prisma/client";
 import logger from "../utils/logger";
 import { invalidateTaxpayerCache } from "../utils/cache-invalidation";
+import { emailService } from "../services/EmailService";
+import { storageService } from "../services/StorageService";
 
-
-
-// Resend v4: `emails` exists on the instance, not the class.
-const resend = new Resend(process.env.RESEND_API_KEY ?? "");
-const s3 = getS3Client();
-
-
-
-export async function generateDownloadRepairUrl(key: string) {
-    try {
-        const command = new GetObjectCommand({
-            Bucket: "sacbucketgeneral",
-            Key: key, // Ej: "reparos/acta-123.pdf"
-            ResponseContentDisposition: "attachment",
-        });
-
-        const url = await getSignedUrl(s3, command, { expiresIn: 180 }); // 3 minutes
-        return url;
-    } catch (error) {
-        logger.error("Error generating signed URL for key:", key, error);
-        throw new Error("No se pudo generar la URL de descarga.");
-    }
+export async function generateDownloadRepairUrl(key: string): Promise<string> {
+    return storageService.getSignedDownloadUrl(key, 180);
 }
 
-export async function generateDownloadInvestigationPdfUrl(key: string) {
-
-    try {
-        const command = new GetObjectCommand({
-            Bucket: "sacbucketgeneral",
-            Key: key,
-            ResponseContentDisposition: "attachment",
-        })
-
-        const url = await getSignedUrl(s3, command, { expiresIn: 180 });
-        return url;
-
-    } catch (e) {
-        logger.error("Error generating signed URL for key:", key, e);
-        throw new Error("No se pudo generar la url de descarga")
-    }
-
-
-}
-
-
-// Helper para 'dormir' N milisegundos
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-async function sendEmailWithRetry(
-    params: Parameters<typeof resend.emails.send>[0],
-    retries = 3,
-    delayMs = 3000
-) {
-    // If RESEND_API_KEY isn't configured, skip sending without crashing the API.
-    if (!process.env.RESEND_API_KEY) {
-        logger.warn("RESEND_API_KEY no está configurada. Se omitió el envío de email.");
-        return;
-    }
-    for (let attempt = 1; attempt <= retries; attempt++) {
-        try {
-            return await resend.emails.send(params);
-        } catch (err) {
-            logger.error(`Intento ${attempt} de envío de email fallido:`, err);
-            if (attempt < retries) {
-                // espera antes del próximo intento
-                await sleep(delayMs);
-            } else {
-                // tras último intento, registra error y sigue adelante
-                logger.error("Todos los intentos de envío de email han fallado.");
-            }
-        }
-    }
+export async function generateDownloadInvestigationPdfUrl(key: string): Promise<string> {
+    return storageService.getSignedDownloadUrl(key, 180);
 }
 
 
@@ -211,7 +140,7 @@ export const createTaxpayer = async (input: NewTaxpayer): Promise<Taxpayer | Err
                 </div>
             `;
 
-            sendEmailWithRetry({
+            emailService.sendWithRetry({
                 from: fromAddress,
                 to: recipients,
                 subject: '🔍 Nuevo contribuyente creado para Auditoría Fiscal',
@@ -258,8 +187,7 @@ export const updateFase = async (data: NewFase) => {
         // Enviar correo con Resend
         // ✅ No romper el flujo si falla el correo:
         // usamos el helper con reintentos y NO esperamos el resultado.
-        sendEmailWithRetry({
-            from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com', // asegúrate que esté verificado en Resend
+        emailService.sendWithRetry({
             to: recipients.join(', '),
             subject: `Cambio de fase de auditoría fiscal - ${taxpayerName}`,
             html: `
@@ -301,7 +229,7 @@ export const updateFase = async (data: NewFase) => {
             </div>
             </div>
         `,
-        }).catch((err) =>
+        }).catch((err: unknown) =>
             logger.error("Error inesperado al enviar email de cambio de fase:", err)
         );
 
@@ -878,9 +806,16 @@ export const getTaxpayersForEvents = async (userId: string, userRole: string, pa
     }
 }
 
-export const getTaxpayers = async (page: number = 1, limit: number = 50, year?: number, search?: string) => {
+export const getTaxpayers = async (
+    page: number = 1,
+    limit: number = 50,
+    year?: number,
+    search?: string,
+    repo?: ITaxpayerRepository
+) => {
     try {
-        const result = await taxpayerRepository.findAll(page, limit, year, search);
+        const repository = repo ?? taxpayerRepository;
+        const result = await repository.getAll(page, limit, year, search);
         return result;
     } catch (e) {
         logger.error(e);
@@ -902,6 +837,26 @@ export const getTaxpayersByUser = async (userId: string): Promise<Taxpayer[] | E
     } catch (error: any) {
         logger.error("Error getTaxpayersByUser", { userId, message: error?.message, stack: error?.stack });
         throw error
+    }
+}
+
+/** Contribuyentes del año fiscal en curso asignados al usuario (dashboard). */
+export const getMyCurrentYearTaxpayers = async (userId: string) => {
+    try {
+        return await taxpayerRepository.findMyCurrentYearTaxpayers(userId);
+    } catch (error: any) {
+        logger.error("Error getMyCurrentYearTaxpayers", { userId, message: error?.message });
+        throw new Error("No se pudieron obtener los contribuyentes del año en curso.");
+    }
+}
+
+/** Contribuyentes del año fiscal en curso del equipo (según rol). */
+export const getTeamCurrentYearTaxpayers = async (userId: string, userRole: string) => {
+    try {
+        return await taxpayerRepository.findTeamCurrentYearTaxpayers(userId, userRole);
+    } catch (error: any) {
+        logger.error("Error getTeamCurrentYearTaxpayers", { userId, userRole, message: error?.message });
+        throw new Error("No se pudieron obtener los contribuyentes del equipo para el año en curso.");
     }
 }
 
@@ -1552,8 +1507,7 @@ export const notifyTaxpayer = async (id: string) => {
         if (coordinatorEmail) {
             // ✅ No romper el endpoint si falla el envío del correo.
             // Usamos el helper de reintentos y no esperamos el resultado.
-            sendEmailWithRetry({
-                from: process.env.EMAIL_FROM ?? 'no-reply@sac-app.com',
+            emailService.sendWithRetry({
                 to: coordinatorEmail,
                 subject: `Contribuyente notificado: ${taxpayerName}`,
                 html: `
@@ -1582,7 +1536,7 @@ export const notifyTaxpayer = async (id: string) => {
                     </div>
                 </div>
                 `,
-            }).catch((err) =>
+            }).catch((err: unknown) =>
                 logger.error("Error inesperado al enviar email de notificación de contribuyente:", err)
             );
         }
@@ -1946,6 +1900,7 @@ export const CreateTaxpayerCategory = async (name: string) => {
 
 import { staticDataRepository } from "./repository/static-data-repository";
 import { taxpayerRepository } from "./repository/taxpayer-repository";
+import type { ITaxpayerRepository } from "./interfaces/ITaxpayerRepository";
 
 // ... other imports
 

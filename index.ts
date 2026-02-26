@@ -1,3 +1,4 @@
+import "reflect-metadata";
 import * as dotenv from "dotenv"
 import logger, { flushLogger } from "./src/utils/logger"
 import app from "./src/app"
