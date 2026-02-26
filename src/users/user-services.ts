@@ -4,6 +4,10 @@ import { db, runTransaction } from "../utils/db-server";
 import { generateAcessToken, NewUserInput, passwordHashing, UpdateUserByNameInput, User } from "./user-utils";
 import bcrypt from 'bcryptjs';
 import logger from "../utils/logger";
+import { env } from "../config/env-config";
+import { NotFoundError } from "../core/errors/NotFoundError";
+import { UnauthorizedError } from "../core/errors/UnauthorizedError";
+import { BadRequestError } from "../core/errors/BadRequestError";
 
 /**
  * Logs in a user.
@@ -31,11 +35,13 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
     });
 
     if (!user) {
+        if (env.FF_NEW_ERROR_HIERARCHY) throw new NotFoundError('Usuario no encontrado', { personId });
         throw new Error('Usuario no encontrado');
     }
 
     const isPasswordCorrect = compareSync(password, user.password);
     if (!isPasswordCorrect) {
+        if (env.FF_NEW_ERROR_HIERARCHY) throw new UnauthorizedError('Las credenciales no son correctas.', { personId });
         throw new Error('Las credenciales no son correctas.');
     }
 
@@ -54,7 +60,10 @@ export const logIn = async (personId: number, password: string): Promise<{ user:
  */
 export const signUp = async (input: NewUserInput): Promise<User | Error> => {
     try {
-        if (input.password.length < 8) throw new Error('Contraseña debe ser mínimo de 8 caracteres');
+        if (input.password.length < 8) {
+            if (env.FF_NEW_ERROR_HIERARCHY) throw new BadRequestError('Contraseña debe ser mínimo de 8 caracteres');
+            throw new Error('Contraseña debe ser mínimo de 8 caracteres');
+        }
 
         input.password = await passwordHashing(input.password);
 
@@ -68,6 +77,7 @@ export const signUp = async (input: NewUserInput): Promise<User | Error> => {
     } catch (error: any) {
         if (error instanceof Prisma.PrismaClientValidationError) {
             logger.error(error.message);
+            if (env.FF_NEW_ERROR_HIERARCHY) throw new UnauthorizedError('Rol no permitido. Use: FISCAL, ADMIN, COORDINATOR o SUPERVISOR.');
             throw new Error('Rol no permitido. Use: FISCAL, ADMIN, COORDINATOR o SUPERVISOR.');
         }
         logger.error(error.message);
@@ -213,6 +223,7 @@ export const getUser = async (id: string): Promise<{ user: User; token: string }
         });
 
         if (!user) {
+            if (env.FF_NEW_ERROR_HIERARCHY) throw new NotFoundError('Usuario no encontrado', { id });
             throw new Error('Usuario no encontrado');
         }
 
@@ -231,6 +242,7 @@ export async function updatePassword(userId: string, password: string) {
     try {
 
         if (typeof password !== 'string') {
+            if (env.FF_NEW_ERROR_HIERARCHY) throw new BadRequestError("El password debe ser un string.");
             throw new Error("El password debe ser un string.");
         }
 
@@ -408,7 +420,10 @@ export async function getFiscalsForReview(
             total = fiscals.length;
         }
 
-        if (!fiscals) throw new Error("No se obtuvieron fiscales.");
+        if (!fiscals) {
+            if (env.FF_NEW_ERROR_HIERARCHY) throw new NotFoundError("No se obtuvieron fiscales.");
+            throw new Error("No se obtuvieron fiscales.");
+        }
 
         // ✅ Agregar información del año filtrado si se especifica
         const fiscalsWithYear = fiscals.map(fiscal => ({
@@ -450,7 +465,10 @@ export async function updateUserByName(name: string, data: UpdateUserByNameInput
     try {
         const normalizedName = normalizeText(name).toLowerCase();
         const firstWord = name.trim().split(/\s+/)[0];
-        if (!firstWord) throw new Error("User not found");
+        if (!firstWord) {
+            if (env.FF_NEW_ERROR_HIERARCHY) throw new NotFoundError("User not found", { name });
+            throw new Error("User not found");
+        }
 
         const users = await db.user.findMany({
             where: { name: { contains: firstWord } },
@@ -461,7 +479,10 @@ export async function updateUserByName(name: string, data: UpdateUserByNameInput
             (u) => normalizeText(u.name).toLowerCase() === normalizedName
         );
 
-        if (!userFound) throw new Error("User not found");
+        if (!userFound) {
+            if (env.FF_NEW_ERROR_HIERARCHY) throw new NotFoundError("User not found", { name });
+            throw new Error("User not found");
+        }
 
         const updatedUser = await runTransaction((tx) =>
             tx.user.update({

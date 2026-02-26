@@ -1,10 +1,12 @@
 import express from "express";
-import type { Request, Response } from "express";
+import type { Request, Response, NextFunction } from "express";
 import * as UserService from "./user-services";
 import { body, validationResult, query } from "express-validator";
 import { authenticateToken, AuthRequest } from "./user-utils";
 import logger from "../utils/logger";
 import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache-middleware";
+import { env } from "../config/env-config";
+import { BaseError } from "../core/errors/BaseError";
 
 export const userRouter = express.Router();
 
@@ -12,7 +14,7 @@ export const userRouter = express.Router();
 userRouter.get('/all',
     authenticateToken,
     cacheMiddleware({ ttl: 120000, tags: ['users', 'users-list'], includeUser: true }),
-    async (req: Request, res: Response) => {
+    async (req: Request, res: Response, next: NextFunction) => {
 
         const { user } = req as AuthRequest
 
@@ -23,6 +25,9 @@ userRouter.get('/all',
             const users = await UserService.getAllUsers(user);
             return res.status(200).json(users)
         } catch (error: any) {
+            if (env.FF_NEW_ERROR_HIERARCHY && error instanceof BaseError) {
+                return next(error);
+            }
             logger.error("Error getAllUsers", { userId: user?.id, message: error.message, stack: error.stack });
             return res.status(500).json({ error: "Error interno del servidor" });
         }
@@ -32,7 +37,7 @@ userRouter.get('/all',
 userRouter.post('/',
     body("personId").isNumeric(),
     body("password").isString(),
-    async (req: Request, res: Response) => {
+    async (req: Request, res: Response, next: NextFunction) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             logger.warn("Login validación fallida", { path: '/user', details: errors.array() });
@@ -47,6 +52,9 @@ userRouter.post('/',
             const data = await UserService.logIn(personId, password);
             return res.status(200).json(data);
         } catch (error: any) {
+            if (env.FF_NEW_ERROR_HIERARCHY && error instanceof BaseError) {
+                return next(error);
+            }
             logger.warn("Login fallido", { personId: req.body?.personId, message: error.message });
 
             if (error.message === 'Usuario no encontrado' || error.message === 'Las credenciales no son correctas.') {
@@ -71,7 +79,7 @@ userRouter.post('/sign-up',
     body("password").isString(),
     body("name").isString(),
     body("role").isString().isIn(VALID_ROLES).withMessage(`role debe ser uno de: ${VALID_ROLES.join(', ')}`),
-    async (req: Request, res: Response) => {
+    async (req: Request, res: Response, next: NextFunction) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             const payload = { error: 'Validación fallida', details: errors.array() };
@@ -84,6 +92,9 @@ userRouter.post('/sign-up',
             logger.info("Usuario registrado", { name: input.name, role: input.role, personId: input.personId });
             return res.status(201).json(newUser);
         } catch (error: any) {
+            if (env.FF_NEW_ERROR_HIERARCHY && error instanceof BaseError) {
+                return next(error);
+            }
             const isValidation = error.name === 'PrismaClientValidationError' || error.message?.includes('Expected user_roles');
             if (isValidation) {
                 logger.warn("Sign-up datos inválidos (Prisma)", { body: req.body, message: error.message });
@@ -102,7 +113,7 @@ userRouter.post('/sign-up',
 userRouter.get("/me",
     authenticateToken,
     cacheMiddleware({ ttl: 60000, tags: ['users'], includeUser: true }),
-    async (req: Request, res: Response) => {
+    async (req: Request, res: Response, next: NextFunction) => {
 
         const { user } = req as AuthRequest
 
@@ -117,6 +128,9 @@ userRouter.get("/me",
             return res.status(200).json(response);
 
         } catch (err: any) {
+            if (env.FF_NEW_ERROR_HIERARCHY && err instanceof BaseError) {
+                return next(err);
+            }
             logger.error("Error in /users/me", { message: err?.message, stack: err?.stack });
             res.status(500).json({ message: "Server error" });
         }
@@ -137,7 +151,7 @@ userRouter.get('/get-fiscals-for-review',
     query("page").optional().isInt({ min: 1 }).withMessage("Page must be a positive integer"),
     query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("Limit must be between 1 and 100"),
 
-    async (req: Request, res: Response) => {
+    async (req: Request, res: Response, next: NextFunction) => {
 
         const { user } = req as AuthRequest
 
@@ -172,6 +186,9 @@ userRouter.get('/get-fiscals-for-review',
             return res.status(200).json(response);
 
         } catch (err: any) {
+            if (env.FF_NEW_ERROR_HIERARCHY && err instanceof BaseError) {
+                return next(err);
+            }
             logger.error("Error in /users/get-fiscals-for-review", { message: err?.message, stack: err?.stack });
             res.status(500).json({ message: "Server error" });
         }
@@ -185,7 +202,7 @@ userRouter.put('/update-by-name/:name',
     body("personId").optional(),
     body("email").optional(),
 
-    async (req: Request, res: Response) => {
+    async (req: Request, res: Response, next: NextFunction) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.array() });
@@ -206,6 +223,9 @@ userRouter.put('/update-by-name/:name',
             return res.status(200).json(response);
 
         } catch (e: any) {
+            if (env.FF_NEW_ERROR_HIERARCHY && e instanceof BaseError) {
+                return next(e);
+            }
             logger.error("Error update-by-name", { name: req.params.name, message: e?.message, stack: e?.stack });
             return res.status(500).json({ error: "Error interno del servidor" });
         }
@@ -218,7 +238,7 @@ userRouter.put('/update-password/:id',
     invalidateCacheMiddleware(['users']),
     body("password").notEmpty(),
 
-    async (req: Request, res: Response) => {
+    async (req: Request, res: Response, next: NextFunction) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
             return res.status(400).json({ errors: errors.array() });
@@ -242,6 +262,9 @@ userRouter.put('/update-password/:id',
             return res.status(200).json(response);
 
         } catch (e: any) {
+            if (env.FF_NEW_ERROR_HIERARCHY && e instanceof BaseError) {
+                return next(e);
+            }
             logger.error("Error update-password", { userId: req.params.id, message: e?.message, stack: e?.stack });
             return res.status(500).json({ error: "Error interno del servidor" });
         }

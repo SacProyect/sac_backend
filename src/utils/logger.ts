@@ -1,10 +1,11 @@
 import { createLogger, format, transports } from 'winston';
 import { Logtail } from '@logtail/node';
 import { LogtailTransport } from '@logtail/winston';
+import { env } from '../config/env-config';
 
-const BETTERSTACK_TOKEN = process.env.BETTERSTACK_SOURCE_TOKEN;
-const BETTERSTACK_ENDPOINT = process.env.BETTERSTACK_LOGS_ENDPOINT;
-const NODE_ENV = process.env.NODE_ENV ?? 'development';
+const BETTERSTACK_TOKEN = env.BETTERSTACK_SOURCE_TOKEN;
+const BETTERSTACK_ENDPOINT = env.BETTERSTACK_LOGS_ENDPOINT;
+const NODE_ENV = env.NODE_ENV;
 const isDevelopment = NODE_ENV === 'development';
 const isStaging = NODE_ENV === 'staging';
 const isProduction = NODE_ENV === 'production';
@@ -26,8 +27,8 @@ const logtailFormat = format.combine(
   format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   format.errors({ stack: true }),
   format((info) => {
-    info.service = process.env.npm_package_name ?? 'sac_backend';
-    info.env = process.env.NODE_ENV ?? 'development';
+    info.service = 'sac_backend';
+    info.env = env.NODE_ENV;
     if (info.stack) info.stack_trace = info.stack;
     return info;
   })(),
