@@ -8,7 +8,15 @@ import { createLocalUpload } from "../utils/multer-local";
 import { uploadMemory } from "../utils/multer-memory";
 import { cacheMiddleware, invalidateCacheMiddleware } from "../utils/cache-middleware";
 
-const taxpayerController = container.resolve(TaxpayerController);
+// Define taxpayerController with a Proxy for lazy resolution
+// This fixes errors where the router is imported before tsyringe is configured
+const taxpayerController = new Proxy({} as TaxpayerController, {
+    get: (_, prop: keyof TaxpayerController) => {
+        const controller = container.resolve(TaxpayerController);
+        const method = controller[prop];
+        return typeof method === 'function' ? method.bind(controller) : method;
+    }
+});
 
 export const taxpayerRouter = express.Router();
 

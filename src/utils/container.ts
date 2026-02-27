@@ -14,15 +14,17 @@ import { TaxpayerRepository } from "../taxpayer/repository/taxpayer-repository";
  */
 export function configureContainer(): void {
     // Repositorios (contratos para facilitar mocks en tests)
+    // Usamos register con useClass para el token del repositorio
     container.register(TAXPAYER_REPOSITORY_TOKEN, { useClass: TaxpayerRepository });
 
-    // Servicios (lógica de negocio)
-    container.registerSingleton(UserService);
-    container.registerSingleton(TaxpayerService);
+    // Servicios - usamos registerSingleton con la clase directamente
+    // Esto permite que tsyringe resuelva las dependencias correctamente
+    container.registerSingleton(TaxpayerService, TaxpayerService);
+    container.registerSingleton(UserService, UserService);
 
     // Controladores (dependen de los servicios)
-    container.registerSingleton(UserController);
-    container.registerSingleton(TaxpayerController);
+    container.registerSingleton(TaxpayerController, TaxpayerController);
+    container.registerSingleton(UserController, UserController);
 }
 
 /**
