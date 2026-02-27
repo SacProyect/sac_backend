@@ -188,7 +188,7 @@ export class TaxpayerController {
             }
             repairReportId = newRepairReport.id;
             await storageService.upload({ key: s3Key, body: file.buffer, contentType: file.mimetype });
-            const updatedRepairReport = await this.taxpayerService.updateRepairReportPdfUrl(repairReportId, pdf_url);
+            const updatedRepairReport = await this.taxpayerService.updateRepairReportPdfUrl(repairReportId!, pdf_url);
             return res.status(201).json(updatedRepairReport);
         } catch (error: any) {
             logger.error("repair-report upload error", { message: error?.message, stack: error?.stack, taxpayerId, repairReportId });

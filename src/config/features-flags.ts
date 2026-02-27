@@ -24,7 +24,23 @@ type FlagName =
   | 'FF_DI_CONTAINER'             // Fase 1.4: Contenedor de inyección de dependencias
   | 'FF_TAXPAYER_DTOS'            // Fase 2.2: DTOs de taxpayer
   | 'FF_STRATEGY_PATTERN'         // Fase 4.2: Strategy pattern para roles
-  | 'FF_NEW_TAXPAYER_REPOSITORY'; // Fase 4.1: Repositorio con interfaz
+  | 'FF_NEW_TAXPAYER_REPOSITORY'  // Fase 4.1: Repositorio con interfaz
+  
+  // === NUEVOS SERVICIOS REFACTORIZADOS (Fase 5) ===
+  | 'FF_TAXPAYER_CRUD_SERVICE'    // TaxpayerCrudService
+  | 'FF_EVENT_SERVICE'            // EventService
+  | 'FF_PAYMENT_SERVICE'          // PaymentService
+  | 'FF_IVA_REPORT_SERVICE'       // IvaReportService
+  | 'FF_ISLR_REPORT_SERVICE'      // IslrReportService
+  | 'FF_INDEX_IVA_SERVICE'       // IndexIvaService
+  | 'FF_NOTIFICATION_SERVICE'     // NotificationService
+  | 'FF_PDF_SERVICE'              // PdfService
+  | 'FF_OBSERVATION_SERVICE'      // ObservationService
+  | 'FF_KPI_SERVICE'              // KpiService
+  | 'FF_PERFORMANCE_SERVICE'       // PerformanceService
+  | 'FF_COMPLIANCE_SERVICE'       // ComplianceService
+  | 'FF_FISCAL_ANALYTICS_SERVICE' // FiscalAnalyticsService
+  | 'FF_GROUP_PERFORMANCE_SERVICE'; // GroupPerformanceService
 
 function isEnabled(flag: FlagName): boolean {
   if (flag === 'FF_ENV_CONFIG') return env.FF_ZOD_ENV_VALIDATION;

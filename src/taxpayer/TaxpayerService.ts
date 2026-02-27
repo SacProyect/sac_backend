@@ -1,11 +1,11 @@
 import { injectable, inject } from "tsyringe";
-import * as taxpayerServiceImpl from "./taxpayer-services";
+import * as taxpayerServices from "./services"; // Importa el barrel con feature flags
 import type { ITaxpayerRepository } from "./interfaces/ITaxpayerRepository";
 import { TAXPAYER_REPOSITORY_TOKEN } from "./interfaces/ITaxpayerRepository";
 
 /**
  * Servicio de contribuyentes expuesto para inyección de dependencias.
- * Depende de ITaxpayerRepository para facilitar pruebas unitarias con mocks.
+ * Delega en los servicios modulares con feature flags para control de rollout.
  */
 @injectable()
 export class TaxpayerService {
@@ -14,169 +14,169 @@ export class TaxpayerService {
     ) {}
 
     async getTaxpayersForEvents(userId: string, userRole: string, page?: number, limit?: number, search?: string) {
-        return taxpayerServiceImpl.getTaxpayersForEvents(userId, userRole, page, limit, search);
+        return taxpayerServices.getTaxpayersForEvents(userId, userRole, page, limit, search);
     }
 
     async getFiscalTaxpayersForStats(userId: string) {
-        return taxpayerServiceImpl.getFiscalTaxpayersForStats(userId);
+        return taxpayerServices.getFiscalTaxpayersForStats(userId);
     }
 
     async getTaxpayers(page?: number, limit?: number, year?: number, search?: string) {
-        return taxpayerServiceImpl.getTaxpayers(page, limit, year, search, this.taxpayerRepository);
+        return taxpayerServices.getTaxpayers(page, limit, year, search);
     }
 
     async getMyCurrentYearTaxpayers(userId: string) {
-        return taxpayerServiceImpl.getMyCurrentYearTaxpayers(userId);
+        return taxpayerServices.getMyCurrentYearTaxpayers(userId);
     }
 
     async getTeamCurrentYearTaxpayers(userId: string, userRole: string) {
-        return taxpayerServiceImpl.getTeamCurrentYearTaxpayers(userId, userRole);
+        return taxpayerServices.getTeamCurrentYearTaxpayers(userId, userRole);
     }
 
     async generateDownloadRepairUrl(key: string) {
-        return taxpayerServiceImpl.generateDownloadRepairUrl(key);
+        return taxpayerServices.generateDownloadRepairUrl(key);
     }
 
     async generateDownloadInvestigationPdfUrl(key: string) {
-        return taxpayerServiceImpl.generateDownloadInvestigationPdfUrl(key);
+        return taxpayerServices.generateDownloadInvestigationPdfUrl(key);
     }
 
-    async createTaxpayer(input: Parameters<typeof taxpayerServiceImpl.createTaxpayer>[0]) {
-        return taxpayerServiceImpl.createTaxpayer(input);
+    async createTaxpayer(input: Parameters<typeof taxpayerServices.createTaxpayer>[0]) {
+        return taxpayerServices.createTaxpayer(input);
     }
 
     async uploadRepairReport(taxpayerId: string, pdf_url: string) {
-        return taxpayerServiceImpl.uploadRepairReport(taxpayerId, pdf_url);
+        return taxpayerServices.uploadRepairReport(taxpayerId, pdf_url);
     }
 
     async updateRepairReportPdfUrl(repairReportId: string, pdf_url: string) {
-        return taxpayerServiceImpl.updateRepairReportPdfUrl(repairReportId, pdf_url);
+        return taxpayerServices.updateRepairReportPdfUrl(repairReportId, pdf_url);
     }
 
     async deleteRepairReportById(repairReportId: string) {
-        return taxpayerServiceImpl.deleteRepairReportById(repairReportId);
+        return taxpayerServices.deleteRepairReportById(repairReportId);
     }
 
     async getTaxpayerCategories() {
-        return taxpayerServiceImpl.getTaxpayerCategories();
+        return taxpayerServices.getTaxpayerCategories();
     }
 
     async getParishList() {
-        return taxpayerServiceImpl.getParishList();
+        return taxpayerServices.getParishList();
     }
 
-    async createTaxpayerExcel(body: Parameters<typeof taxpayerServiceImpl.createTaxpayerExcel>[0]) {
-        return taxpayerServiceImpl.createTaxpayerExcel(body);
+    async createTaxpayerExcel(body: Parameters<typeof taxpayerServices.createTaxpayerExcel>[0]) {
+        return taxpayerServices.createTaxpayerExcel(body);
     }
 
     async getTaxpayerById(id: string) {
-        return taxpayerServiceImpl.getTaxpayerById(id);
+        return taxpayerServices.getTaxpayerById(id);
     }
 
     async getTaxpayersByUser(id: string) {
-        return taxpayerServiceImpl.getTaxpayersByUser(id);
+        return taxpayerServices.getTaxpayersByUser(id);
     }
 
     async updateTaxpayer(
         id: string,
-        data: Parameters<typeof taxpayerServiceImpl.updateTaxpayer>[1],
+        data: Parameters<typeof taxpayerServices.updateTaxpayer>[1],
         userId: string,
         userRole: string
     ) {
-        return taxpayerServiceImpl.updateTaxpayer(id, data, userId, userRole);
+        return taxpayerServices.updateTaxpayer(id, data, userId, userRole);
     }
 
     async updateObservation(id: string, newDescription: string) {
-        return taxpayerServiceImpl.updateObservation(id, newDescription);
+        return taxpayerServices.updateObservation(id, newDescription);
     }
 
-    async updateFase(data: Parameters<typeof taxpayerServiceImpl.updateFase>[0]) {
-        return taxpayerServiceImpl.updateFase(data);
+    async updateFase(data: any) {
+        return taxpayerServices.updateFase(data);
     }
 
     async notifyTaxpayer(id: string) {
-        return taxpayerServiceImpl.notifyTaxpayer(id);
+        return taxpayerServices.notifyTaxpayer(id);
     }
 
     async updatePayment(id: string, status: string) {
-        return taxpayerServiceImpl.updatePayment(id, status);
+        return taxpayerServices.updatePayment(id, status);
     }
 
     async deleteTaxpayerById(id: string) {
-        return taxpayerServiceImpl.deleteTaxpayerById(id);
+        return taxpayerServices.deleteTaxpayerById(id);
     }
 
     async deleteObservation(id: string) {
-        return taxpayerServiceImpl.deleteObservation(id);
+        return taxpayerServices.deleteObservation(id);
     }
 
     async getEventsbyTaxpayer(taxpayerId?: string, type?: string) {
-        return taxpayerServiceImpl.getEventsbyTaxpayer(taxpayerId, type);
+        return taxpayerServices.getEventsbyTaxpayer(taxpayerId, type);
     }
 
     async getTaxpayerData(id: string) {
-        return taxpayerServiceImpl.getTaxpayerData(id);
+        return taxpayerServices.getTaxpayerData(id);
     }
 
     async getObservations(id: string) {
-        return taxpayerServiceImpl.getObservations(id);
+        return taxpayerServices.getObservations(id);
     }
 
     async getIslrReports(id: string) {
-        return taxpayerServiceImpl.getIslrReports(id);
+        return taxpayerServices.getIslrReports(id);
     }
 
     async getTaxpayerSummary(id: string) {
-        return taxpayerServiceImpl.getTaxpayerSummary(id);
+        return taxpayerServices.getTaxpayerSummary(id);
     }
 
-    async createEvent(input: Parameters<typeof taxpayerServiceImpl.createEvent>[0]) {
-        return taxpayerServiceImpl.createEvent(input);
+    async createEvent(input: Parameters<typeof taxpayerServices.createEvent>[0]) {
+        return taxpayerServices.createEvent(input);
     }
 
-    async createIndexIva(data: Parameters<typeof taxpayerServiceImpl.createIndexIva>[0]) {
-        return taxpayerServiceImpl.createIndexIva(data);
+    async createIndexIva(data: any) {
+        return taxpayerServices.createIndexIva(data);
     }
 
-    async modifyIndexIva(newIndexIva: Parameters<typeof taxpayerServiceImpl.modifyIndexIva>[0], taxpayerId: string) {
-        return taxpayerServiceImpl.modifyIndexIva(newIndexIva, taxpayerId);
+    async modifyIndexIva(newIndexIva: any, taxpayerId: string) {
+        return taxpayerServices.modifyIndexIva(newIndexIva, taxpayerId);
     }
 
     async createIVA(
-        data: Parameters<typeof taxpayerServiceImpl.createIVA>[0],
+        data: any,
         userId?: string,
         userRole?: string
     ) {
-        return taxpayerServiceImpl.createIVA(data, userId, userRole);
+        return taxpayerServices.createIVA(data, userId, userRole);
     }
 
     async createISLR(
-        input: Parameters<typeof taxpayerServiceImpl.createISLR>[0],
+        input: any,
         userId?: string,
         userRole?: string
     ) {
-        return taxpayerServiceImpl.createISLR(input, userId, userRole);
+        return taxpayerServices.createISLR(input, userId, userRole);
     }
 
-    async createPayment(input: Parameters<typeof taxpayerServiceImpl.createPayment>[0]) {
-        return taxpayerServiceImpl.createPayment(input);
+    async createPayment(input: Parameters<typeof taxpayerServices.createPayment>[0]) {
+        return taxpayerServices.createPayment(input);
     }
 
-    async createObservation(input: Parameters<typeof taxpayerServiceImpl.createObservation>[0]) {
-        return taxpayerServiceImpl.createObservation(input);
+    async createObservation(input: any) {
+        return taxpayerServices.createObservation(input);
     }
 
-    async updateEvent(eventId: string, input: Parameters<typeof taxpayerServiceImpl.updateEvent>[1]) {
-        return taxpayerServiceImpl.updateEvent(eventId, input);
+    async updateEvent(eventId: string, input: any) {
+        return taxpayerServices.updateEvent(eventId, input);
     }
 
     async updateIvaReport(
         ivaId: string,
-        input: Parameters<typeof taxpayerServiceImpl.updateIvaReport>[1],
+        input: any,
         userId?: string,
         userRole?: string
     ) {
-        return taxpayerServiceImpl.updateIvaReport(ivaId, input, userId, userRole);
+        return taxpayerServices.updateIvaReport(ivaId, input, userId, userRole);
     }
 
     async updateCulminated(
@@ -185,35 +185,35 @@ export class TaxpayerService {
         userId: string,
         userRole: string
     ) {
-        return taxpayerServiceImpl.updateCulminated(id, culminated, userId, userRole);
+        return taxpayerServices.updateCulminated(id, culminated, userId, userRole);
     }
 
     async updateIslr(
         id: string,
-        input: Parameters<typeof taxpayerServiceImpl.updateIslr>[1],
+        input: any,
         userId: string,
         userRole: string
     ) {
-        return taxpayerServiceImpl.updateIslr(id, input, userId, userRole);
+        return taxpayerServices.updateIslr(id, input, userId, userRole);
     }
 
     async deleteEvent(id: string) {
-        return taxpayerServiceImpl.deleteEvent(id);
+        return taxpayerServices.deleteEvent(id);
     }
 
     async deletePayment(id: string) {
-        return taxpayerServiceImpl.deletePayment(id);
+        return taxpayerServices.deletePayment(id);
     }
 
     async deleteIva(id: string) {
-        return taxpayerServiceImpl.deleteIva(id);
+        return taxpayerServices.deleteIva(id);
     }
 
     async deleteIslr(id: string) {
-        return taxpayerServiceImpl.deleteIslr(id);
+        return taxpayerServices.deleteIslr(id);
     }
 
     async CreateTaxpayerCategory(name: string) {
-        return taxpayerServiceImpl.CreateTaxpayerCategory(name);
+        return taxpayerServices.CreateTaxpayerCategory(name);
     }
 }

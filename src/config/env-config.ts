@@ -37,7 +37,7 @@ const envSchema = z.object({
   PERSON_ID: z.coerce.number().optional(),
   PASSWORD: z.string().optional(),
 
-  // Feature Flags
+  // Feature Flags - Legacy
   FF_NEW_ERROR_HIERARCHY: z.coerce.string().transform(v => v === 'true').default(false),
   FF_ZOD_ENV_VALIDATION: z.coerce.string().transform(v => v === 'true').default(false),
   FF_BIGINT_MIDDLEWARE: z.coerce.string().transform(v => v === 'true').default(false),
@@ -47,6 +47,22 @@ const envSchema = z.object({
   FF_NEW_REPORTS_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
   FF_NEW_TAXPAYER_REPOSITORY: z.coerce.string().transform(v => v === 'true').default(false),
   FF_STRATEGY_PATTERN: z.coerce.string().transform(v => v === 'true').default(false),
+
+  // Feature Flags - Nuevos Servicios Refactorizados (Fase 5)
+  FF_TAXPAYER_CRUD_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
+  FF_EVENT_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
+  FF_PAYMENT_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
+  FF_IVA_REPORT_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
+  FF_ISLR_REPORT_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
+  FF_INDEX_IVA_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
+  FF_NOTIFICATION_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
+  FF_PDF_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
+  FF_OBSERVATION_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
+  FF_KPI_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
+  FF_PERFORMANCE_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
+  FF_COMPLIANCE_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
+  FF_FISCAL_ANALYTICS_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
+  FF_GROUP_PERFORMANCE_SERVICE: z.coerce.string().transform(v => v === 'true').default(false),
 });
 
 /**
