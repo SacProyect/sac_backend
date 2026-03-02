@@ -2851,9 +2851,9 @@ export async function getFiscalTaxpayerCompliance(fiscalId: string, date?: Date)
  * Fórmula: (Contribuyentes con 'Buen Cumplimiento' / Cantidad REAL de contribuyentes activos asignados) * 100
  * Filtra contribuyentes inactivos o cerrados del denominador
  */
-export async function getCoordinationPerformance() {
+export async function getCoordinationPerformance(date?: Date) {
     try {
-        const now = new Date();
+        const now = date || new Date();
         const currentYear = now.getUTCFullYear();
         const startOfYear = new Date(Date.UTC(currentYear, 0, 1));
         const endOfYear = new Date(Date.UTC(currentYear + 1, 0, 1));

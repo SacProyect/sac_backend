@@ -468,6 +468,29 @@ reportRouter.get('/get-top-fiscals',
     }
 )
 
+reportRouter.get('/get-top-coordinators',
+    authenticateToken,
+    query("date").optional(),
+    cacheMiddleware({ ttl: 120000, tags: ['reports', 'performance'] }),
+    async (req: Request, res: Response) => {
+
+        const { user } = req as AuthRequest
+
+        if (!user) return res.status(401).json("Unauthorized access")
+        if (user.role !== "ADMIN" && user.role !== "COORDINATOR") return res.status(403).json("Forbidden access")
+
+        try {
+            const date = parseDateParam(req.query.date as string | undefined);
+            const response = await ReportService.getCoordinationPerformance(date);
+
+            return res.status(200).json(response);
+        } catch (e: any) {
+            logger.error("report endpoint error", { message: e?.message, stack: e?.stack, path: req.originalUrl });
+            return ApiError.internal(res, "Ha ocurrido un error");
+        }
+    }
+)
+
 reportRouter.get('/get-top-five-by-group',
     authenticateToken,
     query("date").optional(),
