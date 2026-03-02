@@ -24,6 +24,12 @@ export class TaxpayerCrudService {
      */
     static async create(input: NewTaxpayer): Promise<Taxpayer | Error> {
         try {
+            // Validar duplicado de RIF antes de cualquier inserción
+            const existingByRif = await taxpayerRepository.findByRif(input.rif);
+            if (existingByRif) {
+                throw new Error(`Ya existe un contribuyente activo con el RIF ${input.rif}.`);
+            }
+
             const emitionDate = new Date(input.emition_date);
             const inputYear = emitionDate.getFullYear();
 

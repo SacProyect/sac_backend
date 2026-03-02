@@ -2,6 +2,19 @@ import { injectable, inject } from "tsyringe";
 import * as taxpayerServices from "./services"; // Importa el barrel con feature flags
 import type { ITaxpayerRepository } from "./interfaces/ITaxpayerRepository";
 import { TAXPAYER_REPOSITORY_TOKEN } from "./interfaces/ITaxpayerRepository";
+import { CreateTaxpayerDto, UpdateTaxpayerDto } from "./dto/taxpayer-dto";
+import type {
+    NewEvent,
+    NewFase,
+    NewIvaReport,
+    NewIslrReport,
+    NewObservation,
+    NewPayment,
+    NewTaxpayerExcelInput,
+    CreateIndexIva,
+} from "./taxpayer-utils";
+import type { IVAReports, ISLRReports } from "@prisma/client";
+import type { Decimal } from "@prisma/client/runtime/library";
 
 /**
  * Servicio de contribuyentes expuesto para inyección de dependencias.
@@ -41,7 +54,16 @@ export class TaxpayerService {
         return taxpayerServices.generateDownloadInvestigationPdfUrl(key);
     }
 
-    async createTaxpayer(input: Parameters<typeof taxpayerServices.createTaxpayer>[0]) {
+    async createTaxpayer(input: CreateTaxpayerDto) {
+        // ✅ Validar duplicado de RIF antes de delegar al servicio de dominio.
+        // Nota: actualmente la tabla `taxpayer` no tiene `tenantId`, por lo que la validación
+        // se hace a nivel global de SAC. Cuando exista `tenantId`, este chequeo debe
+        // filtrarse también por ese campo.
+        const existing = await this.taxpayerRepository.findByRif(input.rif);
+        if (existing) {
+            throw new Error(`Ya existe un contribuyente activo con el RIF ${input.rif}.`);
+        }
+
         return taxpayerServices.createTaxpayer(input);
     }
 
@@ -65,7 +87,7 @@ export class TaxpayerService {
         return taxpayerServices.getParishList();
     }
 
-    async createTaxpayerExcel(body: Parameters<typeof taxpayerServices.createTaxpayerExcel>[0]) {
+    async createTaxpayerExcel(body: NewTaxpayerExcelInput) {
         return taxpayerServices.createTaxpayerExcel(body);
     }
 
@@ -79,7 +101,7 @@ export class TaxpayerService {
 
     async updateTaxpayer(
         id: string,
-        data: Parameters<typeof taxpayerServices.updateTaxpayer>[1],
+        data: UpdateTaxpayerDto,
         userId: string,
         userRole: string
     ) {
@@ -90,7 +112,7 @@ export class TaxpayerService {
         return taxpayerServices.updateObservation(id, newDescription);
     }
 
-    async updateFase(data: any) {
+    async updateFase(data: NewFase) {
         return taxpayerServices.updateFase(data);
     }
 
@@ -130,7 +152,7 @@ export class TaxpayerService {
         return taxpayerServices.getTaxpayerSummary(id);
     }
 
-    async createEvent(input: Parameters<typeof taxpayerServices.createEvent>[0]) {
+    async createEvent(input: NewEvent) {
         return taxpayerServices.createEvent(input);
     }
 
@@ -162,11 +184,11 @@ export class TaxpayerService {
         return taxpayerServices.createPayment(input);
     }
 
-    async createObservation(input: any) {
+    async createObservation(input: NewObservation) {
         return taxpayerServices.createObservation(input);
     }
 
-    async updateEvent(eventId: string, input: any) {
+    async updateEvent(eventId: string, input: Partial<NewEvent>) {
         return taxpayerServices.updateEvent(eventId, input);
     }
 

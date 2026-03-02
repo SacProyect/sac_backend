@@ -11,6 +11,7 @@ import { db } from "../utils/db-server";
 import { getRoleStrategy } from "../users/role-strategies";
 import { storageService } from "../services/StorageService";
 import { TaxpayerService } from "./TaxpayerService";
+import type { CreateTaxpayerDto, UpdateTaxpayerDto, TaxpayerResponseDto } from "./dto/taxpayer-dto";
 
 @injectable()
 export class TaxpayerController {
@@ -113,8 +114,10 @@ export class TaxpayerController {
     async createTaxpayer(req: Request, res: Response): Promise<Response> {
         try {
             const { user } = req as AuthRequest;
-            if (!user) return res.status(401).json("Unauthorized access");
-            if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden");
+            if (!user) return res.status(401).json({ message: "Unauthorized access" });
+            if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") {
+                return res.status(403).json({ message: "Forbidden" });
+            }
             const userId = user?.id;
             const role = user?.role;
             const s3Files: { pdf_url: string }[] = [];
@@ -136,22 +139,30 @@ export class TaxpayerController {
                     error: "Parroquia y Actividad Económica son campos obligatorios",
                 });
             }
-            const newTaxpayer = await this.taxpayerService.createTaxpayer({
+            const dto: CreateTaxpayerDto = {
                 providenceNum: BigInt(providenceNum),
                 process,
                 name,
                 rif,
                 contract_type,
                 officerId,
-                emition_date,
+                emition_date: new Date(emition_date),
                 address,
                 pdfs: s3Files,
                 userId: userId,
                 role: role,
                 parishId: parish,
                 categoryId: category,
-            });
-            return res.status(200).json(newTaxpayer);
+            };
+
+            const created = await this.taxpayerService.createTaxpayer(dto);
+            if (created instanceof Error) {
+                throw created;
+            }
+
+            // Devolvemos la vista de detalle unificada para el frontend
+            const detail = await this.taxpayerService.getTaxpayerById(created.id);
+            return res.status(201).json(detail);
         } catch (error: any) {
             logger.error("create-taxpayer-post error", { message: error?.message, stack: error?.stack });
             return ApiError.internal(res, error.message || "Error al crear el contribuyente");
@@ -271,10 +282,26 @@ export class TaxpayerController {
         const { user } = req as AuthRequest;
         if (!user) return res.status(401).json({ error: "Unauthorized" });
         try {
-            const input = req.body;
             const id: string = req.params.id;
-            const updatedTaxpayer = await this.taxpayerService.updateTaxpayer(id, input, user.id, user.role);
-            return res.status(200).json(updatedTaxpayer);
+            const body = req.body;
+
+            const dto: UpdateTaxpayerDto = {
+                name: body.name,
+                rif: body.rif,
+                providenceNum: body.providenceNum ? BigInt(body.providenceNum) : undefined,
+                contract_type: body.contract_type,
+                process: body.process,
+                fase: body.fase,
+                address: body.address,
+                parish_id: body.parish_id,
+                taxpayer_category_id: body.taxpayer_category_id,
+            };
+
+            await this.taxpayerService.updateTaxpayer(id, dto, user.id, user.role);
+
+            // Devolvemos el contribuyente actualizado con la misma forma que getTaxpayerById
+            const updatedDetail = await this.taxpayerService.getTaxpayerById(id);
+            return res.status(200).json(updatedDetail);
         } catch (error: any) {
             logger.error("update-taxpayer error", { message: error?.message, stack: error?.stack });
             return ApiError.internal(res);

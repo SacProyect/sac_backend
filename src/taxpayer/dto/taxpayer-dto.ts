@@ -1,5 +1,5 @@
 import { taxpayer_contract_type, taxpayer_process, Taxpayer_Fases } from "@prisma/client";
-import { InvestigationPdf } from "../taxpayer-utils";
+import { InvestigationPdf, TaxpayerDetailResponse } from "../taxpayer-utils";
 
 export class CreateTaxpayerDto {
     providenceNum!: bigint;
@@ -28,3 +28,9 @@ export class UpdateTaxpayerDto {
     parish_id?: string;
     taxpayer_category_id?: string;
 }
+
+/**
+ * DTO de salida hacia el frontend SAC para representar un contribuyente
+ * con toda la información de detalle (incluyendo índice efectivo de IVA).
+ */
+export type TaxpayerResponseDto = TaxpayerDetailResponse;

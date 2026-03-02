@@ -7,6 +7,8 @@ import type { PrismaClient } from "@prisma/client";
 
 process.env.NODE_ENV = "test";
 process.env.TOKEN_SECRET = process.env.TOKEN_SECRET || "test-secret-for-routes";
+process.env.DATABASE_URL =
+  process.env.DATABASE_URL || "mysql://user:pass@localhost:3306/testdb";
 // Evitar que Resend lance al cargar EmailService en tests (no se envían correos)
 process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || "re_test_dummy";
 // Evitar que s3-client lance al cargar StorageService en tests
