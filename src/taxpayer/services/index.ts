@@ -1,35 +1,50 @@
 /**
- * Taxpayer Services - Barrel Export
- * 
- * Este archivo exporta todos los servicios modulares de contribuyentes.
- * Los servicios nuevos refactorizados están en archivos separados.
- * 
- * ESTRUCTURA:
- * - taxpayer-crud.service.ts: CRUD de contribuyentes
- * - event.service.ts: Gestión de eventos (multas, advertencias)
- * - payment.service.ts: Gestión de pagos
- * - iva-report.service.ts: Reportes IVA
- * - islr-report.service.ts: Reportes ISLR
- * - index-iva.service.ts: Índice IVA
- * - notification.service.ts: Notificaciones email
- * - pdf.service.ts: Gestión PDFs
- * - observation.service.ts: Observaciones
+ * Taxpayer Services - Barrel Export (Sprint 2 + Sprint 3)
+ *
+ * Todas las funciones de Sprint 2 y 3 son accesibles vía import from './services'.
+ *
+ * Sprint 2 - Core Taxpayer
+ *   - taxpayer-crud.service.ts
+ *   - taxpayer-excel.service.ts
+ *   - legacy-taxpayer.service.ts (queries, state, categorías, parroquias, fase, culminado)
+ *
+ * Sprint 3 - Sub-entidades
+ *   - event.service.ts
+ *   - payment.service.ts
+ *   - observation.service.ts
+ *   - pdf.service.ts (repair-report: reparos, URLs descarga)
+ *
+ * Reportes / Otros
+ *   - iva-report.service.ts, islr-report.service.ts, index-iva.service.ts
+ *   - notification.service.ts
  */
 
+// ---------------------------------------------------------------------------
+// Sprint 2 - Core Taxpayer
+// ---------------------------------------------------------------------------
 import * as crudService from './taxpayer-crud.service';
+import * as legacyService from './legacy-taxpayer.service';
+// taxpayer-excel: createTaxpayerExcel está en crudService.TaxpayerCrudService.createTaxpayerExcel
+
+// ---------------------------------------------------------------------------
+// Sprint 3 - Sub-entidades
+// ---------------------------------------------------------------------------
 import * as eventService from './event.service';
 import * as paymentService from './payment.service';
+import * as observationService from './observation.service';
+import * as pdfService from './pdf.service';
+
+// ---------------------------------------------------------------------------
+// Reportes / Otros
+// ---------------------------------------------------------------------------
 import * as ivaReportService from './iva-report.service';
 import * as islrReportService from './islr-report.service';
 import * as indexIvaService from './index-iva.service';
 import * as notificationService from './notification.service';
-import * as pdfService from './pdf.service';
-import * as observationService from './observation.service';
 
-// Importar funciones del servicio legacy que aún no han sido refactorizadas
-import * as legacyService from './legacy-taxpayer.service';
-
+// ---------------------------------------------------------------------------
 // Re-export classes
+// ---------------------------------------------------------------------------
 export const TaxpayerCrudService = crudService.TaxpayerCrudService;
 export const EventService = eventService.EventService;
 export const PaymentService = paymentService.PaymentService;

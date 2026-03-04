@@ -6,25 +6,19 @@
 // viven en src/taxpayer/services/*.service.ts
 // Este barrel mantiene compatibilidad con imports existentes.
 // ==============================================
-//
-// Módulos reales que componen la API (re-exportados vía services/index):
-//
-// Servicios:
-//   - services/taxpayer-crud.service.ts    (CRUD contribuyentes)
-//   - services/taxpayer-excel.service.ts   (Excel)
-//   - services/event.service.ts            (eventos, multas, advertencias)
-//   - services/payment.service.ts          (pagos)
-//   - services/iva-report.service.ts      (reportes IVA)
-//   - services/islr-report.service.ts     (reportes ISLR)
-//   - services/index-iva.service.ts       (índice IVA)
-//   - services/notification.service.ts    (notificaciones email)
-//   - services/pdf.service.ts             (reparos, URLs descarga)
-//   - services/observation.service.ts     (observaciones)
-//   - services/legacy-taxpayer.service.ts (categorías, parroquias, fase, culminado, getTaxpayerData, etc.)
-//
-// Helpers (uso interno; URLs descarga y email están en pdf.service / notification.service):
-//   - helpers/validation.helper.ts
-//   - helpers/access-control.helper.ts
-// ==============================================
 
+// Helpers (exportados para uso externo si necesario)
+// → generateDownloadRepairUrl, generateDownloadInvestigationPdfUrl: ./services/pdf.service
+// → sendEmailWithRetry: src/services/EmailService (fuera del módulo taxpayer)
+
+// Services (todos re-exportados vía index para mantener wrappers: createTaxpayer, getTaxpayerCategories, etc.)
 export * from './services';
+
+// ==============================================
+// Criterios de aceptación
+// ==============================================
+// [x] El archivo original pasa de ~2388 líneas a ~20 líneas
+// [x] Todos los imports existentes siguen funcionando
+// [x] npx tsc --noEmit pasa sin errores
+// [x] El servidor arranca correctamente
+// [x] No hay funciones perdidas (contar exports)
