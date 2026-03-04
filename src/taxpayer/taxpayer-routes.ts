@@ -109,6 +109,32 @@ taxpayerRouter.post(
     (req: Request, res: Response) => taxpayerController.uploadRepairReport(req, res)
 );
 
+// Checklist Sprint 3: POST /taxpayer/repair-report (taxpayerId en body, multipart)
+taxpayerRouter.post(
+    "/repair-report",
+    authenticateToken,
+    uploadMemory.single("repairReport"),
+    invalidateCacheMiddleware(["taxpayers", "repair-reports"]),
+    (req: Request, res: Response) => taxpayerController.uploadRepairReport(req, res)
+);
+
+// Checklist Sprint 3: PUT /taxpayer/repair-report/:id (actualizar URL)
+taxpayerRouter.put(
+    "/repair-report/:id",
+    authenticateToken,
+    invalidateCacheMiddleware(["taxpayers", "repair-reports"]),
+    body("pdf_url").isString().notEmpty(),
+    (req: Request, res: Response) => taxpayerController.updateRepairReport(req, res)
+);
+
+// Checklist Sprint 3: DELETE /taxpayer/repair-report/:id
+taxpayerRouter.delete(
+    "/repair-report/:id",
+    authenticateToken,
+    invalidateCacheMiddleware(["taxpayers", "repair-reports"]),
+    (req: Request, res: Response) => taxpayerController.deleteRepairReport(req, res)
+);
+
 taxpayerRouter.get(
     "/get-taxpayer-categories",
     authenticateToken,
@@ -180,6 +206,15 @@ taxpayerRouter.put(
     invalidateCacheMiddleware(["observations"]),
     body("newDescription").notEmpty().isString(),
     (req: Request, res: Response) => taxpayerController.modifyObservations(req, res)
+);
+
+// Checklist Sprint 3: PUT /taxpayer/observation/:id (alias)
+taxpayerRouter.put(
+    "/observation/:id",
+    authenticateToken,
+    invalidateCacheMiddleware(["observations"]),
+    body("newDescription").notEmpty().isString(),
+    (req: Request, res: Response) => taxpayerController.modifyObservations(req, res)
 )
 
 taxpayerRouter.put(
@@ -204,6 +239,15 @@ taxpayerRouter.put(
     invalidateCacheMiddleware(["payments", "taxpayers-events"]),
     body("status").isString(),
     (req: Request, res: Response) => taxpayerController.updatePayment(req, res)
+);
+
+// Checklist Sprint 3: PUT /taxpayer/payment/status/:id (alias)
+taxpayerRouter.put(
+    "/payment/status/:id",
+    authenticateToken,
+    invalidateCacheMiddleware(["payments", "taxpayers-events"]),
+    body("status").isString(),
+    (req: Request, res: Response) => taxpayerController.updatePayment(req, res)
 )
 
 
@@ -219,6 +263,14 @@ taxpayerRouter.delete(
     authenticateToken,
     invalidateCacheMiddleware(["observations"]),
     (req: Request, res: Response) => taxpayerController.delObservation(req, res)
+);
+
+// Checklist Sprint 3: DELETE /taxpayer/observation/:id (alias)
+taxpayerRouter.delete(
+    "/observation/:id",
+    authenticateToken,
+    invalidateCacheMiddleware(["observations"]),
+    (req: Request, res: Response) => taxpayerController.delObservation(req, res)
 )
 
 taxpayerRouter.get(
@@ -226,6 +278,20 @@ taxpayerRouter.get(
     authenticateToken,
     cacheMiddleware({ ttl: 120000, tags: ["events"] }),
     (req: Request, res: Response) => taxpayerController.getEventsAll(req, res)
+);
+
+// Checklist Sprint 3: GET /taxpayer/pending-payments y GET /taxpayer/pending-payments/:id
+taxpayerRouter.get(
+    "/pending-payments",
+    authenticateToken,
+    cacheMiddleware({ ttl: 60000, tags: ["pending-payments", "events"], includeUser: true }),
+    (req: Request, res: Response) => taxpayerController.getPendingPayments(req, res)
+);
+taxpayerRouter.get(
+    "/pending-payments/:id",
+    authenticateToken,
+    cacheMiddleware({ ttl: 60000, tags: ["pending-payments", "events"], includeUser: true }),
+    (req: Request, res: Response) => taxpayerController.getPendingPayments(req, res)
 )
 
 taxpayerRouter.get(
@@ -233,6 +299,20 @@ taxpayerRouter.get(
     authenticateToken,
     cacheMiddleware({ ttl: 60000, tags: ["events", "taxpayers-events"] }),
     (req: Request, res: Response) => taxpayerController.getEventByIdType(req, res)
+)
+
+// Checklist Sprint 3: GET /taxpayer/events (query type, taxpayerId) y GET /taxpayer/events/:taxpayerId
+taxpayerRouter.get(
+    "/events",
+    authenticateToken,
+    cacheMiddleware({ ttl: 120000, tags: ["events"] }),
+    (req: Request, res: Response) => taxpayerController.getEvents(req, res)
+)
+taxpayerRouter.get(
+    "/events/:taxpayerId",
+    authenticateToken,
+    cacheMiddleware({ ttl: 60000, tags: ["events", "taxpayers-events"] }),
+    (req: Request, res: Response) => taxpayerController.getEventsByTaxpayerId(req, res)
 )
 
 taxpayerRouter.get(
@@ -246,6 +326,14 @@ taxpayerRouter.get(
 
 taxpayerRouter.get(
     "/get-observations/:id",
+    authenticateToken,
+    cacheMiddleware({ ttl: 60000, tags: ["observations"] }),
+    (req: Request, res: Response) => taxpayerController.getObservations(req, res)
+);
+
+// Checklist Sprint 3: GET /taxpayer/observations/:taxpayerId (alias)
+taxpayerRouter.get(
+    "/observations/:taxpayerId",
     authenticateToken,
     cacheMiddleware({ ttl: 60000, tags: ["observations"] }),
     (req: Request, res: Response) => taxpayerController.getObservations(req, res)
@@ -338,6 +426,17 @@ taxpayerRouter.post(
 
 taxpayerRouter.post(
     "/observations",
+    authenticateToken,
+    invalidateCacheMiddleware(["observations"]),
+    body("description").notEmpty().isString(),
+    body("date").notEmpty().isString().isISO8601(),
+    body("taxpayerId").notEmpty().isString(),
+    (req: Request, res: Response) => taxpayerController.createObservation(req, res)
+);
+
+// Checklist Sprint 3: POST /taxpayer/observation (alias)
+taxpayerRouter.post(
+    "/observation",
     authenticateToken,
     invalidateCacheMiddleware(["observations"]),
     body("description").notEmpty().isString(),
@@ -457,6 +556,32 @@ taxpayerRouter.delete(
     "/event/:id",
     authenticateToken,
     (req: Request, res: Response) => taxpayerController.deleteEvent(req, res)
+);
+
+// Checklist Sprint 3: POST /taxpayer/event (type: FINE | PAYMENT_COMPROMISE | WARNING)
+taxpayerRouter.post(
+    "/event",
+    authenticateToken,
+    invalidateCacheMiddleware(["events", "taxpayers-events"]),
+    body("type").isString().isIn(["FINE", "PAYMENT_COMPROMISE", "WARNING"]),
+    body("date").isISO8601().toDate(),
+    body("amount").isDecimal(),
+    body("taxpayerId").isString().notEmpty(),
+    body("description").optional().isString(),
+    body("fineEventId").optional().isString(),
+    (req: Request, res: Response) => taxpayerController.createEvent(req, res)
+);
+
+// Checklist Sprint 3: PUT /taxpayer/event/:id
+taxpayerRouter.put(
+    "/event/:id",
+    authenticateToken,
+    invalidateCacheMiddleware(["events", "taxpayers-events"]),
+    body("date").optional().isISO8601().toDate(),
+    body("amount").optional().isDecimal(),
+    body("description").optional().isString(),
+    body("type").optional().isString(),
+    (req: Request, res: Response) => taxpayerController.updateEventById(req, res)
 );
 
 taxpayerRouter.delete(

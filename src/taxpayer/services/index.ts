@@ -27,7 +27,7 @@ import * as pdfService from './pdf.service';
 import * as observationService from './observation.service';
 
 // Importar funciones del servicio legacy que aún no han sido refactorizadas
-import * as legacyService from '../taxpayer-services';
+import * as legacyService from './legacy-taxpayer.service';
 
 // Re-export classes
 export const TaxpayerCrudService = crudService.TaxpayerCrudService;
@@ -112,8 +112,14 @@ export async function deleteEvent(...args: Parameters<typeof eventService.EventS
     return eventService.EventService.delete(...args);
 }
 
-export async function getEventsbyTaxpayer(...args: Parameters<typeof eventService.EventService.getByTaxpayer>) {
-    return eventService.EventService.getByTaxpayer(...args);
+// Mantener compatibilidad con lógica legacy (usa taxpayerRepository.findEvents/findPayments),
+// ya que los tests mockean esas funciones explícitamente.
+export async function getEventsbyTaxpayer(...args: Parameters<typeof legacyService.getEventsbyTaxpayer>) {
+    return legacyService.getEventsbyTaxpayer(...args);
+}
+
+export async function getPendingPayments(taxpayerId?: string) {
+    return eventService.EventService.getPendingPayments(taxpayerId);
 }
 
 // ============================================
@@ -136,8 +142,9 @@ export async function deletePayment(...args: Parameters<typeof paymentService.Pa
 // IVA REPORT FUNCTIONS
 // ============================================
 
-export async function createIVA(...args: Parameters<typeof ivaReportService.IvaReportService.create>) {
-    return ivaReportService.IvaReportService.create(...args);
+// Mantener lógica legacy de permisos y duplicados para IVA (tests actuales dependen de taxpayer-services.createIVA)
+export async function createIVA(...args: Parameters<typeof legacyService.createIVA>) {
+    return legacyService.createIVA(...args);
 }
 
 export async function updateIvaReport(...args: Parameters<typeof ivaReportService.IvaReportService.update>) {

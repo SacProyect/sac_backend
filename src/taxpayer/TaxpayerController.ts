@@ -12,6 +12,7 @@ import { getRoleStrategy } from "../users/role-strategies";
 import { storageService } from "../services/StorageService";
 import { TaxpayerService } from "./TaxpayerService";
 import type { CreateTaxpayerDto, UpdateTaxpayerDto, TaxpayerResponseDto } from "./dto/taxpayer-dto";
+import * as ReportService from "../reports/reports-services";
 
 @injectable()
 export class TaxpayerController {
@@ -172,7 +173,8 @@ export class TaxpayerController {
     async uploadRepairReport(req: Request, res: Response): Promise<Response> {
         const { user } = req as AuthRequest;
         if (!user) return res.status(401).json({ error: "Unauthorized access" });
-        const taxpayerId = req.params.id;
+        const taxpayerId = (req.params.id || req.body?.taxpayerId) as string;
+        if (!taxpayerId) return res.status(400).json({ error: "taxpayerId es requerido (params.id o body.taxpayerId)" });
         try {
             const strategy = getRoleStrategy(user.role);
             const { allowed, reason } = await strategy.canAccessTaxpayer(db, user.id, taxpayerId);
@@ -418,6 +420,128 @@ export class TaxpayerController {
         }
     }
 
+    /** GET /taxpayer/events (query type, taxpayerId) y GET /taxpayer/events?type=payment — checklist Sprint 3 */
+    async getEvents(req: Request, res: Response): Promise<Response> {
+        const { user } = req as AuthRequest;
+        if (!user) return res.status(401).json("Unauthorized access");
+        try {
+            const type = req.query.type as string | undefined;
+            const taxpayerId = req.query.taxpayerId as string | undefined;
+            if (type === "payment") {
+                const events = await ReportService.getPendingPayments(user, taxpayerId);
+                return res.status(200).json(events);
+            }
+            const events = await this.taxpayerService.getEventsbyTaxpayer(taxpayerId, type);
+            return res.status(200).json(events);
+        } catch (error: any) {
+            logger.error("getEvents error", { message: error?.message });
+            return res.status(500).json({ error: "Error interno del servidor" });
+        }
+    }
+
+    /** GET /taxpayer/events/:taxpayerId — checklist Sprint 3 */
+    async getEventsByTaxpayerId(req: Request, res: Response): Promise<Response> {
+        try {
+            const taxpayerId: string = req.params.taxpayerId;
+            const type = req.query.type as string | undefined;
+            const events = await this.taxpayerService.getEventsbyTaxpayer(taxpayerId, type);
+            return res.status(200).json(events);
+        } catch (error: any) {
+            logger.error("getEventsByTaxpayerId error", { message: error?.message });
+            return res.status(500).json({ error: "Error interno del servidor" });
+        }
+    }
+
+    /** POST /taxpayer/event — crear evento (type: FINE | PAYMENT_COMPROMISE | WARNING) — checklist Sprint 3 */
+    async createEvent(req: Request, res: Response): Promise<Response> {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+        const type = (req.body.type as string)?.toUpperCase?.() || "";
+        try {
+            if (type === EventType.FINE) {
+                const input = { ...req.body, debt: req.body.amount, type: EventType.FINE };
+                const fine = await this.taxpayerService.createEvent(input);
+                return res.status(200).json(fine);
+            }
+            if (type === EventType.PAYMENT_COMPROMISE) {
+                const input = { ...req.body, type: EventType.PAYMENT_COMPROMISE };
+                const event = await this.taxpayerService.createEvent(input);
+                return res.status(200).json(event);
+            }
+            if (type === EventType.WARNING) {
+                const input = { ...req.body, type: EventType.WARNING };
+                const event = await this.taxpayerService.createEvent(input);
+                return res.status(200).json(event);
+            }
+            return res.status(400).json({ error: "type debe ser FINE, PAYMENT_COMPROMISE o WARNING" });
+        } catch (error: any) {
+            logger.error("createEvent error", { message: error?.message, stack: error?.stack });
+            const statusCode = error?.message?.includes("no encontrado") || error?.message?.includes("requerido") ? 400 : 500;
+            return res.status(statusCode).json({ error: error?.message || "Error al crear el evento" });
+        }
+    }
+
+    /** PUT /taxpayer/event/:id — actualizar evento (cualquier tipo) — checklist Sprint 3 */
+    async updateEventById(req: Request, res: Response): Promise<Response> {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+        try {
+            const id: string = req.params.id;
+            const input = { ...req.body };
+            const event = await this.taxpayerService.updateEvent(id, input);
+            return res.status(200).json(event);
+        } catch (error: any) {
+            logger.error("updateEventById error", { message: error?.message });
+            return res.status(500).json({ error: error?.message || "Error al actualizar el evento" });
+        }
+    }
+
+    /** GET /taxpayer/pending-payments y GET /taxpayer/pending-payments/:id — checklist Sprint 3 */
+    async getPendingPayments(req: Request, res: Response): Promise<Response> {
+        const { user } = req as AuthRequest;
+        if (!user) return res.status(401).json("Unauthorized access");
+        try {
+            const taxpayerId = req.params.id as string | undefined;
+            const events = await ReportService.getPendingPayments(user, taxpayerId);
+            return res.status(200).json(events);
+        } catch (error: any) {
+            logger.error("getPendingPayments error", { message: error?.message });
+            return res.status(500).json({ error: "Error interno del servidor" });
+        }
+    }
+
+    /** PUT /taxpayer/repair-report/:id — actualizar URL del reporte — checklist Sprint 3 */
+    async updateRepairReport(req: Request, res: Response): Promise<Response> {
+        const { user } = req as AuthRequest;
+        if (!user) return res.status(401).json("Unauthorized access");
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+        try {
+            const id: string = req.params.id;
+            const pdf_url = req.body.pdf_url as string;
+            if (!pdf_url || typeof pdf_url !== "string") return res.status(400).json({ error: "pdf_url es requerido" });
+            const updated = await this.taxpayerService.updateRepairReportPdfUrl(id, pdf_url);
+            return res.status(200).json(updated);
+        } catch (error: any) {
+            logger.error("updateRepairReport error", { message: error?.message });
+            return res.status(500).json({ error: error?.message || "Error al actualizar el reporte de reparo" });
+        }
+    }
+
+    /** DELETE /taxpayer/repair-report/:id — checklist Sprint 3 */
+    async deleteRepairReport(req: Request, res: Response): Promise<Response> {
+        const { user } = req as AuthRequest;
+        if (!user) return res.status(401).json("Unauthorized access");
+        try {
+            const id: string = req.params.id;
+            await this.taxpayerService.deleteRepairReportById(id);
+            return res.status(200).json({ success: true, message: "Reporte de reparo eliminado" });
+        } catch (error: any) {
+            logger.error("deleteRepairReport error", { message: error?.message });
+            return res.status(500).json({ error: error?.message || "Error al eliminar el reporte de reparo" });
+        }
+    }
+
     async getTaxpayerData(req: Request, res: Response): Promise<Response> {
         try {
             const id: string = req.params.id;
@@ -434,7 +558,7 @@ export class TaxpayerController {
         if (!user) return res.status(401).json("Unauthorized access");
         if (user.role !== "ADMIN" && user.role !== "COORDINATOR" && user.role !== "FISCAL" && user.role !== "SUPERVISOR") return res.status(403).json("Forbidden");
         try {
-            const id: string = req.params.id;
+            const id: string = (req.params.id || req.params.taxpayerId) as string;
             const observations = await this.taxpayerService.getObservations(id);
             return res.status(200).json(observations);
         } catch (e: any) {

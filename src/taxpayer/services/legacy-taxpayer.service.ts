@@ -1,0 +1,340 @@
+/**
+ * Legacy Taxpayer Service
+ *
+ * Funciones que aún no han sido migradas a servicios modulares.
+ * Usado por services/index.ts para evitar dependencia circular con taxpayer-services.ts.
+ */
+
+import { db, runTransaction } from '../../utils/db-server';
+import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
+import logger from '../../utils/logger';
+import { emailService } from '../../services/EmailService';
+import { taxpayerRepository } from '../repository/taxpayer-repository';
+import { staticDataRepository } from '../repository/static-data-repository';
+import type { Event, NewFase, NewIvaReport } from '../taxpayer-utils';
+import { IndexIvaService } from './index-iva.service';
+
+// ---------------------------------------------------------------------------
+// getTaxpayerCategories / getParishList
+// ---------------------------------------------------------------------------
+
+export const getTaxpayerCategories = async () => {
+    try {
+        const categories = await staticDataRepository.findAllCategories();
+        return categories;
+    } catch (e: any) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError) {
+            logger.error("Prisma error getting taxpayer categories", { code: e.code, message: e?.message });
+        } else {
+            logger.error("Can't get the taxpayer categories", { message: e?.message, stack: e?.stack });
+        }
+        throw new Error("Can't get the taxpayer categories");
+    }
+};
+
+export const getParishList = async () => {
+    try {
+        const parishList = await staticDataRepository.findAllParishes();
+        return parishList;
+    } catch (e: any) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError) {
+            logger.error("Prisma error getting parish list", { code: e.code, message: e?.message });
+        } else {
+            logger.error("Can't get the parish list", { message: e?.message, stack: e?.stack });
+        }
+        throw new Error("Can't get the parish list.");
+    }
+};
+
+// ---------------------------------------------------------------------------
+// getEventsbyTaxpayer
+// ---------------------------------------------------------------------------
+
+export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): Promise<Event[] | Error> => {
+    try {
+        let events: any;
+        const where: any = { status: true };
+        if (taxpayerId) where.taxpayerId = taxpayerId;
+        if (type && type !== "payment") {
+            where.type = type;
+            events = await taxpayerRepository.findEvents(where);
+        } else if (type === "payment") {
+            events = await taxpayerRepository.findPayments(where);
+        } else {
+            const foundEvents = await taxpayerRepository.findEvents(where);
+            const payments = await taxpayerRepository.findPayments(where);
+            events = [...foundEvents, ...payments];
+        }
+        const mappedResponse: Event[] = events.map((event: any) => ({
+            id: event.id,
+            date: event.date,
+            type: event.type ? event.type : "payment",
+            amount: event.amount,
+            debt: event.debt,
+            description: event.description,
+            taxpayerId: event.taxpayerId,
+            officerId: event.taxpayer.officerId,
+            taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`,
+        }));
+        return mappedResponse;
+    } catch (error) {
+        logger.error(error);
+        throw error;
+    }
+};
+
+// ---------------------------------------------------------------------------
+// updateFase
+// ---------------------------------------------------------------------------
+
+export const updateFase = async (data: NewFase) => {
+    try {
+        const taxpayerBefore = await taxpayerRepository.findTaxpayerWithUserAndCoordinator(data.id);
+        if (!taxpayerBefore) throw new Error('Taxpayer not found');
+
+        const oldFase = taxpayerBefore.fase.replace("_", " ");
+        const updatedTaxpayerFase = await runTransaction((tx) =>
+            taxpayerRepository.updateTaxpayerFase(data.id, data.fase, tx)
+        );
+
+        const adminUsers = await taxpayerRepository.findAdminEmails();
+        const recipients = [
+            taxpayerBefore.user?.email,
+            ...adminUsers.map((admin) => admin.email),
+        ].filter(Boolean);
+
+        const fiscalName = taxpayerBefore.user?.name || 'Fiscal asignado';
+        const coordinatorName = taxpayerBefore.user?.group?.coordinator?.name || 'Coordinador asignado';
+        const taxpayerName = taxpayerBefore.name;
+        const taxpayerRif = taxpayerBefore.rif;
+        const newFase = data.fase.replace("_", " ");
+
+        emailService.sendWithRetry({
+            to: recipients.join(', '),
+            subject: `Cambio de fase de auditoría fiscal - ${taxpayerName}`,
+            html: `
+            <div style="font-family: Arial, sans-serif; background-color: #f7f7f7; padding: 20px;">
+            <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                <h2 style="color: #2c3e50;">🔔 Cambio de Fase de Auditoría Fiscal</h2>
+                <p style="font-size: 16px; color: #333;">Se ha actualizado la fase del contribuyente <strong>${taxpayerName}</strong> (RIF: ${taxpayerRif}).</p>
+                <table style="width: 100%; font-size: 15px; color: #555; margin: 20px 0;">
+                <tr><td><strong>Fase anterior:</strong></td><td>${oldFase}</td></tr>
+                <tr><td><strong>Nueva fase:</strong></td><td>${newFase}</td></tr>
+                <tr><td><strong>Fiscal responsable:</strong></td><td>${fiscalName}</td></tr>
+                <tr><td><strong>Coordinador del grupo:</strong></td><td>${coordinatorName}</td></tr>
+                </table>
+                <p style="font-size: 15px; color: #333;">Puedes acceder a la plataforma para revisar el detalle del cambio.</p>
+                <div style="text-align: center; margin: 30px 0;">
+                <a href="https://sac-app.com/taxpayer/${data.id}" style="background-color: #1e88e5; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 16px;">Ver contribuyente</a>
+                </div>
+                <p style="font-size: 13px; color: #888;">Este cambio fue registrado automáticamente por el sistema SAC.</p>
+            </div>
+            </div>
+        `,
+        }).catch((err: unknown) => logger.error("Error inesperado al enviar email de cambio de fase:", err));
+
+        return updatedTaxpayerFase;
+    } catch (e) {
+        logger.error(e);
+        throw new Error('Could not update the fase');
+    }
+};
+
+// ---------------------------------------------------------------------------
+// updateCulminated
+// ---------------------------------------------------------------------------
+
+export const updateCulminated = async (
+    id: string,
+    culminated: boolean,
+    userId?: string,
+    userRole?: string
+) => {
+    try {
+        if (userId && userRole && userRole === "FISCAL") {
+            const taxpayer = await db.taxpayer.findUnique({
+                where: { id },
+                include: {
+                    user: {
+                        include: {
+                            supervisor: { select: { id: true } },
+                        },
+                    },
+                },
+            });
+            if (!taxpayer) throw new Error("Contribuyente no encontrado");
+            const isCurrentOfficer = taxpayer.officerId === userId;
+            const isCurrentSupervisor = taxpayer.user?.supervisor?.id === userId;
+            if (!isCurrentOfficer && !isCurrentSupervisor) {
+                if (taxpayer.user?.groupId) {
+                    const group = await db.fiscalGroup.findUnique({
+                        where: { id: taxpayer.user.groupId },
+                        include: {
+                            members: { where: { supervisorId: userId } },
+                        },
+                    });
+                    if (!group || group.members.length === 0) {
+                        throw new Error("No tienes permisos para culminar este contribuyente. Solo el fiscal asignado o su supervisor pueden hacerlo.");
+                    }
+                } else {
+                    throw new Error("No tienes permisos para culminar este contribuyente. Solo el fiscal asignado o su supervisor pueden hacerlo.");
+                }
+            }
+        }
+
+        const taxpayerBefore = await db.taxpayer.findUnique({
+            where: { id },
+            include: {
+                user: {
+                    select: {
+                        name: true,
+                        group: {
+                            select: {
+                                coordinator: { select: { email: true } },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        if (!taxpayerBefore) throw new Error("Contribuyente no encontrado");
+        if (!taxpayerBefore.status && taxpayerBefore.culminated) {
+            throw new Error("Este caso ya está cerrado definitivamente y no puede ser modificado.");
+        }
+
+        const updatedCulminatedProcess = await runTransaction((tx) =>
+            tx.taxpayer.update({
+                where: { id },
+                data: { culminated },
+            })
+        );
+        return updatedCulminatedProcess;
+    } catch (e: any) {
+        logger.error(e);
+        throw new Error(e.message || "Couldn't update the culminated field.");
+    }
+};
+
+// ---------------------------------------------------------------------------
+// createIVA
+// ---------------------------------------------------------------------------
+
+export const createIVA = async (data: NewIvaReport, userId?: string, userRole?: string) => {
+    if (userId && userRole && userRole === "FISCAL") {
+        const taxpayer = await db.taxpayer.findUnique({
+            where: { id: data.taxpayerId },
+            include: {
+                user: {
+                    include: {
+                        supervisor: { select: { id: true } },
+                    },
+                },
+            },
+        });
+        if (taxpayer) {
+            const isCurrentOfficer = taxpayer.officerId === userId;
+            const isCurrentSupervisor = taxpayer.user?.supervisor?.id === userId;
+            if (!isCurrentOfficer && !isCurrentSupervisor) {
+                if (taxpayer.user?.groupId) {
+                    const group = await db.fiscalGroup.findUnique({
+                        where: { id: taxpayer.user.groupId },
+                        include: {
+                            members: { where: { supervisorId: userId } },
+                        },
+                    });
+                    if (!group || group.members.length === 0) {
+                        throw new Error("No tienes permisos para crear reportes de este contribuyente.");
+                    }
+                } else {
+                    throw new Error("No tienes permisos para crear reportes de este contribuyente.");
+                }
+            }
+        }
+    }
+
+    const reportDate = new Date(data.date);
+    if (isNaN(reportDate.getTime())) {
+        throw new Error(`Fecha de reporte inválida: "${data.date}". Por favor verifica el formato de la fecha.`);
+    }
+    const year = reportDate.getFullYear();
+    const month = reportDate.getMonth() + 1;
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    const createData = {
+        taxpayerId: data.taxpayerId,
+        purchases: new Decimal(data.purchases),
+        sells: new Decimal(data.sells),
+        paid: new Decimal(data.paid),
+        date: new Date(data.date),
+        iva: data.iva != null ? new Decimal(data.iva) : null,
+        excess: data.excess != null ? new Decimal(data.excess) : null,
+    };
+
+    const report = await runTransaction(async (tx) => {
+        const existing = await tx.iVAReports.findFirst({
+            where: {
+                taxpayerId: data.taxpayerId,
+                date: { gte: startDate, lte: endDate },
+            },
+        });
+        if (existing) {
+            throw new Error(`Ya existe un reporte IVA para este contribuyente en ${month}/${year}.`);
+        }
+        return tx.iVAReports.create({ data: createData });
+    });
+    return report;
+};
+
+// ---------------------------------------------------------------------------
+// getTaxpayerData / getTaxpayerSummary
+// ---------------------------------------------------------------------------
+
+export async function getTaxpayerData(id: string) {
+    try {
+        const taxpayerData = await taxpayerRepository.getTaxpayerData(id);
+        if (!taxpayerData) return null;
+        let currentEffectiveIndex: number | null = null;
+        try {
+            const idx = await IndexIvaService.resolveCurrentEffectiveIndex(
+                { index_iva: taxpayerData.index_iva, contract_type: taxpayerData.contract_type },
+                new Date()
+            );
+            currentEffectiveIndex = typeof idx === 'object' && idx && 'toNumber' in idx ? (idx as Decimal).toNumber() : Number(idx);
+        } catch {
+            // mantener compatibilidad: null si no hay índice
+        }
+        return { ...taxpayerData, currentEffectiveIndex };
+    } catch (e: any) {
+        logger.error("Error getting the taxpayer data", { message: e?.message, stack: e?.stack });
+        throw new Error("Error getting the taxpayer data ");
+    }
+}
+
+export async function getTaxpayerSummary(taxpayerId: string) {
+    try {
+        return await taxpayerRepository.findIvaReportsByTaxpayer(taxpayerId);
+    } catch (e: any) {
+        logger.error("Error getting the taxpayer summary", { taxpayerId, message: e?.message, stack: e?.stack });
+        throw new Error("Error getting the taxpayer summary");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CreateTaxpayerCategory
+// ---------------------------------------------------------------------------
+
+export const CreateTaxpayerCategory = async (name: string) => {
+    if (!name) throw new Error("Name missing in CreateTaxpayerCategory");
+    try {
+        const createdCategory = await runTransaction((tx) =>
+            staticDataRepository.createTaxpayerCategory(name, tx)
+        );
+        return createdCategory;
+    } catch (e: any) {
+        logger.error("CreateTaxpayerCategory failed", { name, message: e?.message, stack: e?.stack });
+        throw new Error(e);
+    }
+};

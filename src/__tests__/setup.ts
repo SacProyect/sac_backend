@@ -33,6 +33,19 @@ export const mockTaxpayerRepository = new Proxy(repoTarget, {
   },
 });
 
-vi.mock("../taxpayer/repository/taxpayer-repository", () => ({
-  taxpayerRepository: mockTaxpayerRepository,
-}));
+// Mock del módulo taxpayer-repository:
+// - exporta taxpayerRepository (instancia usada por servicios legacy)
+// - exporta TaxpayerRepository (clase usada por DI en configureContainer)
+vi.mock("../taxpayer/repository/taxpayer-repository", () => {
+  class TaxpayerRepository {
+    // new TaxpayerRepository() devolverá el proxy mockeado
+    constructor() {
+      return mockTaxpayerRepository as any;
+    }
+  }
+
+  return {
+    taxpayerRepository: mockTaxpayerRepository,
+    TaxpayerRepository,
+  };
+});
