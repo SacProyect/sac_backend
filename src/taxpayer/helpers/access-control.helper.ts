@@ -37,3 +37,27 @@ export async function canUserAccessTaxpayer(
   };
 }
 
+/**
+ * Verifica acceso de un fiscal a un contribuyente (crear/editar, no solo lectura).
+ * Equivalente a canUserAccessTaxpayer con rol FISCAL.
+ */
+export async function validateFiscalAccess(
+  client: TxClient,
+  userId: string,
+  taxpayerId: string,
+): Promise<AccessCheckResult> {
+  return canUserAccessTaxpayer(client, userId, "FISCAL", taxpayerId);
+}
+
+/**
+ * Verifica acceso de un fiscal para crear/editar reportes (IVA/ISLR) del contribuyente.
+ * Misma lógica que validateFiscalAccess; nombre explícito para uso en reportes.
+ */
+export async function validateFiscalAccessForReport(
+  client: TxClient,
+  userId: string,
+  taxpayerId: string,
+): Promise<AccessCheckResult> {
+  return validateFiscalAccess(client, userId, taxpayerId);
+}
+

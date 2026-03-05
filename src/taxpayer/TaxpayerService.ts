@@ -1,5 +1,4 @@
 import { injectable, inject } from "tsyringe";
-import * as taxpayerServices from "./services"; // Importa el barrel con feature flags
 import type { ITaxpayerRepository } from "./interfaces/ITaxpayerRepository";
 import { TAXPAYER_REPOSITORY_TOKEN } from "./interfaces/ITaxpayerRepository";
 import { CreateTaxpayerDto, UpdateTaxpayerDto } from "./dto/taxpayer-dto";
@@ -16,9 +15,41 @@ import type {
 import type { IVAReports, ISLRReports } from "@prisma/client";
 import type { Decimal } from "@prisma/client/runtime/library";
 
+// ---------------------------------------------------------------------------
+// Sprint 2 - Core Taxpayer
+// ---------------------------------------------------------------------------
+import { TaxpayerCrudService } from "./services/taxpayer-crud.service";
+import {
+    getTaxpayerCategories,
+    getParishList,
+    getEventsbyTaxpayer,
+    getTaxpayerData as getTaxpayerDataLegacy,
+    getTaxpayerSummary,
+    updateFase,
+    updateCulminated,
+    CreateTaxpayerCategory as CreateTaxpayerCategoryLegacy,
+    createIVA,
+} from "./services/legacy-taxpayer.service";
+
+// ---------------------------------------------------------------------------
+// Sprint 3 - Sub-entidades
+// ---------------------------------------------------------------------------
+import { EventService } from "./services/event.service";
+import { PaymentService } from "./services/payment.service";
+import { ObservationService } from "./services/observation.service";
+import { PdfService } from "./services/pdf.service";
+
+// ---------------------------------------------------------------------------
+// Reportes / Otros
+// ---------------------------------------------------------------------------
+import { IvaReportService } from "./services/iva-report.service";
+import { IslrReportService } from "./services/islr-report.service";
+import { IndexIvaService } from "./services/index-iva.service";
+import { NotificationService } from "./services/notification.service";
+
 /**
  * Servicio de contribuyentes expuesto para inyección de dependencias.
- * Delega en los servicios modulares con feature flags para control de rollout.
+ * Delega en los servicios modulares (imports específicos por dominio).
  */
 @injectable()
 export class TaxpayerService {
@@ -27,76 +58,71 @@ export class TaxpayerService {
     ) {}
 
     async getTaxpayersForEvents(userId: string, userRole: string, page?: number, limit?: number, search?: string) {
-        return taxpayerServices.getTaxpayersForEvents(userId, userRole, page, limit, search);
+        return TaxpayerCrudService.getForEvents(userId, userRole, page, limit, search);
     }
 
     async getFiscalTaxpayersForStats(userId: string) {
-        return taxpayerServices.getFiscalTaxpayersForStats(userId);
+        return TaxpayerCrudService.getForStats(userId);
     }
 
     async getTaxpayers(page?: number, limit?: number, year?: number, search?: string) {
-        return taxpayerServices.getTaxpayers(page, limit, year, search);
+        return TaxpayerCrudService.getAll(page, limit, year, search);
     }
 
     async getMyCurrentYearTaxpayers(userId: string) {
-        return taxpayerServices.getMyCurrentYearTaxpayers(userId);
+        return TaxpayerCrudService.getMyCurrentYearTaxpayers(userId);
     }
 
     async getTeamCurrentYearTaxpayers(userId: string, userRole: string) {
-        return taxpayerServices.getTeamCurrentYearTaxpayers(userId, userRole);
+        return TaxpayerCrudService.getTeamCurrentYearTaxpayers(userId, userRole);
     }
 
     async generateDownloadRepairUrl(key: string) {
-        return taxpayerServices.generateDownloadRepairUrl(key);
+        return PdfService.generateDownloadRepairUrl(key);
     }
 
     async generateDownloadInvestigationPdfUrl(key: string) {
-        return taxpayerServices.generateDownloadInvestigationPdfUrl(key);
+        return PdfService.generateDownloadInvestigationPdfUrl(key);
     }
 
     async createTaxpayer(input: CreateTaxpayerDto) {
-        // ✅ Validar duplicado de RIF antes de delegar al servicio de dominio.
-        // Nota: actualmente la tabla `taxpayer` no tiene `tenantId`, por lo que la validación
-        // se hace a nivel global de SAC. Cuando exista `tenantId`, este chequeo debe
-        // filtrarse también por ese campo.
         const existing = await this.taxpayerRepository.findByRif(input.rif);
         if (existing) {
             throw new Error(`Ya existe un contribuyente activo con el RIF ${input.rif}.`);
         }
-
-        return taxpayerServices.createTaxpayer(input);
+        return TaxpayerCrudService.create(input);
     }
 
     async uploadRepairReport(taxpayerId: string, pdf_url: string) {
-        return taxpayerServices.uploadRepairReport(taxpayerId, pdf_url);
+        return PdfService.uploadRepairReport(taxpayerId, pdf_url);
     }
 
     async updateRepairReportPdfUrl(repairReportId: string, pdf_url: string) {
-        return taxpayerServices.updateRepairReportPdfUrl(repairReportId, pdf_url);
+        return PdfService.updateRepairReportPdfUrl(repairReportId, pdf_url);
     }
 
     async deleteRepairReportById(repairReportId: string) {
-        return taxpayerServices.deleteRepairReportById(repairReportId);
+        return PdfService.deleteRepairReportById(repairReportId);
     }
 
     async getTaxpayerCategories() {
-        return taxpayerServices.getTaxpayerCategories();
+        return getTaxpayerCategories();
     }
 
     async getParishList() {
-        return taxpayerServices.getParishList();
+        return getParishList();
     }
 
     async createTaxpayerExcel(body: NewTaxpayerExcelInput) {
-        return taxpayerServices.createTaxpayerExcel(body);
+        return TaxpayerCrudService.createTaxpayerExcel(body);
     }
 
     async getTaxpayerById(id: string) {
-        return taxpayerServices.getTaxpayerById(id);
+        return TaxpayerCrudService.getById(id);
     }
 
     async getTaxpayersByUser(id: string) {
-        return taxpayerServices.getTaxpayersByUser(id);
+        return TaxpayerCrudService.getByUserId(id);
     }
 
     async updateTaxpayer(
@@ -105,63 +131,63 @@ export class TaxpayerService {
         userId: string,
         userRole: string
     ) {
-        return taxpayerServices.updateTaxpayer(id, data, userId, userRole);
+        return TaxpayerCrudService.update(id, data, userId, userRole);
     }
 
     async updateObservation(id: string, newDescription: string) {
-        return taxpayerServices.updateObservation(id, newDescription);
+        return ObservationService.update(id, newDescription);
     }
 
     async updateFase(data: NewFase) {
-        return taxpayerServices.updateFase(data);
+        return updateFase(data);
     }
 
     async notifyTaxpayer(id: string) {
-        return taxpayerServices.notifyTaxpayer(id);
+        return NotificationService.notifyTaxpayer(id);
     }
 
     async updatePayment(id: string, status: string) {
-        return taxpayerServices.updatePayment(id, status);
+        return PaymentService.update(id, status);
     }
 
     async deleteTaxpayerById(id: string) {
-        return taxpayerServices.deleteTaxpayerById(id);
+        return TaxpayerCrudService.delete(id);
     }
 
     async deleteObservation(id: string) {
-        return taxpayerServices.deleteObservation(id);
+        return ObservationService.delete(id);
     }
 
     async getEventsbyTaxpayer(taxpayerId?: string, type?: string) {
-        return taxpayerServices.getEventsbyTaxpayer(taxpayerId, type);
+        return getEventsbyTaxpayer(taxpayerId, type);
     }
 
     async getTaxpayerData(id: string) {
-        return taxpayerServices.getTaxpayerData(id);
+        return getTaxpayerDataLegacy(id);
     }
 
     async getObservations(id: string) {
-        return taxpayerServices.getObservations(id);
+        return ObservationService.getByTaxpayer(id);
     }
 
     async getIslrReports(id: string) {
-        return taxpayerServices.getIslrReports(id);
+        return IslrReportService.getByTaxpayer(id);
     }
 
     async getTaxpayerSummary(id: string) {
-        return taxpayerServices.getTaxpayerSummary(id);
+        return getTaxpayerSummary(id);
     }
 
     async createEvent(input: NewEvent) {
-        return taxpayerServices.createEvent(input);
+        return EventService.create(input);
     }
 
     async createIndexIva(data: any) {
-        return taxpayerServices.createIndexIva(data);
+        return IndexIvaService.create(data);
     }
 
     async modifyIndexIva(newIndexIva: any, taxpayerId: string) {
-        return taxpayerServices.modifyIndexIva(newIndexIva, taxpayerId);
+        return IndexIvaService.modify(newIndexIva, taxpayerId);
     }
 
     async createIVA(
@@ -169,7 +195,7 @@ export class TaxpayerService {
         userId?: string,
         userRole?: string
     ) {
-        return taxpayerServices.createIVA(data, userId, userRole);
+        return createIVA(data, userId, userRole);
     }
 
     async createISLR(
@@ -177,19 +203,19 @@ export class TaxpayerService {
         userId?: string,
         userRole?: string
     ) {
-        return taxpayerServices.createISLR(input, userId, userRole);
+        return IslrReportService.create(input, userId, userRole);
     }
 
-    async createPayment(input: Parameters<typeof taxpayerServices.createPayment>[0]) {
-        return taxpayerServices.createPayment(input);
+    async createPayment(input: Parameters<typeof PaymentService.create>[0]) {
+        return PaymentService.create(input);
     }
 
     async createObservation(input: NewObservation) {
-        return taxpayerServices.createObservation(input);
+        return ObservationService.create(input);
     }
 
     async updateEvent(eventId: string, input: Partial<NewEvent>) {
-        return taxpayerServices.updateEvent(eventId, input);
+        return EventService.update(eventId, input);
     }
 
     async updateIvaReport(
@@ -198,7 +224,7 @@ export class TaxpayerService {
         userId?: string,
         userRole?: string
     ) {
-        return taxpayerServices.updateIvaReport(ivaId, input, userId, userRole);
+        return IvaReportService.update(ivaId, input, userId, userRole);
     }
 
     async updateCulminated(
@@ -207,7 +233,7 @@ export class TaxpayerService {
         userId: string,
         userRole: string
     ) {
-        return taxpayerServices.updateCulminated(id, culminated, userId, userRole);
+        return updateCulminated(id, culminated, userId, userRole);
     }
 
     async updateIslr(
@@ -216,26 +242,26 @@ export class TaxpayerService {
         userId: string,
         userRole: string
     ) {
-        return taxpayerServices.updateIslr(id, input, userId, userRole);
+        return IslrReportService.update(id, input, userId, userRole);
     }
 
     async deleteEvent(id: string) {
-        return taxpayerServices.deleteEvent(id);
+        return EventService.delete(id);
     }
 
     async deletePayment(id: string) {
-        return taxpayerServices.deletePayment(id);
+        return PaymentService.delete(id);
     }
 
     async deleteIva(id: string) {
-        return taxpayerServices.deleteIva(id);
+        return IvaReportService.delete(id);
     }
 
     async deleteIslr(id: string) {
-        return taxpayerServices.deleteIslr(id);
+        return IslrReportService.delete(id);
     }
 
     async CreateTaxpayerCategory(name: string) {
-        return taxpayerServices.CreateTaxpayerCategory(name);
+        return CreateTaxpayerCategoryLegacy(name);
     }
 }

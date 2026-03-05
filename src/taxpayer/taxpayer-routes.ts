@@ -1,3 +1,8 @@
+/**
+ * Rutas de contribuyentes.
+ * Delegan en TaxpayerController (DI); los servicios se consumen vía TaxpayerService
+ * con imports específicos por módulo (./services/*.service.ts).
+ */
 import express from "express";
 import type { Request, Response } from "express";
 import { container } from "tsyringe";

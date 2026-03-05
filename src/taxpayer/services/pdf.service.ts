@@ -1,103 +1,45 @@
 /**
- * PdfService - Servicio para gestión de PDFs
- * 
- * Este servicio sigue el principio de responsabilidad única (SRP)
+ * PdfService - Servicio de gestión de PDFs (reparo e investigación).
+ * Operaciones de reportes de reparo delegadas en repair-report.service.
  */
 
-import { db, runTransaction } from '../../utils/db-server';
-import { taxpayerRepository } from '../repository/taxpayer-repository';
-import { invalidateTaxpayerCache } from '../../utils/cache-invalidation';
-import { storageService } from '../../services/StorageService';
-import logger from '../../utils/logger';
+import { db } from '../../utils/db-server';
+import { generateDownloadInvestigationPdfUrl as getInvestigationPdfUrl } from '../helpers/s3.helper';
+import * as repairReportService from './repair-report.service';
+
+// PdfService actúa como fachada: reparos → repair-report.service; investigación → s3.helper + db
 
 export class PdfService {
-    
-    /**
-     * Sube un reporte de reparación
-     */
+    /** Crea registro de reporte de reparo en BD (delega en repair-report.service). */
     static async uploadRepairReport(taxpayerId: string, pdf_url: string): Promise<any> {
-        try {
-            const newRepairReport = await runTransaction((tx) =>
-                taxpayerRepository.createRepairReport(taxpayerId, pdf_url, tx)
-            );
-
-            invalidateTaxpayerCache();
-
-            return newRepairReport;
-        } catch (error: any) {
-            logger.error("Can't create the repair report", { 
-                taxpayerId, 
-                pdf_url,
-                message: error?.message, 
-                stack: error?.stack 
-            });
-            throw new Error("Can't create the repair report");
-        }
+        return repairReportService.uploadRepairReport(taxpayerId, pdf_url);
     }
 
-    /**
-     * Actualiza la URL del PDF del reporte de reparación
-     */
+    /** Actualiza URL del PDF del reporte de reparo (delega en repair-report.service). */
     static async updateRepairReportPdfUrl(id: string, pdf_url: string): Promise<any> {
-        try {
-            return await runTransaction((tx) =>
-                tx.repairReport.update({
-                    where: { id },
-                    data: { pdf_url },
-                })
-            );
-        } catch (error: any) {
-            logger.error("Failed to update pdf_url for RepairReport", { 
-                id, 
-                message: error?.message, 
-                stack: error?.stack 
-            });
-            throw new Error("Could not update pdf_url for RepairReport");
-        }
+        return repairReportService.updateRepairReportPdfUrl(id, pdf_url);
     }
 
-    /**
-     * Elimina un reporte de reparación
-     */
+    /** Elimina reporte de reparo (delega en repair-report.service). */
     static async deleteRepairReportById(id: string): Promise<void> {
-        try {
-            await runTransaction((tx) => 
-                taxpayerRepository.deleteRepairReportById(id, tx)
-            );
-
-            invalidateTaxpayerCache();
-        } catch (error: any) {
-            logger.error("Failed to delete RepairReport", { 
-                id, 
-                message: error?.message, 
-                stack: error?.stack 
-            });
-            throw new Error("Could not delete RepairReport");
-        }
+        return repairReportService.deleteRepairReportById(id);
     }
 
-    /**
-     * Genera URL firmada para descargar reporte de reparación
-     */
+    /** Genera URL firmada para descargar reporte de reparación (vía repair-report.service / s3.helper). */
     static async generateDownloadRepairUrl(key: string): Promise<string> {
-        return storageService.getSignedDownloadUrl(key, 180);
+        return repairReportService.getRepairReportUrl(key);
     }
 
     /**
      * Genera URL firmada para descargar PDF de investigación
      */
     static async generateDownloadInvestigationPdfUrl(key: string): Promise<string> {
-        return storageService.getSignedDownloadUrl(key, 180);
+        return getInvestigationPdfUrl(key);
     }
 
-    /**
-     * Obtiene reportes de reparación por contribuyente
-     */
+    /** Obtiene reportes de reparación por contribuyente (delega en repair-report.service). */
     static async getRepairReportsByTaxpayer(taxpayerId: string) {
-        return db.repairReport.findMany({
-            where: { taxpayerId },
-            orderBy: { id: 'desc' },
-        });
+        return repairReportService.getRepairReportsByTaxpayer(taxpayerId);
     }
 
     /**

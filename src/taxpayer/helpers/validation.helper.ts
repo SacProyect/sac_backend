@@ -81,6 +81,24 @@ export function normalize(value: string): string {
 }
 
 /**
+ * Valida que un valor sea una fecha válida (parseable, no Invalid Date).
+ * No impone restricción de futuro/pasado.
+ */
+export function validateDate(value: string | Date | null | undefined): boolean {
+  if (!value) return false;
+  const date = value instanceof Date ? value : new Date(value);
+  return !isNaN(date.getTime());
+}
+
+/**
+ * Valida que sea una fecha válida y que no sea más de 1 año en el futuro.
+ * No se restringen fechas pasadas (casos históricos).
+ */
+export function validateDateNotTooFuture(value: string | Date | null | undefined): boolean {
+  return isValidTaxDate(value);
+}
+
+/**
  * Devuelve una nueva fecha fijada al mediodía UTC del mismo día.
  * Útil para evitar problemas de zona horaria al guardar fechas "de calendario".
  */

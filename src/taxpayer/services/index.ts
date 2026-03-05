@@ -12,7 +12,8 @@
  *   - event.service.ts
  *   - payment.service.ts
  *   - observation.service.ts
- *   - pdf.service.ts (repair-report: reparos, URLs descarga)
+ *   - repair-report.service.ts (reparos: upload, update URL, delete, getRepairReportUrl vía s3.helper)
+ *   - pdf.service.ts (delega reparos en repair-report.service; PDFs investigación y listados)
  *
  * Reportes / Otros
  *   - iva-report.service.ts, islr-report.service.ts, index-iva.service.ts
