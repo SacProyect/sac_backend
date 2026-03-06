@@ -192,6 +192,10 @@ export class TaxpayerService {
         return IndexIvaService.modify(newIndexIva, taxpayerId);
     }
 
+    async getIndexIva() {
+        return IndexIvaService.getActive();
+    }
+
     async createIVA(
         data: any,
         userId?: string,

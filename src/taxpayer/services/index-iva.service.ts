@@ -108,11 +108,16 @@ export class IndexIvaService {
     /**
      * Obtiene los índices IVA activos
      */
-    static async getActive(): Promise<IndexIva[]> {
-        return db.indexIva.findMany({
+    static async getActive(): Promise<any[]> {
+        const indexes = await db.indexIva.findMany({
             where: { expires_at: null },
             orderBy: { created_at: 'desc' },
         });
+        // Convertir Decimal a string para serialización JSON
+        return indexes.map(index => ({
+            ...index,
+            base_amount: index.base_amount.toString(),
+        }));
     }
 
     /**

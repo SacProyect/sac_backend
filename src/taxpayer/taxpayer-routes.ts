@@ -154,6 +154,34 @@ taxpayerRouter.get(
     (req: Request, res: Response) => taxpayerController.getParishList(req, res)
 )
 
+// ⚠️ IMPORTANT: Estas rutas específicas deben ir ANTES de /:id para evitar conflictos
+taxpayerRouter.get(
+    "/get-index-iva",
+    authenticateToken,
+    (req: Request, res: Response) => taxpayerController.getIndexIva(req, res)
+)
+
+taxpayerRouter.get(
+    "/get-islr/:id",
+    authenticateToken,
+    cacheMiddleware({ ttl: 60000, tags: ["islr-reports"] }),
+    (req: Request, res: Response) => taxpayerController.getIslrReports(req, res)
+)
+
+taxpayerRouter.get(
+    "/getTaxSummary/:id",
+    authenticateToken,
+    cacheMiddleware({ ttl: 60000, tags: ["taxpayers"] }),
+    (req: Request, res: Response) => taxpayerController.getTaxSummary(req, res)
+)
+
+taxpayerRouter.get(
+    "/data/:id",
+    authenticateToken,
+    cacheMiddleware({ ttl: 60000, tags: ["taxpayers"] }),
+    (req: Request, res: Response) => taxpayerController.getTaxpayerData(req, res)
+)
+
 
 taxpayerRouter.post(
     '/create-taxpayer',
@@ -175,20 +203,19 @@ taxpayerRouter.post(
 
 
 taxpayerRouter.get(
-    "/:id",
-    authenticateToken,
-    cacheMiddleware({ ttl: 60000, tags: ["taxpayers"] }),
-    (req: Request, res: Response) => taxpayerController.getTaxpayerById(req, res)
-)
-
-
-
-taxpayerRouter.get(
     "/all/:id",
     authenticateToken,
     cacheMiddleware({ ttl: 120000, tags: ["taxpayers-list"] }),
     (req: Request, res: Response) => taxpayerController.getTaxpayersByUser(req, res)
 );
+
+// ⚠️ IMPORTANT: /:id debe ir AL FINAL de los GETs para no capturar rutas específicas
+taxpayerRouter.get(
+    "/:id",
+    authenticateToken,
+    cacheMiddleware({ ttl: 60000, tags: ["taxpayers"] }),
+    (req: Request, res: Response) => taxpayerController.getTaxpayerById(req, res)
+)
 
 
 
@@ -321,15 +348,6 @@ taxpayerRouter.get(
 )
 
 taxpayerRouter.get(
-    "/data/:id",
-    authenticateToken,
-    cacheMiddleware({ ttl: 60000, tags: ["taxpayers"] }),
-    (req: Request, res: Response) => taxpayerController.getTaxpayerData(req, res)
-)
-
-
-
-taxpayerRouter.get(
     "/get-observations/:id",
     authenticateToken,
     cacheMiddleware({ ttl: 60000, tags: ["observations"] }),
@@ -342,20 +360,6 @@ taxpayerRouter.get(
     authenticateToken,
     cacheMiddleware({ ttl: 60000, tags: ["observations"] }),
     (req: Request, res: Response) => taxpayerController.getObservations(req, res)
-)
-
-taxpayerRouter.get(
-    "/get-islr/:id",
-    authenticateToken,
-    cacheMiddleware({ ttl: 60000, tags: ["islr-reports"] }),
-    (req: Request, res: Response) => taxpayerController.getIslrReports(req, res)
-)
-
-taxpayerRouter.get(
-    "/getTaxSummary/:id",
-    authenticateToken,
-    cacheMiddleware({ ttl: 60000, tags: ["taxpayers"] }),
-    (req: Request, res: Response) => taxpayerController.getTaxSummary(req, res)
 )
 
 taxpayerRouter.post(
@@ -385,8 +389,6 @@ taxpayerRouter.put(
     body("newIndexIva"),
     (req: Request, res: Response) => taxpayerController.modifyIndividualIndexIva(req, res)
 )
-
-
 
 taxpayerRouter.post(
     "/createIVA",

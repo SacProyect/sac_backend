@@ -647,6 +647,20 @@ export class TaxpayerController {
         }
     }
 
+    async getIndexIva(req: Request, res: Response): Promise<Response> {
+        const { user } = req as AuthRequest;
+        if (!user) return res.status(401).json("Unauthorized access");
+        const allowedRoles = ["ADMIN", "SUPERVISOR", "COORDINATOR", "FISCAL"];
+        if (!allowedRoles.includes(user.role)) return res.status(403).json("Forbidden");
+        try {
+            const index = await this.taxpayerService.getIndexIva();
+            return res.status(200).json(index);
+        } catch (error: any) {
+            logger.error("get-index-iva error", { message: error?.message, stack: error?.stack });
+            return ApiError.internal(res, "Error al obtener el índice IVA");
+        }
+    }
+
     async createIVA(req: Request, res: Response): Promise<Response> {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
