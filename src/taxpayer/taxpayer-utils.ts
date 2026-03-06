@@ -14,10 +14,10 @@ export type Taxpayer = {
     address: string;
     parish?: Parish;
     category?: TaxpayerCategory;
-    parish_id?: string | null;             // ✅ corregido
-    taxpayer_category_id?: string | null;  // ✅ corregido
-    /** Índice IVA propio del contribuyente (null = usar índice general). */
+    parish_id?: string | null;
+    taxpayer_category_id?: string | null;
     index_iva?: unknown;
+    status?: boolean;
 }
 
 /** Respuesta de detalle de contribuyente con Índice Soberano ya resuelto (para frontend). */

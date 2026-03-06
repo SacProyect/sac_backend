@@ -34,6 +34,7 @@ export interface UpdateTaxpayerData {
     officerId?: string | null;
     parish_id?: string | null;
     taxpayer_category_id?: string | null;
+    status?: boolean;
 }
 
 /** Token para inyectar ITaxpayerRepository en el contenedor (permite mocks en tests). */
