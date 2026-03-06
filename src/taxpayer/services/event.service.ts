@@ -33,6 +33,31 @@ export class EventService {
                 throw new Error(`Fecha inválida: ${input.date}`);
             }
 
+            // Validar que el contribuyente exista y esté activo
+            const taxpayer = await taxpayerRepository.findById(input.taxpayerId);
+            if (!taxpayer) {
+                throw new Error(`Contribuyente con ID ${input.taxpayerId} no encontrado`);
+            }
+            if (taxpayer.status === false) {
+                throw new Error(`Contribuyente con ID ${input.taxpayerId} no encontrado`);
+            }
+
+            // PAYMENT_COMPROMISE: validar fineEventId y monto <= deuda del evento referenciado
+            if (input.type === "PAYMENT_COMPROMISE") {
+                if (!input.fineEventId) {
+                    throw new Error("fineEventId es requerido");
+                }
+                const fineEvent = await taxpayerRepository.findEventById(input.fineEventId);
+                if (!fineEvent) {
+                    throw new Error("Evento de multa no encontrado");
+                }
+                const debt = Number(fineEvent.debt);
+                const amount = Number(input.amount ?? 0);
+                if (amount > debt) {
+                    throw BadRequestError("AmountError", "El monto no puede ser mayor que la deuda de la multa referenciada.");
+                }
+            }
+
             // Set expires_at to 15 days from now if not provided
             const expiresAt = input.expires_at ?? 
                 new Date(new Date(input.date).getTime() + 15 * 24 * 60 * 60 * 1000);

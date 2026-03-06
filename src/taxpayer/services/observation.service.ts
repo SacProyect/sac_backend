@@ -17,6 +17,9 @@ export class ObservationService {
      */
     static async create(input: NewObservation): Promise<any> {
         try {
+            if (!input.taxpayerId || String(input.taxpayerId).trim() === "") {
+                throw new Error("Missing taxpayerId for observation");
+            }
             const observation = await runTransaction((tx) =>
                 taxpayerRepository.createObservation({
                     taxpayerId: input.taxpayerId,

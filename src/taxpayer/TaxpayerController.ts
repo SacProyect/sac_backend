@@ -688,7 +688,7 @@ export class TaxpayerController {
             logger.info("ISLR report created successfully");
             return res.status(200).json(report);
         } catch (e: any) {
-            if (e.message === `ISLR Report for this taxpayer in: ${emitionYear} was already created`) {
+            if (e.message === `ISLR Report for this taxpayer in: ${emitionYear} was already created` || e.message?.includes("Ya existe un reporte ISLR")) {
                 logger.error(e.message);
                 return res.status(400).json({ error: e.message });
             }

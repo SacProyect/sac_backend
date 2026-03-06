@@ -11,41 +11,12 @@ import { Prisma } from '@prisma/client';
 import logger from '../../utils/logger';
 import { emailService } from '../../services/EmailService';
 import { taxpayerRepository } from '../repository/taxpayer-repository';
-import { staticDataRepository } from '../repository/static-data-repository';
 import type { Event, NewFase, NewIvaReport } from '../taxpayer-utils';
 import { IndexIvaService } from './index-iva.service';
 
 // ---------------------------------------------------------------------------
-// getTaxpayerCategories / getParishList
+// getTaxpayerCategories / getParishList → movidos a category-parish.service.ts
 // ---------------------------------------------------------------------------
-
-export const getTaxpayerCategories = async () => {
-    try {
-        const categories = await staticDataRepository.findAllCategories();
-        return categories;
-    } catch (e: any) {
-        if (e instanceof Prisma.PrismaClientKnownRequestError) {
-            logger.error("Prisma error getting taxpayer categories", { code: e.code, message: e?.message });
-        } else {
-            logger.error("Can't get the taxpayer categories", { message: e?.message, stack: e?.stack });
-        }
-        throw new Error("Can't get the taxpayer categories");
-    }
-};
-
-export const getParishList = async () => {
-    try {
-        const parishList = await staticDataRepository.findAllParishes();
-        return parishList;
-    } catch (e: any) {
-        if (e instanceof Prisma.PrismaClientKnownRequestError) {
-            logger.error("Prisma error getting parish list", { code: e.code, message: e?.message });
-        } else {
-            logger.error("Can't get the parish list", { message: e?.message, stack: e?.stack });
-        }
-        throw new Error("Can't get the parish list.");
-    }
-};
 
 // ---------------------------------------------------------------------------
 // getEventsbyTaxpayer
@@ -289,52 +260,9 @@ export const createIVA = async (data: NewIvaReport, userId?: string, userRole?: 
 };
 
 // ---------------------------------------------------------------------------
-// getTaxpayerData / getTaxpayerSummary
+// getTaxpayerData / getTaxpayerSummary → movidos a taxpayer-queries.service.ts
 // ---------------------------------------------------------------------------
 
-export async function getTaxpayerData(id: string) {
-    try {
-        const taxpayerData = await taxpayerRepository.getTaxpayerData(id);
-        if (!taxpayerData) return null;
-        let currentEffectiveIndex: number | null = null;
-        try {
-            const idx = await IndexIvaService.resolveCurrentEffectiveIndex(
-                { index_iva: taxpayerData.index_iva, contract_type: taxpayerData.contract_type },
-                new Date()
-            );
-            currentEffectiveIndex = typeof idx === 'object' && idx && 'toNumber' in idx ? (idx as Decimal).toNumber() : Number(idx);
-        } catch {
-            // mantener compatibilidad: null si no hay índice
-        }
-        return { ...taxpayerData, currentEffectiveIndex };
-    } catch (e: any) {
-        logger.error("Error getting the taxpayer data", { message: e?.message, stack: e?.stack });
-        throw new Error("Error getting the taxpayer data ");
-    }
-}
-
-export async function getTaxpayerSummary(taxpayerId: string) {
-    try {
-        return await taxpayerRepository.findIvaReportsByTaxpayer(taxpayerId);
-    } catch (e: any) {
-        logger.error("Error getting the taxpayer summary", { taxpayerId, message: e?.message, stack: e?.stack });
-        throw new Error("Error getting the taxpayer summary");
-    }
-}
-
 // ---------------------------------------------------------------------------
-// CreateTaxpayerCategory
+// CreateTaxpayerCategory → movido a category-parish.service.ts
 // ---------------------------------------------------------------------------
-
-export const CreateTaxpayerCategory = async (name: string) => {
-    if (!name) throw new Error("Name missing in CreateTaxpayerCategory");
-    try {
-        const createdCategory = await runTransaction((tx) =>
-            staticDataRepository.createTaxpayerCategory(name, tx)
-        );
-        return createdCategory;
-    } catch (e: any) {
-        logger.error("CreateTaxpayerCategory failed", { name, message: e?.message, stack: e?.stack });
-        throw new Error(e);
-    }
-};

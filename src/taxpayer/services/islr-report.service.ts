@@ -38,7 +38,8 @@ export class IslrReportService {
         userRole?: string
     ): Promise<any> {
         try {
-            const { incomes, costs, expent, date, taxpayerId, paid = 0 } = input;
+            const { incomes, costs, expent, taxpayerId, paid = 0 } = input;
+            const date = (input as any).date ?? (input as any).emition_date;
 
             // Validar que el contribuyente exista
             const taxpayer = await db.taxpayer.findUnique({
@@ -49,11 +50,29 @@ export class IslrReportService {
                 throw new Error("Contribuyente no encontrado");
             }
 
+            const dateObj = date instanceof Date ? date : new Date(date);
+            const emitionYear = dateObj.getFullYear();
+            if (isNaN(emitionYear)) {
+                throw new Error("Fecha de reporte ISLR inválida");
+            }
+            const existing = await db.iSLRReports.findFirst({
+                where: {
+                    taxpayerId,
+                    emition_date: {
+                        gte: new Date(emitionYear, 0, 1),
+                        lt: new Date(emitionYear + 1, 0, 1),
+                    },
+                },
+            });
+            if (existing) {
+                throw new Error(`Ya existe un reporte ISLR para este contribuyente en el año ${emitionYear}`);
+            }
+
             const islrReport = await runTransaction(async (tx) => {
                 return tx.iSLRReports.create({
                     data: {
                         taxpayerId,
-                        emition_date: new Date(date),
+                        emition_date: dateObj,
                         incomes: new Decimal(incomes),
                         costs: new Decimal(costs),
                         expent: new Decimal(expent),

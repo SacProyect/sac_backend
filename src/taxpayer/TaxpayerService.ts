@@ -19,15 +19,17 @@ import type { Decimal } from "@prisma/client/runtime/library";
 // Sprint 2 - Core Taxpayer
 // ---------------------------------------------------------------------------
 import { TaxpayerCrudService } from "./services/taxpayer-crud.service";
+import { getTaxpayerCategories, getParishList, CreateTaxpayerCategory as CreateTaxpayerCategoryLegacy } from "./services/category-parish.service";
 import {
-    getTaxpayerCategories,
-    getParishList,
-    getEventsbyTaxpayer,
-    getTaxpayerData as getTaxpayerDataLegacy,
+    getTaxpayersForEvents as getTaxpayersForEventsQuery,
+    getFiscalTaxpayersForStats as getFiscalTaxpayersForStatsQuery,
+    getTaxpayerData as getTaxpayerDataQuery,
     getTaxpayerSummary,
+    getEventsbyTaxpayer,
+} from "./services/taxpayer-queries.service";
+import {
     updateFase,
     updateCulminated,
-    CreateTaxpayerCategory as CreateTaxpayerCategoryLegacy,
     createIVA,
 } from "./services/legacy-taxpayer.service";
 
@@ -58,11 +60,11 @@ export class TaxpayerService {
     ) {}
 
     async getTaxpayersForEvents(userId: string, userRole: string, page?: number, limit?: number, search?: string) {
-        return TaxpayerCrudService.getForEvents(userId, userRole, page, limit, search);
+        return getTaxpayersForEventsQuery(userId, userRole, page, limit, search);
     }
 
     async getFiscalTaxpayersForStats(userId: string) {
-        return TaxpayerCrudService.getForStats(userId);
+        return getFiscalTaxpayersForStatsQuery(userId);
     }
 
     async getTaxpayers(page?: number, limit?: number, year?: number, search?: string) {
@@ -163,7 +165,7 @@ export class TaxpayerService {
     }
 
     async getTaxpayerData(id: string) {
-        return getTaxpayerDataLegacy(id);
+        return getTaxpayerDataQuery(id);
     }
 
     async getObservations(id: string) {

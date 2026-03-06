@@ -3,29 +3,26 @@
  *
  * Todas las funciones de Sprint 2 y 3 son accesibles vía import from './services'.
  *
- * Sprint 2 - Core Taxpayer
- *   - taxpayer-crud.service.ts
- *   - taxpayer-excel.service.ts
- *   - legacy-taxpayer.service.ts (queries, state, categorías, parroquias, fase, culminado)
- *
- * Sprint 3 - Sub-entidades
- *   - event.service.ts
- *   - payment.service.ts
- *   - observation.service.ts
- *   - repair-report.service.ts (reparos: upload, update URL, delete, getRepairReportUrl vía s3.helper)
- *   - pdf.service.ts (delega reparos en repair-report.service; PDFs investigación y listados)
- *
- * Reportes / Otros
- *   - iva-report.service.ts, islr-report.service.ts, index-iva.service.ts
- *   - notification.service.ts
+ * Barrel Sprint 2 (un solo path):
+ *   import { createTaxpayer, updateFase } from './services';
  */
 
 // ---------------------------------------------------------------------------
-// Sprint 2 - Core Taxpayer
+// Sprint 2 - Barrel export (re-export de todos los servicios del módulo)
+// ---------------------------------------------------------------------------
+export * from './taxpayer-crud.service';
+// taxpayer-excel: no export * para evitar conflicto con createTaxpayerExcel (wrapper explícito abajo)
+export { createTaxpayerExcel } from './taxpayer-excel.service';
+export * from './taxpayer-queries.service';
+export * from './taxpayer-state.service';
+
+// ---------------------------------------------------------------------------
+// Sprint 2 - Resto (category-parish, legacy) y wrappers explícitos
 // ---------------------------------------------------------------------------
 import * as crudService from './taxpayer-crud.service';
 import * as legacyService from './legacy-taxpayer.service';
-// taxpayer-excel: createTaxpayerExcel está en crudService.TaxpayerCrudService.createTaxpayerExcel
+import * as categoryParishService from './category-parish.service';
+// taxpayer-queries: getTaxpayersForEvents, getFiscalTaxpayersForStats, getTaxpayerData, getTaxpayerSummary, getEventsbyTaxpayer vía export *
 
 // ---------------------------------------------------------------------------
 // Sprint 3 - Sub-entidades
@@ -64,9 +61,7 @@ export async function createTaxpayer(...args: Parameters<typeof crudService.Taxp
     return crudService.TaxpayerCrudService.create(...args);
 }
 
-export async function createTaxpayerExcel(...args: Parameters<typeof crudService.TaxpayerCrudService.createTaxpayerExcel>) {
-    return crudService.TaxpayerCrudService.createTaxpayerExcel(...args);
-}
+// createTaxpayerExcel → exportado vía export { createTaxpayerExcel } from './taxpayer-excel.service'
 
 export async function updateTaxpayer(...args: Parameters<typeof crudService.TaxpayerCrudService.update>) {
     return crudService.TaxpayerCrudService.update(...args);
@@ -96,20 +91,14 @@ export async function getTeamCurrentYearTaxpayers(...args: Parameters<typeof cru
     return crudService.TaxpayerCrudService.getTeamCurrentYearTaxpayers(...args);
 }
 
-export async function getTaxpayersForEvents(...args: Parameters<typeof crudService.TaxpayerCrudService.getForEvents>) {
-    return crudService.TaxpayerCrudService.getForEvents(...args);
-}
-
-export async function getFiscalTaxpayersForStats(...args: Parameters<typeof crudService.TaxpayerCrudService.getForStats>) {
-    return crudService.TaxpayerCrudService.getForStats(...args);
-}
+// getTaxpayersForEvents, getFiscalTaxpayersForStats → exportados vía export * from './taxpayer-queries.service'
 
 export async function getTaxpayerCategories() {
-    return legacyService.getTaxpayerCategories();
+    return categoryParishService.getTaxpayerCategories();
 }
 
 export async function getParishList() {
-    return legacyService.getParishList();
+    return categoryParishService.getParishList();
 }
 
 // ============================================
@@ -128,11 +117,7 @@ export async function deleteEvent(...args: Parameters<typeof eventService.EventS
     return eventService.EventService.delete(...args);
 }
 
-// Mantener compatibilidad con lógica legacy (usa taxpayerRepository.findEvents/findPayments),
-// ya que los tests mockean esas funciones explícitamente.
-export async function getEventsbyTaxpayer(...args: Parameters<typeof legacyService.getEventsbyTaxpayer>) {
-    return legacyService.getEventsbyTaxpayer(...args);
-}
+// getEventsbyTaxpayer → exportado vía export * from './taxpayer-queries.service'
 
 export async function getPendingPayments(taxpayerId?: string) {
     return eventService.EventService.getPendingPayments(taxpayerId);
@@ -258,9 +243,6 @@ export async function getObservations(...args: Parameters<typeof observationServ
 // ============================================
 // LEGACY FUNCTIONS (not yet refactored)
 // ============================================
+// updateCulminated, getTaxpayerData, getTaxpayerSummary, updateFase → exportados vía export * from taxpayer-queries / taxpayer-state
 
-export const updateCulminated = legacyService.updateCulminated;
-export const getTaxpayerData = legacyService.getTaxpayerData;
-export const getTaxpayerSummary = legacyService.getTaxpayerSummary;
-export const CreateTaxpayerCategory = legacyService.CreateTaxpayerCategory;
-export const updateFase = legacyService.updateFase;
+export const CreateTaxpayerCategory = categoryParishService.CreateTaxpayerCategory;
