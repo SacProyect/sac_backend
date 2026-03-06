@@ -16,6 +16,9 @@ import {
 import type { taxpayer_process, taxpayer_contract_type, taxpayer as Taxpayer } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import logger from '../../utils/logger';
+import { validateFiscalAccessAndThrow } from '../helpers/access-control.helper';
+import { sendEmailWithRetry, buildNewTaxpayerEmailHtml } from '../helpers/email.helper';
+import { validateDate } from '../helpers/validation.helper';
 
 export class TaxpayerCrudService {
     
@@ -28,6 +31,10 @@ export class TaxpayerCrudService {
             const existingByRif = await taxpayerRepository.findByRif(input.rif);
             if (existingByRif) {
                 throw new Error(`Ya existe un contribuyente activo con el RIF ${input.rif}.`);
+            }
+
+            if (!validateDate(input.emition_date)) {
+                throw new Error("Fecha de emisión inválida");
             }
 
             const emitionDate = new Date(input.emition_date);
@@ -126,19 +133,16 @@ export class TaxpayerCrudService {
                 taxpayerRepository.findAdmins(),
             ]);
 
-            const fromAddress = process.env.EMAIL_FROM ?? 'no-reply@sac-app.com';
             const recipients = [
-                ...admins.map(admin => admin.email),
+                ...admins.map((admin) => admin.email),
                 ...(officer?.group?.coordinator?.email ? [officer.group.coordinator.email] : []),
             ];
 
             if (recipients.length > 0) {
-                const { emailService } = await import('../../services/EmailService');
-                await emailService.sendWithRetry({
-                    from: fromAddress,
+                await sendEmailWithRetry({
                     to: recipients,
                     subject: `🔔 Nuevo Contribuyente AF: ${taxpayer.name}`,
-                    html: this.buildTaxpayerCreatedEmailHtml(taxpayer, fiscalName),
+                    html: buildNewTaxpayerEmailHtml(taxpayer, fiscalName),
                 });
             }
         } catch (error) {
@@ -147,38 +151,14 @@ export class TaxpayerCrudService {
     }
 
     /**
-     * Construye HTML para email de contribuyente creado
-     */
-    private static buildTaxpayerCreatedEmailHtml(taxpayer: Taxpayer, fiscalName?: string | null): string {
-        const now = new Date();
-        const formattedDate = now.toLocaleDateString('es-VE', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-        });
-
-        return `
-        <div style="font-family: sans-serif; background-color: #f3f4f6; padding: 30px;">
-            <div style="max-width: 600px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.1);">
-                <h2 style="color: #2563eb;">📝 Nuevo Contribuyente Registrado</h2>
-                <p>Se ha registrado un nuevo contribuyente en proceso <strong>AF</strong>.</p>
-                <ul style="line-height: 1.6; font-size: 14px; padding-left: 20px; color: #374151;">
-                    <li><strong>Nombre:</strong> ${taxpayer.name}</li>
-                    <li><strong>RIF:</strong> ${taxpayer.rif}</li>
-                    <li><strong>Proceso:</strong> ${taxpayer.process}</li>
-                    <li><strong>Registrado por:</strong> ${fiscalName ?? '—'}</li>
-                    <li><strong>Fecha:</strong> ${formattedDate}</li>
-                </ul>
-            </div>
-        </div>
-        `;
-    }
-
-    /**
      * Crea contribuyentes desde Excel
      */
     static async createTaxpayerExcel(input: NewTaxpayerExcelInput) {
         try {
+            if (!validateDate(input.emition_date)) {
+                throw new Error("Fecha de emisión inválida");
+            }
+
             const emitionDate = new Date(input.emition_date);
             
             if (!input.officerId) {
@@ -277,6 +257,16 @@ export class TaxpayerCrudService {
             return;
         }
 
+        // FISCAL: officer, supervisor o miembro del grupo
+        if (userRole === "FISCAL") {
+            await validateFiscalAccessAndThrow(
+                userId,
+                taxpayerId,
+                "No tienes permisos para editar este contribuyente."
+            );
+            return;
+        }
+
         const taxpayer = await db.taxpayer.findUnique({
             where: { id: taxpayerId },
             include: { user: true },
@@ -287,11 +277,6 @@ export class TaxpayerCrudService {
         }
 
         const isCurrentOfficer = taxpayer.officerId === userId;
-        
-        // FISCAL puede editar los propios
-        if (userRole === "FISCAL" && isCurrentOfficer) {
-            return;
-        }
 
         // SUPERVISOR puede editar los del equipo
         if (userRole === "SUPERVISOR") {

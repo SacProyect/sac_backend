@@ -268,19 +268,17 @@ describe("IVA Fiscal — Servicio createIVA (unit tests)", () => {
   it("FISCAL en grupo supervisado puede crear reporte IVA", async () => {
     const supervisorGrupoId = "sup-de-grupo";
 
+    // validateFiscalAccess (FiscalStrategy) hace un solo findUnique con include user.group.members (where supervisorId)
     (mockDb.taxpayer.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: TAXPAYER_ID,
       officerId: "oficial-del-grupo",
       user: {
         groupId: "grupo-1",
         supervisor: { id: "otro-sup" },
+        group: {
+          members: [{ id: "m1", supervisorId: supervisorGrupoId }],
+        },
       },
-    });
-
-    // El grupo sí tiene al supervisor como miembro
-    (mockDb.fiscalGroup.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: "grupo-1",
-      members: [{ supervisorId: supervisorGrupoId }],
     });
 
     (mockDb.iVAReports.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);

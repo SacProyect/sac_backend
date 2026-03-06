@@ -10,6 +10,7 @@ import { invalidateTaxpayerCache } from '../../utils/cache-invalidation';
 import type { NewIvaReport } from '../taxpayer-utils';
 import { Decimal } from '@prisma/client/runtime/library';
 import logger from '../../utils/logger';
+import { validateFiscalAccessAndThrow } from '../helpers/access-control.helper';
 
 export interface CreateIvaInput {
     iva?: number;
@@ -36,6 +37,14 @@ export class IvaReportService {
     static async create(data: CreateIvaInput, userId?: string, userRole?: string): Promise<any> {
         try {
             const { taxpayerId, date, purchases, sells, iva, excess } = data;
+
+            if (userId && userRole === "FISCAL") {
+                await validateFiscalAccessAndThrow(
+                    userId,
+                    taxpayerId,
+                    "No tienes permisos para crear reportes de este contribuyente."
+                );
+            }
 
             // Validar que el contribuyente exista
             const taxpayer = await db.taxpayer.findUnique({
@@ -87,15 +96,21 @@ export class IvaReportService {
         try {
             // Validar permisos (ADMIN y COORDINATOR pueden editar)
             if (userRole !== "ADMIN" && userRole !== "COORDINATOR") {
-                // FISCAL solo puede editar reportes del año actual
                 const report = await db.iVAReports.findUnique({
                     where: { id: ivaId },
+                    select: { taxpayerId: true, date: true },
                 });
 
                 if (report) {
+                    if (userId && userRole === "FISCAL") {
+                        await validateFiscalAccessAndThrow(
+                            userId,
+                            report.taxpayerId,
+                            "No tienes permisos para editar este reporte."
+                        );
+                    }
                     const reportYear = new Date(report.date).getFullYear();
                     const currentYear = new Date().getFullYear();
-                    
                     if (reportYear < currentYear) {
                         throw new Error("No puedes editar reportes de años anteriores");
                     }

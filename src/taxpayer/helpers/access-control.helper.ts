@@ -1,6 +1,7 @@
 import type { UserRole } from "../../users/role-strategies";
 import { getRoleStrategy } from "../../users/role-strategies";
 import type { TxClient } from "../../utils/db-server";
+import { db } from "../../utils/db-server";
 
 export interface AccessCheckResult {
   allowed: boolean;
@@ -59,5 +60,22 @@ export async function validateFiscalAccessForReport(
   taxpayerId: string,
 ): Promise<AccessCheckResult> {
   return validateFiscalAccess(client, userId, taxpayerId);
+}
+
+const defaultFiscalError = "No tienes permisos para esta operación.";
+
+/**
+ * Verifica que el usuario (fiscal) tenga acceso al contribuyente (officer, supervisor o miembro del grupo).
+ * Lanza si no tiene permiso. Usar en servicios que requieren permiso de escritura.
+ */
+export async function validateFiscalAccessAndThrow(
+  userId: string,
+  taxpayerId: string,
+  errorMessage?: string,
+): Promise<void> {
+  const result = await validateFiscalAccess(db as TxClient, userId, taxpayerId);
+  if (!result.allowed) {
+    throw new Error(errorMessage ?? result.reason ?? defaultFiscalError);
+  }
 }
 

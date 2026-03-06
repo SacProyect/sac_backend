@@ -13,6 +13,7 @@ import { emailService } from '../../services/EmailService';
 import { taxpayerRepository } from '../repository/taxpayer-repository';
 import type { Event, NewFase, NewIvaReport } from '../taxpayer-utils';
 import { IndexIvaService } from './index-iva.service';
+import { validateFiscalAccessAndThrow } from '../helpers/access-control.helper';
 
 // ---------------------------------------------------------------------------
 // getTaxpayerCategories / getParishList → movidos a category-parish.service.ts
@@ -124,34 +125,11 @@ export const updateCulminated = async (
 ) => {
     try {
         if (userId && userRole && userRole === "FISCAL") {
-            const taxpayer = await db.taxpayer.findUnique({
-                where: { id },
-                include: {
-                    user: {
-                        include: {
-                            supervisor: { select: { id: true } },
-                        },
-                    },
-                },
-            });
-            if (!taxpayer) throw new Error("Contribuyente no encontrado");
-            const isCurrentOfficer = taxpayer.officerId === userId;
-            const isCurrentSupervisor = taxpayer.user?.supervisor?.id === userId;
-            if (!isCurrentOfficer && !isCurrentSupervisor) {
-                if (taxpayer.user?.groupId) {
-                    const group = await db.fiscalGroup.findUnique({
-                        where: { id: taxpayer.user.groupId },
-                        include: {
-                            members: { where: { supervisorId: userId } },
-                        },
-                    });
-                    if (!group || group.members.length === 0) {
-                        throw new Error("No tienes permisos para culminar este contribuyente. Solo el fiscal asignado o su supervisor pueden hacerlo.");
-                    }
-                } else {
-                    throw new Error("No tienes permisos para culminar este contribuyente. Solo el fiscal asignado o su supervisor pueden hacerlo.");
-                }
-            }
+            await validateFiscalAccessAndThrow(
+                userId,
+                id,
+                "No tienes permisos para culminar este contribuyente. Solo el fiscal asignado o su supervisor pueden hacerlo."
+            );
         }
 
         const taxpayerBefore = await db.taxpayer.findUnique({
@@ -194,35 +172,11 @@ export const updateCulminated = async (
 
 export const createIVA = async (data: NewIvaReport, userId?: string, userRole?: string) => {
     if (userId && userRole && userRole === "FISCAL") {
-        const taxpayer = await db.taxpayer.findUnique({
-            where: { id: data.taxpayerId },
-            include: {
-                user: {
-                    include: {
-                        supervisor: { select: { id: true } },
-                    },
-                },
-            },
-        });
-        if (taxpayer) {
-            const isCurrentOfficer = taxpayer.officerId === userId;
-            const isCurrentSupervisor = taxpayer.user?.supervisor?.id === userId;
-            if (!isCurrentOfficer && !isCurrentSupervisor) {
-                if (taxpayer.user?.groupId) {
-                    const group = await db.fiscalGroup.findUnique({
-                        where: { id: taxpayer.user.groupId },
-                        include: {
-                            members: { where: { supervisorId: userId } },
-                        },
-                    });
-                    if (!group || group.members.length === 0) {
-                        throw new Error("No tienes permisos para crear reportes de este contribuyente.");
-                    }
-                } else {
-                    throw new Error("No tienes permisos para crear reportes de este contribuyente.");
-                }
-            }
-        }
+        await validateFiscalAccessAndThrow(
+            userId,
+            data.taxpayerId,
+            "No tienes permisos para crear reportes de este contribuyente."
+        );
     }
 
     const reportDate = new Date(data.date);

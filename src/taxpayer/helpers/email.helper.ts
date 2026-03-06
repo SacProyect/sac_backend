@@ -5,6 +5,7 @@
  */
 
 import { Resend } from "resend";
+import type { taxpayer as Taxpayer } from "@prisma/client";
 import logger from "../../utils/logger";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
@@ -65,3 +66,30 @@ export const htmlTemplates = {
         </div>`;
     },
 };
+
+/**
+ * Template específico para el correo de "Nuevo Contribuyente AF creado".
+ * Extraído desde TaxpayerCrudService para centralizar el HTML en este helper.
+ */
+export function buildNewTaxpayerEmailHtml(taxpayer: Taxpayer, fiscalName?: string | null): string {
+    const now = new Date();
+    const formattedDate = now.toLocaleDateString("es-VE", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+    });
+
+    const body = `
+        <h2 style="color: #2563eb;">📝 Nuevo Contribuyente Registrado</h2>
+        <p>Se ha registrado un nuevo contribuyente en proceso <strong>AF</strong>.</p>
+        <ul style="line-height: 1.6; font-size: 14px; padding-left: 20px; color: #374151;">
+            <li><strong>Nombre:</strong> ${taxpayer.name}</li>
+            <li><strong>RIF:</strong> ${taxpayer.rif}</li>
+            <li><strong>Proceso:</strong> ${taxpayer.process}</li>
+            <li><strong>Registrado por:</strong> ${fiscalName ?? "—"}</li>
+            <li><strong>Fecha:</strong> ${formattedDate}</li>
+        </ul>
+    `;
+
+    return htmlTemplates.wrapBody(body);
+}
