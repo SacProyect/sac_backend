@@ -316,6 +316,12 @@ export async function getFiscalsForReview(
                         group: {
                             select: {
                                 name: true,
+                                coordinator: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                    },
+                                },
                             },
                         },
                         role: true,
@@ -348,6 +354,12 @@ export async function getFiscalsForReview(
                             group: {
                                 select: {
                                     name: true,
+                                    coordinator: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                        },
+                                    },
                                 }
                             },
                             role: true,
@@ -402,6 +414,12 @@ export async function getFiscalsForReview(
                             group: {
                                 select: {
                                     name: true,
+                                    coordinator: {
+                                        select: {
+                                            id: true,
+                                            name: true,
+                                        },
+                                    },
                                 }
                             },
                             role: true,
