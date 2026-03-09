@@ -143,7 +143,7 @@ dist
 
 #Upload media
 uploads/*
-docs/
+
 
 # Load test reports
 load-test-report-*.md
