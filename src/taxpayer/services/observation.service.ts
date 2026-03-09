@@ -9,6 +9,7 @@ import { taxpayerRepository } from '../repository/taxpayer-repository';
 import { invalidateTaxpayerCache } from '../../utils/cache-invalidation';
 import type { NewObservation } from '../taxpayer-utils';
 import logger from '../../utils/logger';
+import { NotFoundError } from '../../core/errors/NotFoundError';
 
 export class ObservationService {
     
@@ -45,6 +46,15 @@ export class ObservationService {
      */
     static async update(id: string, newDescription: string): Promise<any> {
         try {
+            // Primero verificamos que la observación existe
+            const existingObservation = await db.observations.findUnique({
+                where: { id },
+            });
+
+            if (!existingObservation) {
+                throw new NotFoundError(`Observación con ID ${id} no encontrada`);
+            }
+
             const observation = await db.observations.update({
                 where: { id },
                 data: { description: newDescription },
@@ -54,6 +64,10 @@ export class ObservationService {
 
             return observation;
         } catch (error: any) {
+            // Si ya es un NotFoundError, lo propagamos
+            if (error instanceof NotFoundError) {
+                throw error;
+            }
             logger.error("Error updating observation", { 
                 id,
                 message: error?.message, 
