@@ -352,7 +352,6 @@ export class TaxpayerCrudService {
         const pageNum = page || 1;
         const limitNum = limit || 50;
         const skip = (pageNum - 1) * limitNum;
-
         const where: any = {};
         
         if (search) {
@@ -371,7 +370,7 @@ export class TaxpayerCrudService {
             };
         }
 
-        const [data, total] = await Promise.all([
+        const [data, total, totalSpecial, totalOrdinary] = await Promise.all([
             db.taxpayer.findMany({
                 where,
                 skip,
@@ -384,6 +383,8 @@ export class TaxpayerCrudService {
                 },
             }),
             db.taxpayer.count({ where }),
+            db.taxpayer.count({ where: { contract_type: 'SPECIAL' } }),
+            db.taxpayer.count({ where: { contract_type: 'ORDINARY' } }),
         ]);
 
         return {
@@ -392,6 +393,8 @@ export class TaxpayerCrudService {
             page: pageNum,
             totalPages: Math.ceil(total / limitNum),
             limit: limitNum,
+            totalSpecial,
+            totalOrdinary,
         };
     }
 
