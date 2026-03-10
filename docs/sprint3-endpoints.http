@@ -1,0 +1,164 @@
+### Verificación Sprint 3 - Checklist alineado
+### Variables: reemplaza @token, @taxpayerId, @eventId, @observationId, @paymentId, @repairReportId
+
+@baseUrl = http://localhost:3000
+@token = TU_JWT_AQUI
+@taxpayerId = UUID_CONTRIBUYENTE
+@eventId = UUID_EVENTO
+@observationId = UUID_OBSERVACION
+@paymentId = UUID_PAGO_O_EVENT_ID
+@repairReportId = UUID_REPORTE_REPARO
+
+### ----- EVENTOS (checklist) -----
+
+### POST /taxpayer/event — Crear evento (FINE)
+POST {{baseUrl}}/taxpayer/event
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "FINE",
+  "date": "2025-03-01T12:00:00.000Z",
+  "amount": "100.50",
+  "taxpayerId": "{{taxpayerId}}",
+  "description": "Multa de prueba Sprint 3"
+}
+
+### POST /taxpayer/event — Crear PAYMENT_COMPROMISE (validación de multa)
+POST {{baseUrl}}/taxpayer/event
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "PAYMENT_COMPROMISE",
+  "date": "2025-03-02T10:00:00.000Z",
+  "amount": "50",
+  "taxpayerId": "{{taxpayerId}}",
+  "fineEventId": "{{eventId}}"
+}
+
+### GET /taxpayer/events/:taxpayerId — Listar eventos por contribuyente
+GET {{baseUrl}}/taxpayer/events/{{taxpayerId}}
+Authorization: Bearer {{token}}
+
+### GET /taxpayer/events?type=FINE — Filtrar por tipo
+GET {{baseUrl}}/taxpayer/events?type=FINE
+Authorization: Bearer {{token}}
+
+### GET /taxpayer/events?type=payment — Listar pagos (pendientes)
+GET {{baseUrl}}/taxpayer/events?type=payment
+Authorization: Bearer {{token}}
+
+### PUT /taxpayer/event/:id — Actualizar evento
+PUT {{baseUrl}}/taxpayer/event/{{eventId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": "120",
+  "description": "Evento actualizado"
+}
+
+### DELETE /taxpayer/event/:id — Eliminar evento
+DELETE {{baseUrl}}/taxpayer/event/{{eventId}}
+Authorization: Bearer {{token}}
+
+### ----- PAGOS (checklist) -----
+
+### POST /taxpayer/payment — Crear pago (verificar que deuda decrementa)
+POST {{baseUrl}}/taxpayer/payment
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "date": "2025-03-03T14:00:00.000Z",
+  "amount": "50",
+  "eventId": "{{eventId}}",
+  "taxpayerId": "{{taxpayerId}}",
+  "debt": 100
+}
+
+### PUT /taxpayer/payment/:id — Actualizar pago
+PUT {{baseUrl}}/taxpayer/payment/{{eventId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "date": "2025-03-04T10:00:00.000Z",
+  "amount": "60"
+}
+
+### PUT /taxpayer/payment/status/:id — Cambiar estado de pago
+PUT {{baseUrl}}/taxpayer/payment/status/{{paymentId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "status": "paid"
+}
+
+### DELETE /taxpayer/payment/:id — Soft delete de pago
+DELETE {{baseUrl}}/taxpayer/payment/{{paymentId}}
+Authorization: Bearer {{token}}
+
+### GET /taxpayer/pending-payments — Listar pagos pendientes
+GET {{baseUrl}}/taxpayer/pending-payments
+Authorization: Bearer {{token}}
+
+### GET /taxpayer/pending-payments/:id (opcional)
+GET {{baseUrl}}/taxpayer/pending-payments/{{taxpayerId}}
+Authorization: Bearer {{token}}
+
+### ----- OBSERVACIONES (checklist) -----
+
+### POST /taxpayer/observation — Crear observación
+POST {{baseUrl}}/taxpayer/observation
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "description": "Observación de prueba Sprint 3",
+  "date": "2025-03-01T12:00:00.000Z",
+  "taxpayerId": "{{taxpayerId}}"
+}
+
+### GET /taxpayer/observations/:taxpayerId — Listar observaciones
+GET {{baseUrl}}/taxpayer/observations/{{taxpayerId}}
+Authorization: Bearer {{token}}
+
+### PUT /taxpayer/observation/:id — Actualizar observación
+PUT {{baseUrl}}/taxpayer/observation/{{observationId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "newDescription": "Descripción actualizada"
+}
+
+### DELETE /taxpayer/observation/:id — Eliminar observación
+DELETE {{baseUrl}}/taxpayer/observation/{{observationId}}
+Authorization: Bearer {{token}}
+
+### ----- REPORTES DE REPARO (checklist) -----
+
+### POST /taxpayer/repair-report — Subir reporte (taxpayerId en body o en path)
+### Con path: POST /taxpayer/repair-report/:taxpayerId y multipart "repairReport"
+### Sin path: POST /taxpayer/repair-report con body.taxpayerId + multipart "repairReport"
+# Ejemplo con Postman/Insomnia: multipart form, campo repairReport = archivo PDF, campo taxpayerId = {{taxpayerId}}
+
+### PUT /taxpayer/repair-report/:id — Actualizar URL
+PUT {{baseUrl}}/taxpayer/repair-report/{{repairReportId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "pdf_url": "https://bucket.s3.../repair-reports/xxx.pdf"
+}
+
+### DELETE /taxpayer/repair-report/:id — Eliminar reporte
+DELETE {{baseUrl}}/taxpayer/repair-report/{{repairReportId}}
+Authorization: Bearer {{token}}
+
+### ----- Sanidad: sin token = 401 -----
+GET {{baseUrl}}/taxpayer/events
+# Sin Authorization → 401

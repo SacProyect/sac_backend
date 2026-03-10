@@ -55,24 +55,58 @@ export class PaymentService {
     }
 
     /**
-     * Actualiza el estado de un pago
+     * Actualiza el estado de un pago de multa.
+     * 
+     * Regla de negocio:
+     * - `status = "paid"`     → el pago queda activo (status=true).
+     *   - Si antes estaba en `not_paid` se vuelve a descontar su monto de la deuda del evento.
+     * - `status = "not_paid"` → el pago queda inactivo (status=false).
+     *   - Si antes estaba en `paid` se restaura la deuda del evento sumando el monto del pago.
+     * 
+     * La actualización del pago y de la deuda del evento se hace dentro de una transacción.
      */
     static async update(id: string, status: string): Promise<any> {
         try {
-            const payment = await db.payment.update({
-                where: { id },
-                data: { status: status === 'true' },
+            const payment = await taxpayerRepository.findPaymentById(id);
+
+            if (!payment) {
+                throw new Error("Payment not found");
+            }
+
+            const targetPaid = status === "paid";
+
+            const updatedPayment = await runTransaction(async (tx) => {
+                // Estado actual en base de datos (booleano)
+                const currentPaid = Boolean(payment.status);
+
+                // Transición paid -> not_paid: restaurar deuda (incrementar)
+                if (!targetPaid && currentPaid) {
+                    await taxpayerRepository.restoreEventDebt(payment.eventId, payment.amount, tx);
+                }
+
+                // Transición not_paid -> paid: aplicar nuevamente el pago (decrementar deuda)
+                if (targetPaid && !currentPaid) {
+                    await taxpayerRepository.updateEventDebt(payment.eventId, payment.amount, tx);
+                }
+
+                return tx.payment.update({
+                    where: { id },
+                    data: { status: targetPaid },
+                    include: {
+                        event: true,
+                    },
+                });
             });
 
             invalidateTaxpayerCache();
 
-            return payment;
+            return updatedPayment;
         } catch (error: any) {
-            logger.error("Error updating payment", { 
-                id, 
+            logger.error("Error updating payment", {
+                id,
                 status,
-                message: error?.message, 
-                stack: error?.stack 
+                message: error?.message,
+                stack: error?.stack,
             });
             throw error;
         }

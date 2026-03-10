@@ -64,3 +64,14 @@ userRouter.put(
     invalidateCacheMiddleware(["users"]),
     (req: Request, res: Response) => userController.updatePassword(req, res)
 );
+
+// Restablecimiento de contraseña
+userRouter.post(
+    "/request-password-reset",
+    (req: Request, res: Response) => userController.requestPasswordReset(req, res)
+);
+
+userRouter.post(
+    "/reset-password",
+    (req: Request, res: Response) => userController.resetPasswordWithToken(req, res)
+);

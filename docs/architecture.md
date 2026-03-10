@@ -655,25 +655,33 @@ flowchart TB
 
 ### 10.1 Email Service
 
-**Ubicación**: [`src/services/EmailService.ts`](src/services/EmailService.ts:1)
+**Ubicaciones**:  
+- [`src/services/EmailService.ts`](src/services/EmailService.ts) — envío de correos generales vía **Resend** (notificaciones de contribuyentes, etc.).  
+- [`src/services/MailService.ts`](src/services/MailService.ts) — flujo de **recuperación de contraseña** vía **SMTP Gmail + Nodemailer**.
 
 ```mermaid
 flowchart LR
-    subgraph EmailService["EmailService"]
+    subgraph EmailService["Email Services"]
         Resend[("Resend API")]
+        Nodemailer[("SMTP (Gmail)")]
         Retry[("Retry Logic")]
-        Validate[("Validate Config")]
+        Validate[("Validate Config / ENV")]
     end
 
     Services --> EmailService
     EmailService --> Resend
+    EmailService --> Nodemailer
     Resend -->|fail| Retry
     Retry -->|attempt < 3| Resend
 ```
 
-- Usa **Resend** como proveedor de email
-- Implementa reintentos automáticos (3 intentos)
-- Valida configuración antes de enviar
+- `EmailService` usa **Resend** como proveedor principal para notificaciones de negocio.
+- `MailService` usa **nodemailer** con **SMTP Gmail** para el flujo de **reset de contraseña**, utilizando:
+  - `SMTP_USER`, `SMTP_PASS` (contraseña de aplicación).
+  - `APP_BASE_URL` para construir los links de recuperación (`/reset-password?token=...`).
+- El correo de reset muestra un HTML profesional con botón de acción y aviso de expiración a los **60 minutos**.
+
+> **TODO (pendiente migración BD – asignar a compañero backend):** ejecutar migración Prisma para los campos `resetToken` y `resetTokenExpires` del modelo `user`, ya definidos en `schema.prisma` pero aún no aplicados en MySQL.
 
 ### 10.2 Storage Service
 

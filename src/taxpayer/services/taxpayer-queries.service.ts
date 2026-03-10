@@ -8,9 +8,11 @@ import { Decimal } from '@prisma/client/runtime/library';
 import logger from '../../utils/logger';
 import { taxpayerRepository } from '../repository/taxpayer-repository';
 import { IndexIvaService } from './index-iva.service';
+import { EventService } from './event.service';
 
-// Re-export getEventsbyTaxpayer desde legacy (aún no migrado a queries)
-export { getEventsbyTaxpayer } from './legacy-taxpayer.service';
+// getEventsbyTaxpayer ahora vive en EventService (migrado desde legacy)
+export const getEventsbyTaxpayer = (taxpayerId?: string, type?: string) =>
+  EventService.getEventsbyTaxpayer(taxpayerId, type);
 
 // ---------------------------------------------------------------------------
 // getFiscalTaxpayersForStats

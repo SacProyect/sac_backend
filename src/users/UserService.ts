@@ -41,4 +41,12 @@ export class UserService {
     async updatePassword(userId: string, password: string) {
         return userServiceImpl.updatePassword(userId, password);
     }
+
+    async requestPasswordReset(email: string) {
+        return userServiceImpl.requestPasswordReset(email);
+    }
+
+    async resetPasswordWithToken(token: string, newPassword: string) {
+        return userServiceImpl.resetPasswordWithToken(token, newPassword);
+    }
 }

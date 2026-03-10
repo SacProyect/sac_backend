@@ -20,36 +20,12 @@ import { validateFiscalAccessAndThrow } from '../helpers/access-control.helper';
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// getEventsbyTaxpayer
+// getEventsbyTaxpayer (delegado al nuevo EventService)
 // ---------------------------------------------------------------------------
 
 export const getEventsbyTaxpayer = async (taxpayerId?: string, type?: string): Promise<Event[] | Error> => {
     try {
-        let events: any;
-        const where: any = { status: true };
-        if (taxpayerId) where.taxpayerId = taxpayerId;
-        if (type && type !== "payment") {
-            where.type = type;
-            events = await taxpayerRepository.findEvents(where);
-        } else if (type === "payment") {
-            events = await taxpayerRepository.findPayments(where);
-        } else {
-            const foundEvents = await taxpayerRepository.findEvents(where);
-            const payments = await taxpayerRepository.findPayments(where);
-            events = [...foundEvents, ...payments];
-        }
-        const mappedResponse: Event[] = events.map((event: any) => ({
-            id: event.id,
-            date: event.date,
-            type: event.type ? event.type : "payment",
-            amount: event.amount,
-            debt: event.debt,
-            description: event.description,
-            taxpayerId: event.taxpayerId,
-            officerId: event.taxpayer.officerId,
-            taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`,
-        }));
-        return mappedResponse;
+        return await EventService.getEventsbyTaxpayer(taxpayerId, type);
     } catch (error) {
         logger.error(error);
         throw error;

@@ -8,6 +8,8 @@ import { env } from "../config/env-config";
 import { NotFoundError } from "../core/errors/NotFoundError";
 import { UnauthorizedError } from "../core/errors/UnauthorizedError";
 import { BadRequestError } from "../core/errors/BadRequestError";
+import { randomBytes } from "crypto";
+import { MailService } from "../services/MailService";
 
 /**
  * Logs in a user.
@@ -260,6 +262,75 @@ export async function updatePassword(userId: string, password: string) {
         logger.error(e.message);
         throw new Error(e.message);
     }
+}
+
+/**
+ * Solicita un reset de contraseña para el email indicado.
+ * Genera un token aleatorio, lo guarda en el usuario y envía el correo.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+    const user = await (db as any).user.findFirst({
+        where: { email },
+        select: { id: true, email: true },
+    });
+
+    // No revelar si el usuario existe o no
+    if (!user) {
+        logger.warn("requestPasswordReset: email no encontrado", { email });
+        return;
+    }
+
+    const token = randomBytes(32).toString("hex");
+    const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+
+    await runTransaction((tx) =>
+        (tx as any).user.update({
+            where: { id: user.id },
+            data: {
+                resetToken: token,
+                resetTokenExpires: expires,
+            } as any,
+        }),
+    );
+
+    await MailService.sendResetPasswordEmail(user.email, token);
+}
+
+/**
+ * Restablece la contraseña usando un token de reset válido.
+ */
+export async function resetPasswordWithToken(token: string, newPassword: string): Promise<void> {
+    if (typeof newPassword !== "string" || newPassword.length < 8) {
+        if (env.FF_NEW_ERROR_HIERARCHY) throw new BadRequestError("La contraseña debe tener al menos 8 caracteres.");
+        throw new Error("La contraseña debe tener al menos 8 caracteres.");
+    }
+
+    const user = await (db as any).user.findFirst({
+        where: {
+            resetToken: token,
+            resetTokenExpires: {
+                gt: new Date(),
+            },
+        } as any,
+    });
+
+    if (!user) {
+        if (env.FF_NEW_ERROR_HIERARCHY) throw new BadRequestError("Token de restablecimiento inválido o expirado.");
+        throw new Error("Token de restablecimiento inválido o expirado.");
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await runTransaction((tx) =>
+        (tx as any).user.update({
+            where: { id: user.id },
+            data: {
+                password: hashedPassword,
+                resetToken: null,
+                resetTokenExpires: null,
+            } as any,
+        }),
+    );
 }
 
 /**

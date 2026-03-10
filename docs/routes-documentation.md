@@ -326,7 +326,7 @@ Los eventos representan las acciones de fiscalización: multas, advertencias y c
 | PUT | `/taxpayer/fine/:eventId` | Actualiza multa |
 | PUT | `/taxpayer/warning/:eventId` | Actualiza advertencia |
 | PUT | `/taxpayer/payment_compromise/:eventId` | Actualiza compromiso |
-| DELETE | `/taxpayer/event/:id` | Elimina evento |
+| DELETE | `/taxpayer/event/:id` | Elimina evento (soft delete: `status=false`) |
 
 #### Tipos de Eventos
 

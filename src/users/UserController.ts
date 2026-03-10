@@ -5,6 +5,7 @@ import { AuthRequest } from "./user-utils";
 import { loginSchema } from "./dtos/login.dto";
 import { createUserSchema } from "./dtos/create-user.dto";
 import { updateUserByNamesSchema, updatePasswordSchema } from "./dtos/update-user.dto";
+import { z } from "zod";
 import { randomUUID } from "crypto";
 import logger from "../utils/logger";
 
@@ -209,6 +210,59 @@ export class UserController {
                 stack: e?.stack,
             });
             return res.status(500).json({ error: "Error interno del servidor" });
+        }
+    }
+
+    async requestPasswordReset(req: Request, res: Response) {
+        const schema = z.object({
+            email: z.string().email(),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({
+                error: "Validación fallida",
+                details: parsed.error.flatten().fieldErrors,
+            });
+        }
+        const { email } = parsed.data;
+        try {
+            await this.userService.requestPasswordReset(email);
+            // Siempre responder 200 para no revelar si el email existe
+            return res.status(200).json({ message: "Si el email existe, se ha enviado un enlace de restablecimiento." });
+        } catch (e: any) {
+            logger.error("Error request-password-reset", {
+                email,
+                message: e?.message,
+                stack: e?.stack,
+            });
+            return res.status(500).json({ error: "Error interno del servidor" });
+        }
+    }
+
+    async resetPasswordWithToken(req: Request, res: Response) {
+        const schema = z.object({
+            token: z.string().min(1),
+            password: z.string().min(8),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({
+                error: "Validación fallida",
+                details: parsed.error.flatten().fieldErrors,
+            });
+        }
+        const { token, password } = parsed.data;
+        try {
+            await this.userService.resetPasswordWithToken(token, password);
+            return res.status(200).json({ message: "Contraseña actualizada correctamente." });
+        } catch (e: any) {
+            logger.error("Error reset-password-token", {
+                message: e?.message,
+                stack: e?.stack,
+            });
+            const status =
+                e?.name === "BadRequestError" || e?.message?.includes("inválido o expirado") ? 400 : 500;
+            return res.status(status).json({ error: e?.message || "Error interno del servidor" });
         }
     }
 }

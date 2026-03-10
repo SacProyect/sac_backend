@@ -18,6 +18,8 @@ model user {
   updated_at                                          DateTime              @default(now()) @updatedAt
   groupId                                             String?
   email                                               String                @default("")
+  resetToken                                          String?               @unique
+  resetTokenExpires                                   DateTime?
   supervisorId                                        String?               @map("supervisor_id")
   coordinatedGroup                                    FiscalGroup?          @relation("GroupCoordinator")
   GroupFiscalStat                                     GroupFiscalStat[]

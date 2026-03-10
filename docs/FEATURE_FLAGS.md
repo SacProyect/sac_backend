@@ -442,11 +442,15 @@ El `TaxpayerCrudService` maneja todas las operaciones Create, Read, Update, Dele
 El `EventService` maneja la creación y gestión de eventos fiscales (multas, advertencias, compromisos de pago).
 
 **Funcionalidades**:
-- `create()` - Crear evento
-- `update()` - Actualizar evento
-- `delete()` - Eliminar evento
-- `getPendingPayments()` - Obtener pagos pendientes
-- `getEventsByTaxpayer()` - Obtener eventos de un contribuyente
+- `create()` - Crear evento (FINE | WARNING | PAYMENT_COMPROMISE)
+- `update()` - Actualizar evento existente (spread del `data`)
+- `delete()` - Eliminar evento (**soft delete**: `status=false`)
+- `getEventsbyTaxpayer()` - Obtener eventos/pagos por contribuyente y/o tipo (respuesta unificada)
+- `getPendingPayments()` - Obtener pagos pendientes (eventos sin pago asociado)
+
+**Reglas de negocio relevantes**:
+- **`PAYMENT_COMPROMISE`**: exige `fineEventId` y valida que `amount <= debt` del evento de multa referenciado (si no, lanza `BadRequestError`).
+- **`expires_at`**: si no viene, se calcula automáticamente como \(date + 15\) días.
 
 #### Ubicaciones donde se usa
 
@@ -467,9 +471,9 @@ El `EventService` maneja la creación y gestión de eventos fiscales (multas, ad
 El `PaymentService` gestiona los pagos realizados por los contribuyentes.
 
 **Funcionalidades**:
-- `create()` - Registrar pago
-- `update()` - Actualizar pago
-- `delete()` - Eliminar pago
+- `create()` - Registrar pago (**transaccional**: crea pago + decrementa `event.debt`)
+- `update()` - Cambiar estado de pago de multa (`paid`/`not_paid`) (**transaccional**: restaura/aplica deuda según transición)
+- `delete()` - Eliminar pago (**soft delete**: `status=false`, transaccional: restaura deuda)
 
 ---
 

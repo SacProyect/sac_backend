@@ -123,42 +123,60 @@ export class EventService {
     }
 
     /**
-     * Obtiene eventos por contribuyente
+     * Obtiene eventos por contribuyente (legacy semantics).
+     *
+     * Regla de negocio:
+     * - Si `type` es distinto de "payment" → busca en tabla `event`.
+     * - Si `type === "payment"` → busca en tabla `payment`.
+     * - Si no hay `type` → combina eventos + pagos.
+     *
+     * El shape de respuesta se mantiene unificado para frontend.
      */
-    static async getByTaxpayer(taxpayerId?: string, type?: string) {
+    static async getEventsbyTaxpayer(taxpayerId?: string, type?: string): Promise<Event[]> {
         try {
-            const where: any = {};
-            
-            if (taxpayerId) {
-                where.taxpayerId = taxpayerId;
-            }
-            
-            if (type) {
+            let events: any;
+            const where: any = { status: true };
+
+            if (taxpayerId) where.taxpayerId = taxpayerId;
+
+            if (type && type !== "payment") {
                 where.type = type;
+                events = await taxpayerRepository.findEvents(where);
+            } else if (type === "payment") {
+                events = await taxpayerRepository.findPayments(where);
+            } else {
+                const foundEvents = await taxpayerRepository.findEvents(where);
+                const payments = await taxpayerRepository.findPayments(where);
+                events = [...foundEvents, ...payments];
             }
 
-            const events = await db.event.findMany({
-                where,
-                include: {
-                    taxpayer: {
-                        select: {
-                            id: true,
-                            name: true,
-                            rif: true,
-                        }
-                    }
-                },
-                orderBy: { date: 'desc' },
-            });
+            const mappedResponse: Event[] = events.map((event: any) => ({
+                id: event.id,
+                date: event.date,
+                type: event.type ? event.type : "payment",
+                amount: event.amount,
+                debt: event.debt,
+                description: event.description,
+                taxpayerId: event.taxpayerId,
+                officerId: event.taxpayer.officerId,
+                taxpayer: `${event.taxpayer.name} RIF: ${event.taxpayer.rif}`,
+            }));
 
-            return events;
+            return mappedResponse;
         } catch (error: any) {
-            logger.error("Error getEventsbyTaxpayer", { 
-                message: error?.message, 
-                stack: error?.stack 
+            logger.error("Error getEventsbyTaxpayer", {
+                message: error?.message,
+                stack: error?.stack,
             });
             throw error;
         }
+    }
+
+    /**
+     * Alias hacia getEventsbyTaxpayer para mantener naming consistente con otros servicios.
+     */
+    static async getByTaxpayer(taxpayerId?: string, type?: string) {
+        return this.getEventsbyTaxpayer(taxpayerId, type);
     }
 
     /**
