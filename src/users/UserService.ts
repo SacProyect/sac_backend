@@ -38,8 +38,8 @@ export class UserService {
         return userServiceImpl.updateUserByName(name, data);
     }
 
-    async updatePassword(userId: string, password: string) {
-        return userServiceImpl.updatePassword(userId, password);
+    async updatePassword(userId: string, currentPassword: string, newPassword: string) {
+        return userServiceImpl.updatePassword(userId, currentPassword, newPassword);
     }
 
     async requestPasswordReset(email: string) {

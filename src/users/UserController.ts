@@ -201,7 +201,8 @@ export class UserController {
         }
         try {
             const userId = req.params.id;
-            const response = await this.userService.updatePassword(userId, parsed.data.password);
+            const { currentPassword, password } = parsed.data;
+            const response = await this.userService.updatePassword(userId, currentPassword, password);
             return res.status(200).json(response);
         } catch (e: any) {
             logger.error("Error update-password", {
@@ -209,6 +210,15 @@ export class UserController {
                 message: e?.message,
                 stack: e?.stack,
             });
+            if (
+                e?.message === "La contraseña actual es incorrecta." ||
+                e?.name === "UnauthorizedError"
+            ) {
+                return res.status(401).json({ error: "La contraseña actual es incorrecta." });
+            }
+            if (e?.message === "Usuario no encontrado" || e?.name === "NotFoundError") {
+                return res.status(404).json({ error: "Usuario no encontrado." });
+            }
             return res.status(500).json({ error: "Error interno del servidor" });
         }
     }

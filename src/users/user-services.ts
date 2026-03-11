@@ -240,15 +240,32 @@ export const getUser = async (id: string): Promise<{ user: User; token: string }
     }
 }
 
-export async function updatePassword(userId: string, password: string) {
+export async function updatePassword(userId: string, currentPassword: string, newPassword: string) {
     try {
-
-        if (typeof password !== 'string') {
+        if (typeof newPassword !== 'string') {
             if (env.FF_NEW_ERROR_HIERARCHY) throw new BadRequestError("El password debe ser un string.");
             throw new Error("El password debe ser un string.");
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        // Obtener el hash actual del usuario
+        const user = await db.user.findUnique({
+            where: { id: userId },
+            select: { password: true },
+        });
+
+        if (!user) {
+            if (env.FF_NEW_ERROR_HIERARCHY) throw new NotFoundError("Usuario no encontrado", { userId });
+            throw new Error("Usuario no encontrado");
+        }
+
+        // Verificar que la contraseña actual es correcta
+        const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isCurrentPasswordValid) {
+            if (env.FF_NEW_ERROR_HIERARCHY) throw new UnauthorizedError("La contraseña actual es incorrecta.");
+            throw new Error("La contraseña actual es incorrecta.");
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
 
         const updatedUser = await runTransaction((tx) =>
             tx.user.update({
@@ -260,7 +277,7 @@ export async function updatePassword(userId: string, password: string) {
         return updatedUser;
     } catch (e: any) {
         logger.error(e.message);
-        throw new Error(e.message);
+        throw e;
     }
 }
 

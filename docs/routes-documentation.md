@@ -1,7 +1,7 @@
 # Documentación de Rutas de la API
 
-> **Última actualización:** 9 de Marzo de 2026
-> **Versión del documento:** 2.2.0
+> **Última actualización:** 10 de Marzo de 2026
+> **Versión del documento:** 2.3.0
 
 Este documento detalla todas las rutas de la API del proyecto SAC Backend, explicando su propósito, parámetros, cuerpo de las peticiones y respuestas. Las rutas están organizadas por módulo para facilitar la navegación.
 
@@ -155,7 +155,7 @@ Retorna una lista paginada de fiscales (y supervisores, si el rol es ADMIN) disp
 | Método | Endpoint | Descripción | Rol Requerido |
 |--------|----------|-------------|---------------|
 | PUT | `/user/update-by-name/:name` | Actualiza usuario por nombre | ADMIN |
-| PATCH | `/user/update-password/:id` | Cambia contraseña de usuario | Usuario mismo |
+| PUT | `/user/update-password/:id` | Cambia contraseña del propio usuario | ADMIN, COORDINATOR, FISCAL, SUPERVISOR |
 
 #### PUT `/user/update-by-name/:name`
 
@@ -168,12 +168,44 @@ Retorna una lista paginada de fiscales (y supervisores, si el rol es ADMIN) disp
 }
 ```
 
-#### PATCH `/user/update-password/:id`
+#### PUT `/user/update-password/:id`
+
+Permite al usuario cambiar su propia contraseña. Requiere proporcionar la contraseña actual como verificación de identidad, la nueva contraseña y su confirmación.
+
+**Parámetro de ruta:**
+- `:id` — UUID del usuario cuya contraseña se va a actualizar.
 
 ```json
 // Request
 {
-  "password": "nuevaPasswordSegura123"
+  "currentPassword": "miPasswordActual123",
+  "password": "nuevaPasswordSegura456",
+  "confirmPassword": "nuevaPasswordSegura456"
+}
+```
+
+**Respuestas:**
+
+| Código | Motivo |
+|--------|--------|
+| 200 | Contraseña actualizada correctamente |
+| 400 | Validación fallida (campos faltantes, contraseña < 8 caracteres, o `password` ≠ `confirmPassword`) |
+| 401 | Token inválido o `currentPassword` incorrecta |
+| 404 | Usuario no encontrado |
+| 500 | Error interno del servidor |
+
+```json
+// Response 400 — contraseñas nuevas no coinciden
+{
+  "error": "Validación fallida",
+  "details": {
+    "confirmPassword": ["Las contraseñas nuevas no coinciden"]
+  }
+}
+
+// Response 401 — contraseña actual incorrecta
+{
+  "error": "La contraseña actual es incorrecta."
 }
 ```
 
