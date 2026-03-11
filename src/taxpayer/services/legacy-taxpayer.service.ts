@@ -14,7 +14,7 @@ import { taxpayerRepository } from '../repository/taxpayer-repository';
 import type { Event, NewFase, NewIvaReport } from '../taxpayer-utils';
 import { IndexIvaService } from './index-iva.service';
 import { validateFiscalAccessAndThrow } from '../helpers/access-control.helper';
-
+import { EventService } from './event.service';
 // ---------------------------------------------------------------------------
 // getTaxpayerCategories / getParishList → movidos a category-parish.service.ts
 // ---------------------------------------------------------------------------
